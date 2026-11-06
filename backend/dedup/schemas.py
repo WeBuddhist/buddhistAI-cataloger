@@ -19,6 +19,7 @@ AbstentionReason = Literal[
     "needs_image_or_metadata",
 ]
 IssueKind = Literal[
+    "outline_issue",
     "oversegmented",
     "undersegmented",
     "convention",
@@ -194,6 +195,19 @@ class DecisionHistoryOut(BaseModel):
     note: Optional[str] = None
     decided_at: datetime
     sync_state: str
+
+
+class TextSourceOut(BaseModel):
+    """Where a text sits in a volume BDRC lists. Empty when BDRC gives no position."""
+
+    source_volume_id: Optional[str] = None
+    source_cstart: Optional[int] = None
+    source_cend: Optional[int] = None
+
+
+class PairSourcesOut(BaseModel):
+    a: TextSourceOut = Field(default_factory=TextSourceOut)
+    b: TextSourceOut = Field(default_factory=TextSourceOut)
 
 
 class AdminPairOut(PairOut):

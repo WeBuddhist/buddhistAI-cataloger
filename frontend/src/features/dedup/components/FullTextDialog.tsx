@@ -1,18 +1,33 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronsUpDown, Columns2, Rows2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsUpDown, Columns2, Rows2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import i18n from '@/i18n/config';
 import type { DiffGranularity, WitnessCard } from '../api/review';
+import { volumeOfText, volumesInOrder } from '../api/volumes';
 import { buildDiffRows, dtypeOf, foldRows, typeCode, withoutNewlines, type DiffRow, type Piece } from '../diffRows';
 import { useFullText, useTextDiff } from '../hooks/useReview';
+import {
+  ONE_SIDE_SELECTION,
+  noteSelectingSide,
+  selectionIn,
+  useCrossSelection,
+  useScrollToMark,
+  type Marks,
+  type Picked,
+  type Tag,
+} from '../hooks/useCrossSelection';
+import { useVolume, useVolumeList } from '../hooks/useVolumes';
+import type { NewNote } from '../notes';
+import { rangeInVolume } from '../textPlace';
 import { displayText, formatNumber } from '../utils';
 import { SourceBadge, WitnessMeta } from './SourceBadge';
+import { IconButton, MarkedText, SelectionBar } from './TextSelection';
 
 // Opens over the review page so Esc returns the reviewer to where they were. Full-text
 // columns scroll independently: the copies rarely line up position for position.
 
-export type FullTextView = 'side' | 'diff';
+export type FullTextView = 'side' | 'diff' | 'volume';
 
 type Props = {
   a: WitnessCard;
@@ -20,9 +35,11 @@ type Props = {
   view: FullTextView;
   onViewChange: (v: FullTextView) => void;
   onClose: () => void;
+  /** Lets a selected passage get a note. Left out where notes cannot be written. */
+  onAddNote?: (note: NewNote) => void;
 };
 
-export default function FullTextDialog({ a, b, view, onViewChange, onClose }: Readonly<Props>) {
+export default function FullTextDialog({ a, b, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
   const { t } = useTranslation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,6 +67,7 @@ export default function FullTextDialog({ a, b, view, onViewChange, onClose }: Re
               [
                 ['side', t('dedup.evidence.fullTextsShort')],
                 ['diff', t('dedup.evidence.differencesShort')],
+                ['volume', t('dedup.volume.tab')],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -73,42 +91,211 @@ export default function FullTextDialog({ a, b, view, onViewChange, onClose }: Re
           </Button>
         </div>
 
-        {view === 'side' ? (
-          <SideBySide a={a} b={b} />
-        ) : (
-          <DiffView a={a} b={b} />
-        )}
+        {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} />}
+        {view === 'diff' && <DiffView a={a} b={b} onAddNote={onAddNote} />}
+        {view === 'volume' && <VolumeView a={a} b={b} onAddNote={onAddNote} />}
       </div>
     </div>
   );
 }
 
 // Below lg each text would only get half the sheet, so one is shown at a time.
-function SideBySide({ a, b }: Readonly<{ a: WitnessCard; b: WitnessCard }>) {
+function PaneTabs({ pane, onPane }: Readonly<{ pane: Tag; onPane: (tag: Tag) => void }>) {
   const { t } = useTranslation();
-  const [pane, setPane] = useState<'A' | 'B'>('A');
+  return (
+    <div className="flex border-b border-gray-200 lg:hidden" role="tablist">
+      {(['A', 'B'] as const).map((tag) => (
+        <button
+          key={tag}
+          role="tab"
+          aria-selected={pane === tag}
+          onClick={() => onPane(tag)}
+          className={`flex-1 cursor-pointer py-2 text-sm font-medium ${
+            pane === tag ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500'
+          }`}
+        >
+          {t('dedup.fullText.textTab', { tag })}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SideBySide({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
+  const [pane, setPane] = useState<Tag>('A');
+  const textA = useFullText(a.mw_id);
+  const textB = useFullText(b.mw_id);
+  const shownA = useMemo(() => displayText(textA.data?.text_bo ?? ''), [textA.data]);
+  const shownB = useMemo(() => displayText(textB.data?.text_bo ?? ''), [textB.data]);
+  const selection = useCrossSelection({ A: shownA, B: shownB });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex border-b border-gray-200 lg:hidden" role="tablist">
-        {(['A', 'B'] as const).map((tag) => (
-          <button
-            key={tag}
-            role="tab"
-            aria-selected={pane === tag}
-            onClick={() => setPane(tag)}
-            className={`flex-1 cursor-pointer py-2 text-sm font-medium ${
-              pane === tag ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500'
-            }`}
-          >
-            {t('dedup.fullText.textTab', { tag })}
-          </button>
-        ))}
+      <PaneTabs pane={pane} onPane={setPane} />
+      <div
+        onPointerDownCapture={noteSelectingSide}
+        className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 ${ONE_SIDE_SELECTION}`}
+      >
+        <TextPane tag="A" card={a} query={textA} shown={shownA} marks={selection.marksFor('A')} onSelect={selection.select} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
+        <TextPane tag="B" card={b} query={textB} shown={shownB} marks={selection.marksFor('B')} onSelect={selection.select} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200">
-        <TextPane tag="A" card={a} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
-        <TextPane tag="B" card={b} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
-      </div>
+      <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
     </div>
+  );
+}
+
+function TextPane({
+  tag,
+  card,
+  query,
+  shown,
+  marks,
+  onSelect,
+  className = 'flex',
+}: Readonly<{
+  tag: Tag;
+  card: WitnessCard;
+  query: { isLoading: boolean; error: Error | null; data?: unknown };
+  shown: string;
+  marks: Marks;
+  onSelect: (side: Tag, picked: Picked | null) => void;
+  className?: string;
+}>) {
+  const { t } = useTranslation();
+  const scrollRef = useScrollToMark(marks.ranges[marks.active]?.start, marks.follow);
+  return (
+    <section data-side={tag} className={`${className} min-h-0 flex-col`}>
+      <PaneHeader tag={tag} card={card} />
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+        {query.isLoading && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.witness.loadingFullText')}</div>}
+        {query.error && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong>{t('dedup.witness.fullTextUnavailable')}</strong> {query.error.message}
+          </div>
+        )}
+        {query.data != null && (
+          <div
+            onPointerUp={(e) => onSelect(tag, selectionIn(e.currentTarget))}
+            className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl"
+          >
+            <MarkedText text={shown} marks={marks} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Whole volumes, for context around each text. Each side moves through its own work.
+function VolumeView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
+  const [pane, setPane] = useState<Tag>('A');
+  const [shown, setShown] = useState<Record<Tag, string>>({ A: '', B: '' });
+  const onShown = useCallback((tag: Tag, text: string) => setShown((s) => ({ ...s, [tag]: text })), []);
+  const selection = useCrossSelection(shown);
+  // A place in a volume means nothing on a note about the pair's texts, so only the words go.
+  const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, range: undefined }));
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PaneTabs pane={pane} onPane={setPane} />
+      <div
+        onPointerDownCapture={noteSelectingSide}
+        className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 ${ONE_SIDE_SELECTION}`}
+      >
+        <VolumePane tag="A" card={a} marks={selection.marksFor('A')} onSelect={selection.select} onShown={onShown} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
+        <VolumePane tag="B" card={b} marks={selection.marksFor('B')} onSelect={selection.select} onShown={onShown} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
+      </div>
+      <SelectionBar selection={selection} onAddNote={addNote} className="border-t border-gray-200" />
+    </div>
+  );
+}
+
+function VolumePane({
+  tag,
+  card,
+  marks,
+  onSelect,
+  onShown,
+  className,
+}: Readonly<{
+  tag: Tag;
+  card: WitnessCard;
+  marks: Marks;
+  onSelect: (side: Tag, picked: Picked | null) => void;
+  onShown: (tag: Tag, text: string) => void;
+  className: string;
+}>) {
+  const { t } = useTranslation();
+  const list = useVolumeList(card.rep_id);
+  const volumes = useMemo(() => volumesInOrder(list.data ?? [], card), [list.data, card]);
+  const home = useMemo(() => volumeOfText(volumes, card), [volumes, card]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const index = Math.max(0, volumes.findIndex((v) => v.vol_id === (chosen ?? home?.vol_id)));
+  const volume = volumes[index];
+  const text = useVolume(volume?.id);
+  const fullText = useFullText(card.mw_id).data?.text_bo;
+  const shown = useMemo(() => displayText(text.data?.text ?? ''), [text.data]);
+  const isHome = volume != null && volume.vol_id === home?.vol_id;
+  const place = useMemo(() => (isHome && shown && fullText ? rangeInVolume(shown, fullText) : null), [isHome, shown, fullText]);
+  const selecting = marks.ranges.length > 0;
+  const scrollRef = useScrollToMark(selecting ? marks.ranges[marks.active]?.start : place?.start, selecting ? marks.follow : true);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [volume?.id, scrollRef]);
+  useEffect(() => {
+    onShown(tag, shown);
+  }, [tag, shown, onShown]);
+  const unavailable = !list.isLoading && (list.error != null || volumes.length === 0);
+  const otherVersion = volume != null && card.etext_source != null && volume.etext_source !== card.etext_source;
+
+  return (
+    <section data-side={tag} className={`${className} min-h-0 flex-col`}>
+      <header className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50/60 px-4 py-2.5 sm:px-5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-gray-200 text-sm font-semibold text-gray-700">{tag}</span>
+        {volume && (
+          <>
+            <IconButton label={t('dedup.volume.previous')} onClick={() => setChosen(volumes[Math.max(0, index - 1)].vol_id)}>
+              <ChevronLeft className="h-4 w-4" />
+            </IconButton>
+            <select
+              value={volume.vol_id}
+              onChange={(e) => setChosen(e.target.value)}
+              aria-label={t('dedup.volume.choose')}
+              className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+            >
+              {volumes.map((v) => (
+                <option key={v.vol_id} value={v.vol_id}>
+                  {t('dedup.volume.number', { n: formatNumber(v.volume_number) })}
+                  {v.vol_id === home?.vol_id ? ` · ${t('dedup.volume.thisText')}` : ''}
+                </option>
+              ))}
+            </select>
+            <IconButton label={t('dedup.volume.next')} onClick={() => setChosen(volumes[Math.min(volumes.length - 1, index + 1)].vol_id)}>
+              <ChevronRight className="h-4 w-4" />
+            </IconButton>
+            <SourceBadge source={volume.etext_source} />
+          </>
+        )}
+      </header>
+      {otherVersion && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 sm:px-5">{t('dedup.volume.otherVersion')}</div>
+      )}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+        {(list.isLoading || text.isLoading) && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.volume.loading')}</div>}
+        {unavailable && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('dedup.volume.unavailable')}</div>}
+        {text.error && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong>{t('dedup.volume.failed')}</strong> {text.error.message}
+          </div>
+        )}
+        {text.data != null && (
+          <div
+            onPointerUp={(e) => onSelect(tag, selectionIn(e.currentTarget))}
+            className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl"
+          >
+            <MarkedText text={shown} marks={selecting ? marks : { ranges: place ? [place] : [], active: 0 }} soft={!selecting} />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -134,35 +321,23 @@ function PaneHeader({ tag, card }: Readonly<{ tag: 'A' | 'B'; card: WitnessCard 
   );
 }
 
-function TextPane({ tag, card, className = 'flex' }: Readonly<{ tag: 'A' | 'B'; card: WitnessCard; className?: string }>) {
-  const { t } = useTranslation();
-  const text = useFullText(card.mw_id);
-  return (
-    <section className={`${className} min-h-0 flex-col`}>
-      <PaneHeader tag={tag} card={card} />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-        {text.isLoading && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.witness.loadingFullText')}</div>}
-        {text.error && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            <strong>{t('dedup.witness.fullTextUnavailable')}</strong> {text.error.message}
-          </div>
-        )}
-        {text.data && (
-          <div className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl">
-            {displayText(text.data.text_bo)}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 
 type DiffLayout = 'split' | 'unified';
 
 const GRANULARITIES: DiffGranularity[] = ['syllable', 'char', 'line'];
 
-function DiffView({ a, b }: Readonly<{ a: WitnessCard; b: WitnessCard }>) {
+/** A side's text as the rows show it, and where each row starts in it. */
+function sideOfRows(rows: DiffRow[], side: 'a' | 'b') {
+  const starts: number[] = [];
+  let text = '';
+  for (const row of rows) {
+    starts.push(text.length);
+    text += row[side].map((p) => p.text).join('');
+  }
+  return { text, starts };
+}
+
+function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
   const { t } = useTranslation();
   const [granularity, setGranularity] = useState<DiffGranularity>('syllable');
   // Two columns are too narrow on a phone.
@@ -184,6 +359,21 @@ function DiffView({ a, b }: Readonly<{ a: WitnessCard; b: WitnessCard }>) {
   const blocks = useMemo(() => foldRows(rows), [rows]);
   // Each side numbered on its own: a row only one copy has gets no number on the other.
   const nums = useMemo(() => numberRows(rows), [rows]);
+  const sideA = useMemo(() => sideOfRows(rows, 'a'), [rows]);
+  const sideB = useMemo(() => sideOfRows(rows, 'b'), [rows]);
+  const selection = useCrossSelection({ A: sideA.text, B: sideB.text });
+  // Rows are not re-cut around a match: the row holding it is what gets highlighted.
+  const matchSide = selection.selected?.side === 'A' ? 'B' : 'A';
+  const matchMarks = selection.marksFor(matchSide);
+  const match = selection.selected ? matchMarks.ranges[matchMarks.active] : undefined;
+  const activeRow = match ? (matchSide === 'A' ? sideA : sideB).starts.filter((s) => s <= match.start).length - 1 : -1;
+  const rowsRef = useScrollToMark(activeRow);
+  const pickRows = () => {
+    const picked = window.getSelection();
+    const side = picked?.anchorNode?.parentElement?.closest<HTMLElement>('[data-side]')?.dataset.side as Tag | undefined;
+    const text = picked?.toString() ?? '';
+    selection.select(side ?? 'A', side && text.trim() ? { text } : null);
+  };
   const punctuationCount = useMemo(
     () => (punctuation === undefined ? 0 : chunks.filter((c) => dtypeOf(c) === punctuation).length),
     [chunks, punctuation],
@@ -265,7 +455,12 @@ function DiffView({ a, b }: Readonly<{ a: WitnessCard; b: WitnessCard }>) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={rowsRef}
+        onPointerDownCapture={noteSelectingSide}
+        onPointerUp={pickRows}
+        className={`min-h-0 flex-1 overflow-auto ${ONE_SIDE_SELECTION}`}
+      >
         {diff.isLoading && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.diff.comparing')}</div>}
         {diff.error && (
           <div className="m-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -275,14 +470,15 @@ function DiffView({ a, b }: Readonly<{ a: WitnessCard; b: WitnessCard }>) {
         {diff.data &&
           blocks.map((block) =>
             block.kind === 'fold' ? (
-              <Fold key={`f${block.start}`} rows={block.rows} start={block.start} nums={nums} layout={layout} />
+              <Fold key={`f${block.start}`} rows={block.rows} start={block.start} nums={nums} layout={layout} activeRow={activeRow} />
             ) : (
               block.rows.map((row, k) => (
-                <Row key={block.start + k} row={row} num={nums[block.start + k]} layout={layout} />
+                <Row key={block.start + k} row={row} num={nums[block.start + k]} layout={layout} active={block.start + k === activeRow} />
               ))
             ),
           )}
       </div>
+      <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
     </div>
   );
 }
@@ -346,7 +542,7 @@ function Side({ pieces, n, tone, changed, copy, className = '' }: Readonly<{
   const tint = tone === 'red' ? 'bg-red-50' : 'bg-green-50';
   if (n == null) return <div className={`bg-gray-50 ${className}`} aria-label={i18n.t('dedup.diff.notIn', { copy })} />;
   return (
-    <div className={`flex min-w-0 ${changed ? tint : ''} ${className}`}>
+    <div data-side={copy} className={`flex min-w-0 ${changed ? tint : ''} ${className}`}>
       <span className={LINE_NO}>{n}</span>
       <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
         <Pieces pieces={pieces} tone={tone} />
@@ -355,7 +551,16 @@ function Side({ pieces, n, tone, changed, copy, className = '' }: Readonly<{
   );
 }
 
-function Row({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout: DiffLayout }>) {
+function Row({ row, num, layout, active = false }: Readonly<{ row: DiffRow; num: RowNum; layout: DiffLayout; active?: boolean }>) {
+  if (!active) return <RowBody row={row} num={num} layout={layout} />;
+  return (
+    <div data-active-row className="ring-2 ring-inset ring-amber-400">
+      <RowBody row={row} num={num} layout={layout} />
+    </div>
+  );
+}
+
+function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout: DiffLayout }>) {
   if (layout === 'split') {
     return (
       <div className="grid grid-cols-2 border-b border-gray-100">
@@ -367,7 +572,7 @@ function Row({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout:
   // Unified: an unchanged row once; a changed row as A's version, then B's.
   if (!row.changed) {
     return (
-      <div className="flex border-b border-gray-100">
+      <div data-side="A" className="flex border-b border-gray-100">
         <span className={LINE_NO}>{num.a}</span>
         <span className="w-6 shrink-0" />
         <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
@@ -379,7 +584,7 @@ function Row({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout:
   return (
     <div className="border-b border-gray-100">
       {num.a != null && (
-        <div className="flex bg-red-50">
+        <div data-side="A" className="flex bg-red-50">
           <span className={LINE_NO}>{num.a}</span>
           <span className="w-6 shrink-0 pt-1.5 text-center font-sans text-xs font-semibold text-red-700">A</span>
           <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
@@ -388,7 +593,7 @@ function Row({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout:
         </div>
       )}
       {num.b != null && (
-        <div className="flex bg-green-50">
+        <div data-side="B" className="flex bg-green-50">
           <span className={LINE_NO}>{num.b}</span>
           <span className="w-6 shrink-0 pt-1.5 text-center font-sans text-xs font-semibold text-green-700">B</span>
           <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
@@ -400,10 +605,13 @@ function Row({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout:
   );
 }
 
-function Fold({ rows, start, nums, layout }: Readonly<{ rows: DiffRow[]; start: number; nums: RowNum[]; layout: DiffLayout }>) {
+function Fold({ rows, start, nums, layout, activeRow }: Readonly<{ rows: DiffRow[]; start: number; nums: RowNum[]; layout: DiffLayout; activeRow: number }>) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  if (open) return <>{rows.map((row, k) => <Row key={start + k} row={row} num={nums[start + k]} layout={layout} />)}</>;
+  const holdsMatch = activeRow >= start && activeRow < start + rows.length;
+  if (open || holdsMatch) {
+    return <>{rows.map((row, k) => <Row key={start + k} row={row} num={nums[start + k]} layout={layout} active={start + k === activeRow} />)}</>;
+  }
   return (
     <button
       onClick={() => setOpen(true)}

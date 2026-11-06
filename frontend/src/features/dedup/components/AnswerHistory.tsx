@@ -1,7 +1,9 @@
 import { History, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DecisionHistory } from '../api/review';
+import { notesOf } from '../notes';
 import { abstentionLabel, answerLabel, formatDateTime } from '../utils';
+import { NoteList } from './PairNotes';
 
 const VERDICT_STYLE: Record<string, string> = {
   same: 'bg-green-50 text-green-700 border-green-200',
@@ -32,6 +34,7 @@ export default function AnswerHistory({ history, corrected }: Readonly<{ history
         <ul className="mt-2 divide-y divide-indigo-100 rounded-md bg-white shadow-sm">
           {rows.map((d, i) => {
             const role = t(`dedup.admin.pair.role.${d.role}`, { defaultValue: d.role });
+            const notes = notesOf(d.partner_payload);
             return (
               <li key={`${d.decided_at}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
                 <span
@@ -52,6 +55,11 @@ export default function AnswerHistory({ history, corrected }: Readonly<{ history
                 <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-gray-500">
                   {formatDateTime(d.decided_at)} · {t(`dedup.admin.pair.sync.${d.sync_state}`, { defaultValue: d.sync_state })}
                 </span>
+                {notes.length > 0 && (
+                  <div className="w-full">
+                    <NoteList notes={notes} />
+                  </div>
+                )}
               </li>
             );
           })}

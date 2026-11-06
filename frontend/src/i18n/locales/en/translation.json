@@ -831,7 +831,8 @@
       "convention": "Divided at different places",
       "anthology_suspected": "Looks like an anthology",
       "source_dup": "Passage repeated inside a text",
-      "other": "Other problem"
+      "other": "Other problem",
+      "outline_issue": "Outline issue"
     },
     "duration": {
       "seconds": "{{s}} s",
@@ -845,7 +846,12 @@
       "goToPage": "Go to page",
       "loadFailed": "Could not load the scanned pages: {{error}}",
       "noPages": "BDRC lists no pages for this scan.",
-      "resize": "Drag to resize, double-click to reset"
+      "resize": "Drag to resize, double-click to reset",
+      "locating": "Finding the text’s page…",
+      "notLocated": "Page not found, showing from the start",
+      "textStart": "Text start",
+      "goToText": "Go to the page where the text starts",
+      "goToTextApprox": "Go to where the text starts. Found by searching, so it may be a page off"
     },
     "witness": {
       "characters": "{{n}} characters",
@@ -987,7 +993,8 @@
         "convention": "The same work, but the two are split by different segmentation conventions.",
         "anthology_suspected": "A text seems to contain many unrelated works.",
         "source_dup": "A block of text is copied twice within one document (an import error).",
-        "other": "Describe it in the note."
+        "other": "Describe it in the note.",
+        "outline_issue": "The texts look the same, but their sections are split or ordered differently."
       },
       "problem": "Problem",
       "whichText": "Which text?",
@@ -996,19 +1003,27 @@
       "bOnly": "B only",
       "noteRequired": "Note (required)",
       "noteOptional": "Note (optional)",
-      "reportTitle": "Report a data problem",
-      "reportDescription": "Added to your answer, which stays as it is. Reported for fixing later.",
+      "reportTitle": "Flag an issue",
+      "reportDescription": "Goes with your answer and is reported for fixing later.",
       "reportDescriptionWithAnswer": "Added to your answer ({{answer}}), which stays as it is. Reported for fixing later.",
       "alsoReport": "Also report a data problem",
       "optional": "(optional)",
       "alreadyReported": "Already reported: {{list}}",
       "dataProblem": "Data problem",
-      "reportButton": "Report problem"
+      "reportButton": "Flag issue"
     },
     "fullText": {
       "dialogLabel": "Full texts",
       "scrollHint": "Each side scrolls on its own",
-      "textTab": "Text {{tag}}"
+      "textTab": "Text {{tag}}",
+      "tooShort": "Select a little more to search the other text",
+      "foundIn": "Found in {{tag}}: {{n}} of {{total}}",
+      "closeMatchIn": "Closest match in {{tag}}, the wording differs",
+      "notFoundIn": "Not found in {{tag}}",
+      "previousMatch": "Previous match",
+      "nextMatch": "Next match",
+      "clearSelection": "Clear selection",
+      "searching": "Searching the other text…"
     },
     "diff": {
       "layout": "Layout",
@@ -1070,7 +1085,6 @@
       "saveFailed": "Could not save: {{error}}",
       "noteSaved": "Note saved",
       "lockedInfo": "Both annotators have answered, so this pair is locked.",
-      "answerFirst": "Answer the pair first. Contains and Can’t answer can include a data problem directly.",
       "loading": "Loading item…",
       "loadFailed": "Could not load item {{id}}: {{error}}",
       "notFound": "not found",
@@ -1089,14 +1103,12 @@
       "finalAnswer": "Final answer",
       "saved": "Saved",
       "needsAnswer": "Needs an answer",
-      "reportTitle": "Add a data problem to this answer",
-      "reportAnother": "Report another problem",
-      "reportProblem": "Report a data problem",
       "spaceKey": "Space",
       "confidence": "Confidence",
       "confidenceN": "Confidence {{n}} of 5",
       "correctedInfo": "An admin corrected this pair, so it is locked.",
-      "correctedLocked": "An admin corrected this pair, so this answer is locked"
+      "correctedLocked": "An admin corrected this pair, so this answer is locked",
+      "flagIssue": "Flag issue"
     },
     "adjudicationQueue": {
       "title": "To adjudicate",
@@ -1424,6 +1436,33 @@
         "range": "{{from}}–{{to}} of {{total}} pairs",
         "back": "All pairs"
       }
+    },
+    "volume": {
+      "tab": "Full volume",
+      "loading": "Loading the volume…",
+      "unavailable": "BDRC has no volume to show for this text.",
+      "failed": "The volume could not be loaded.",
+      "previous": "Previous volume",
+      "next": "Next volume",
+      "choose": "Choose a volume",
+      "number": "Volume {{n}}",
+      "thisText": "this text",
+      "otherVersion": "This volume is a different OCR version from the text, so its wording may differ a little."
+    },
+    "notes": {
+      "title": "Notes",
+      "placeholder": "Write a note…",
+      "add": "Add note",
+      "remove": "Remove note",
+      "targetLabel": "Which text the note is about",
+      "target": {
+        "both": "Both",
+        "a": "A",
+        "b": "B"
+      },
+      "savedWithAnswer": "Saved with your answer",
+      "save": "Save note",
+      "voiceLater": "Voice notes are coming soon"
     }
   }
 }

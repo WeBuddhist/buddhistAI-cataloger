@@ -10,6 +10,7 @@ import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
+import PairNotes from '../components/PairNotes';
 import PreferredCopyDialog, { type PreferredChoice } from '../components/PreferredCopyDialog';
 import CopyPairLink from '../components/CopyPairLink';
 import PairEvidence from '../components/PairEvidence';
@@ -26,7 +27,8 @@ import {
   useSaveAdjudication,
   useSaveDecision,
 } from '../hooks/useReview';
-import { formatNumber, hasIssue, isDecided, issueLabel, verdictLabel } from '../utils';
+import { makeNote, notesOf, usePairDraft, withNotes, type NewNote, type PairNote } from '../notes';
+import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
 
 const CONFIDENCE = [1, 2, 3, 4, 5];
 // The shared Button has no pointer cursor; added here to leave other features untouched.
@@ -62,8 +64,8 @@ function correctionItem(p: AdminPair): ReviewItem {
   };
 }
 
-// Keys (plan §11): J same, F different, C contains / part-of, Space can't answer,
-// X report a data problem on the saved answer, 1-5 confidence, arrows move.
+// Keys (plan §11): J same, F different, Space can't answer, X flag an issue,
+// 1-5 confidence, arrows move.
 //
 // `adjudicate`: the same screen for a disputed pair, with both annotators' answers above
 // the texts and an optional note. The adjudicator's answer is final.
@@ -139,6 +141,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     setNote(adjItem?.note ?? '');
   }, [adjItem?.item_id, adjItem?.note]);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const draft = usePairDraft(item?.item_id);
+  const savedNotes = useMemo(() => notesOf(item?.partner_payload), [item?.partner_payload]);
+  const notes = useMemo(() => [...savedNotes, ...draft.notes], [savedNotes, draft.notes]);
   const [dialog, setDialog] = useState<CantAnswerStart | null>(null);
   const [fullText, setFullText] = useState<FullTextView | null>(null);
   // Stays open from pair to pair, so the scans can be read alongside each one.
@@ -168,9 +173,11 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     async (fields: DecisionInput) => {
       if (!item) return;
       const body: DecisionInput = {
-        // Only "same" carries a preferred copy; clear a stale one.
-        ...(fields.verdict && fields.verdict !== 'same' ? { partner_payload: null } : {}),
+        // What was flagged while the pair had no answer goes with the answer.
+        ...(fields.verdict && draft.issues.length > 0 ? { issues: draft.issues } : {}),
         ...fields,
+        // Only "same" carries a preferred copy, so a stale one is dropped; notes stay.
+        ...(fields.verdict ? { partner_payload: withNotes(fields.partner_payload, notes) } : {}),
         // Confidence only means something alongside a verdict.
         ...(fields.verdict && confidence != null ? { confidence } : {}),
       };
@@ -184,6 +191,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         }
         if (adjudicate) await saveAdjudication.mutateAsync({ itemId: item.item_id, fields: { ...body, note: note.trim() || null } });
         else await saveAnswer.mutateAsync({ itemId: item.item_id, fields: body });
+        if (fields.verdict) draft.clear();
         // Reporting a problem on an answered pair stays here; answering moves on.
         if (fields.verdict) advanceTimer.current = window.setTimeout(() => goTo(nextId), 250);
       } catch (e) {
@@ -191,7 +199,42 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         throw e;
       }
     },
-    [item, confidence, correct, adjudicate, note, saveCorrection, saveAdjudication, saveAnswer, goTo, nextId, commitActiveTime, t],
+    [item, confidence, correct, adjudicate, note, notes, draft, saveCorrection, saveAdjudication, saveAnswer, goTo, nextId, commitActiveTime, t],
+  );
+
+  // Notes on a saved answer go onto that same answer; without one they wait for it.
+  const saveNotes = useCallback(
+    (next: PairNote[]) => {
+      if (!item?.verdict) return;
+      const fields: DecisionInput = {
+        verdict: item.verdict,
+        abstention_reason: item.abstention_reason,
+        confidence: item.confidence,
+        partner_payload: withNotes(item.partner_payload, next),
+      };
+      const saving = adjudicate
+        ? saveAdjudication.mutateAsync({ itemId: item.item_id, fields })
+        : saveAnswer.mutateAsync({ itemId: item.item_id, fields });
+      saving.catch((e: Error) => toast.error(t('dedup.review.saveFailed', { error: e.message })));
+    },
+    [item, adjudicate, saveAdjudication, saveAnswer, t],
+  );
+
+  const addNote = useCallback(
+    (added: NewNote) => {
+      const made = makeNote(added);
+      if (item?.verdict) saveNotes([...savedNotes, made]);
+      else draft.addNote(made);
+    },
+    [item?.verdict, saveNotes, savedNotes, draft],
+  );
+
+  const removeNote = useCallback(
+    (id: string) => {
+      if (savedNotes.some((n) => n.id === id)) saveNotes(savedNotes.filter((n) => n.id !== id));
+      else draft.removeNote(id);
+    },
+    [saveNotes, savedNotes, draft],
   );
 
   // A note on an answer already saved goes with that same answer.
@@ -227,13 +270,20 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [submit],
   );
 
-  // A data problem is reported alongside an answer (plan §5), so the pair needs one first.
   const answered = Boolean(item && isDecided(item));
-  const reportProblem = useCallback(() => {
+  const flagIssue = useCallback(() => {
     if (locked) toast.info(t(lockedByAdmin ? 'dedup.review.correctedInfo' : 'dedup.review.lockedInfo'));
-    else if (answered) setDialog('issue');
-    else toast.info(t('dedup.review.answerFirst'));
-  }, [answered, locked, lockedByAdmin, t]);
+    else setDialog('issue');
+  }, [locked, lockedByAdmin, t]);
+
+  // An issue sits beside an answer (plan §5): before there is one, it waits for it.
+  const saveDialog = useCallback(
+    async (fields: DecisionInput) => {
+      if (answered || fields.verdict) await submit(fields);
+      else draft.setIssues(fields.issues ?? []);
+    },
+    [answered, submit, draft],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -246,8 +296,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       else if (locked) return;
       else if (k === 'j') decide('same');
       else if (k === 'f') decide('different');
-      else if (k === 'c') setDialog('contains');
-      else if (k === 'x') reportProblem();
+      else if (k === 'x') flagIssue();
       else if (k === ' ') {
         e.preventDefault();
         setDialog('default');
@@ -255,7 +304,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, fullText, askPreferred, decide, reportProblem, goTo, prevId, nextId, locked]);
+  }, [dialog, fullText, askPreferred, decide, flagIssue, goTo, prevId, nextId, locked]);
 
   // Someone else's pair (e.g. a link copied from the address bar into a spreadsheet):
   // show the read-only page instead of a work page they cannot use.
@@ -290,7 +339,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     else preferredNote = ` · ${t(preferred === cardA.mw_id ? 'dedup.review.aBetter' : 'dedup.review.bBetter')}`;
   }
   const recorded = item.verdict ? verdictLabel(item.verdict) + preferredNote : null;
-  const problems = hasIssue(item) ? item.issues!.map((i) => issueLabel(i.kind)) : [];
+  const issues = draft.issues.length > 0 ? draft.issues : (item.issues ?? []);
+  const problems = issues.map((i) => issueLabel(i.kind));
+  const canWriteNotes = !correct && !locked;
 
   return (
     <div className={`w-full ${scan ? 'max-w-none' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6`} style={{ paddingBottom: barHeight + 24 }}>
@@ -323,6 +374,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       </div>
 
       <PairEvidence
+        itemId={item.item_id}
         evidence={ev}
         cardA={cardA}
         cardB={cardB}
@@ -330,6 +382,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         scan={scan}
         onScanChange={setScan}
         bottomInset={barHeight}
+        onAddNote={canWriteNotes ? addNote : undefined}
+        afterTexts={<PairNotes notes={notes} onRemove={canWriteNotes ? removeNote : undefined} pending={!answered} />}
       >
         {adjItem && <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} />}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
@@ -402,19 +456,6 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
                   {lockedByAdmin ? t('dedup.review.correctedLocked') : 'Both annotators have answered, so this answer is locked'}
                 </span>
               )}
-              {answered && !locked && (
-                <button
-                  type="button"
-                  onClick={reportProblem}
-                  disabled={save.isPending}
-                  className={`${PTR} ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-medium text-gray-600 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50`}
-                  title={t('dedup.review.reportTitle')}
-                >
-                  <Flag className="h-3.5 w-3.5" />
-                  {t(problems.length ? 'dedup.review.reportAnother' : 'dedup.review.reportProblem')}
-                  <Kbd>X</Kbd>
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -449,21 +490,20 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
             </Button>
             <Button
               variant="outline"
-              className={`${PTR} ${isChosen('contains', 'part_of') ? CHOSEN_NEUTRAL : ''}`}
-              onClick={() => setDialog('contains')}
-              disabled={save.isPending || locked}
-              aria-pressed={isChosen('contains', 'part_of')}
-            >
-              {tick('contains', 'part_of')} {t('dedup.cantAnswer.group.contains.title')} <Kbd>C</Kbd>
-            </Button>
-            <Button
-              variant="outline"
               className={`${PTR} ${isChosen('not_sure') ? CHOSEN_NEUTRAL : ''}`}
               onClick={() => setDialog('default')}
               disabled={save.isPending || locked}
               aria-pressed={isChosen('not_sure')}
             >
               {tick('not_sure')} {t('dedup.answer.cantAnswer')} <Kbd>{t('dedup.review.spaceKey')}</Kbd>
+            </Button>
+            <Button
+              variant="outline"
+              className={`${PTR} border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900`}
+              onClick={flagIssue}
+              disabled={save.isPending || locked}
+            >
+              <Flag className="h-4 w-4" /> {t('dedup.review.flagIssue')} <Kbd>X</Kbd>
             </Button>
           </div>
 
@@ -490,7 +530,14 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       </div>
 
       {fullText && (
-        <FullTextDialog a={cardA} b={cardB} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} />
+        <FullTextDialog
+          a={cardA}
+          b={cardB}
+          view={fullText}
+          onViewChange={setFullText}
+          onClose={() => setFullText(null)}
+          onAddNote={canWriteNotes ? addNote : undefined}
+        />
       )}
 
       <PreferredCopyDialog
@@ -505,9 +552,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       <CantAnswerDialog
         open={dialog != null}
         onOpenChange={(o) => !o && setDialog(null)}
-        item={item}
+        item={{ ...item, issues }}
         start={dialog ?? 'default'}
-        onSubmit={submit}
+        onSubmit={saveDialog}
       />
     </div>
   );

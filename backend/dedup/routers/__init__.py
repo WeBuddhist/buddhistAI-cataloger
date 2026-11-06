@@ -37,6 +37,7 @@ from dedup.schemas import (
     DecisionIn,
     ItemOut,
     PairOut,
+    PairSourcesOut,
     ReassignIn,
     ReassignOut,
     SettingsIn,
@@ -174,6 +175,12 @@ def adjudication_decision(
 def get_pair(item_id: int, db: Session = Depends(get_db)):
     """One pair's evidence for a shared link: no answers, no assignment."""
     return ctrl.get_pair(db, item_id)
+
+
+@viewer_router.get("/pairs/{item_id}/sources", response_model=PairSourcesOut)
+def get_pair_sources(item_id: int, db: Session = Depends(get_db)):
+    """Where the pair's texts sit in their volumes, to open their scans at the right page."""
+    return ctrl.get_pair_sources(db, item_id)
 
 
 @viewer_router.get("/texts/{mw_id}")

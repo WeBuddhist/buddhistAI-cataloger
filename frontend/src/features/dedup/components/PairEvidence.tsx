@@ -1,11 +1,15 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Columns2, GitCompareArrows } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Columns2, GitCompareArrows, Library } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { PairEvidence as Evidence, WitnessCard } from '../api/review';
+import { ONE_SIDE_SELECTION, noteSelectingSide, useCrossSelection, type Picked, type Tag } from '../hooks/useCrossSelection';
+import { useFullText } from '../hooks/useReview';
+import type { NewNote } from '../notes';
 import type { FullTextView } from './FullTextDialog';
-import ScanPanel, { type ScanTag } from './ScanPanel';
+import ScanPanel, { type ScanPoint, type ScanTag } from './ScanPanel';
+import { SelectionBar } from './TextSelection';
 import WitnessPanel from './WitnessPanel';
-import { issueLabel, overlapNote, pct } from '../utils';
+import { displayText, issueLabel, overlapNote, pct } from '../utils';
 
 // The shared Button has no pointer cursor; added here to leave other features untouched.
 const PTR = 'cursor-pointer';
@@ -14,6 +18,7 @@ const PTR = 'cursor-pointer';
 // Used by the answer screens and the read-only shared page; `children` goes between the
 // score strip and the texts (the adjudicator's "Annotator answers").
 export default function PairEvidence({
+  itemId,
   evidence: ev,
   cardA,
   cardB,
@@ -22,7 +27,10 @@ export default function PairEvidence({
   onScanChange,
   bottomInset,
   children,
+  afterTexts,
+  onAddNote,
 }: Readonly<{
+  itemId: number;
   evidence: Evidence;
   cardA: WitnessCard;
   cardB: WitnessCard;
@@ -33,10 +41,42 @@ export default function PairEvidence({
   /** Height of the docked action bar, so the scan panel stops above it. */
   bottomInset?: number;
   children?: ReactNode;
+  /** Goes straight under the texts (the notes). */
+  afterTexts?: ReactNode;
+  /** Lets selected text get a note. Left out where notes cannot be written. */
+  onAddNote?: (note: NewNote) => void;
 }>) {
   const { t } = useTranslation();
   const closeScan = useCallback(() => onScanChange(null), [onScanChange]);
   const split = useSplit();
+  // A click in a full text: the scans go to that place.
+  const [pointAt, setPointAt] = useState<ScanPoint | null>(null);
+  const openScanAt = (tag: ScanTag) => (share: number) => {
+    onScanChange(tag);
+    setPointAt({ tag, share });
+  };
+  // Selecting on either side searches the other's full text, fetched the first time.
+  const [searching, setSearching] = useState(false);
+  const fullA = useFullText(cardA.mw_id, searching).data?.text_bo;
+  const fullB = useFullText(cardB.mw_id, searching).data?.text_bo;
+  const shown = useMemo(() => ({ A: displayText(fullA ?? ''), B: displayText(fullB ?? '') }), [fullA, fullB]);
+  const selection = useCrossSelection(shown);
+  const { clear: clearSelection, select } = selection;
+  useEffect(() => clearSelection(), [itemId, clearSelection]);
+  const onSelect = (side: Tag, picked: Picked | null) => {
+    if (picked) setSearching(true);
+    select(side, picked);
+  };
+  const panel = (tag: Tag, card: typeof cardA) => (
+    <WitnessPanel
+      tag={tag}
+      card={card}
+      onShowScans={() => onScanChange(tag)}
+      onPointAt={openScanAt(tag)}
+      marks={selection.marksFor(tag)}
+      onSelect={onSelect}
+    />
+  );
   const m = ev.metrics ?? {};
   // Same title, clearly different author: the author data cannot settle it.
   const authorConflict =
@@ -73,6 +113,13 @@ export default function PairEvidence({
               <GitCompareArrows className="h-4 w-4 shrink-0" /> <span className="sm:hidden">{t('dedup.evidence.differencesShort')}</span>
               <span className="hidden sm:inline">{t('dedup.evidence.showDifferences')}</span>
             </button>
+            <span className="w-px bg-violet-200" />
+            <button
+              onClick={() => onFullText('volume')}
+              className={`${PTR} inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap px-3.5 py-2 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-100 sm:flex-none`}
+            >
+              <Library className="h-4 w-4 shrink-0" /> {t('dedup.volume.tab')}
+            </button>
           </div>
         </div>
 
@@ -82,7 +129,7 @@ export default function PairEvidence({
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
             <strong>{t('dedup.evidence.authorConflictTitle')}</strong>{' '}
             {t('dedup.evidence.authorConflictBody', {
-              report: t('dedup.review.reportProblem'),
+              report: t('dedup.review.flagIssue'),
               issue: issueLabel('author_conflict'),
             })}
           </div>
@@ -93,12 +140,13 @@ export default function PairEvidence({
         {scan ? (
           <div
             ref={split.ref}
-            className="mt-4 grid grid-cols-1 gap-4 lg:[grid-template-columns:minmax(0,var(--split))_auto_minmax(0,1fr)] lg:gap-0"
+            onPointerDownCapture={noteSelectingSide}
+            className={`mt-4 grid grid-cols-1 gap-4 lg:[grid-template-columns:minmax(0,var(--split))_auto_minmax(0,1fr)] lg:gap-0 ${ONE_SIDE_SELECTION}`}
             style={{ '--split': `${split.pct}%` } as React.CSSProperties}
           >
             <div className="flex min-w-0 flex-col gap-4">
-              <WitnessPanel tag="A" card={cardA} onShowScans={() => onScanChange('A')} />
-              <WitnessPanel tag="B" card={cardB} onShowScans={() => onScanChange('B')} />
+              {panel('A', cardA)}
+              {panel('B', cardB)}
             </div>
             <div
               role="separator"
@@ -112,15 +160,29 @@ export default function PairEvidence({
               <span className="sticky top-1/2 h-12 w-1 rounded-full bg-gray-300 group-hover:bg-blue-400" />
             </div>
             <div className="order-first min-w-0 lg:order-none">
-              <ScanPanel cards={{ A: cardA, B: cardB }} tag={scan} onTagChange={onScanChange} onClose={closeScan} bottomInset={bottomInset} />
+              <ScanPanel
+                itemId={itemId}
+                cards={{ A: cardA, B: cardB }}
+                tag={scan}
+                onTagChange={onScanChange}
+                onClose={closeScan}
+                bottomInset={bottomInset}
+                pointAt={pointAt}
+              />
             </div>
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <WitnessPanel tag="A" card={cardA} onShowScans={() => onScanChange('A')} />
-            <WitnessPanel tag="B" card={cardB} onShowScans={() => onScanChange('B')} />
+          <div onPointerDownCapture={noteSelectingSide} className={`mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 ${ONE_SIDE_SELECTION}`}>
+            {panel('A', cardA)}
+            {panel('B', cardB)}
           </div>
         )}
+
+        {afterTexts}
+
+        <div className="fixed inset-x-0 z-30 mx-auto max-w-2xl px-4" style={{ bottom: (bottomInset ?? 0) + 8 }}>
+          <SelectionBar selection={selection} onAddNote={onAddNote} className="rounded-lg border border-gray-200 shadow-lg" />
+        </div>
 
         {/* Collapsed by default: the scores anchor reviewers toward agreeing with the machine. */}
         <details className="mt-4 rounded-lg border border-gray-200 bg-white">
