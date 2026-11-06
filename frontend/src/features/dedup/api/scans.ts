@@ -2,6 +2,8 @@
 // from iiifpres and the images from IIIF. Restricted pages go through the backend's
 // image proxy, which holds the BDRC key.
 
+import type { WitnessCard } from './review';
+
 export interface ScanPage {
   filename: string;
   width: number;
@@ -12,6 +14,16 @@ export interface ScanPage {
 export function imageGroupOf(imageUrl: string | null | undefined): string | null {
   const m = imageUrl ? /bdr:([A-Za-z0-9_-]+)/.exec(imageUrl) : null;
   return m ? m[1] : null;
+}
+
+/**
+ * The image group of a text's scans. BDRC's `image_url` drops the end of some ids (NLM
+ * volumes: `I1NLM3651` for `I1NLM3651_001`), and only the full one has scans; `volume_id`
+ * carries it for those volumes.
+ */
+export function scanGroupOf(card: Pick<WitnessCard, 'image_url' | 'volume_id'>): string | null {
+  const group = imageGroupOf(card.image_url);
+  return group && card.volume_id?.startsWith(`${group}_`) ? card.volume_id : group;
 }
 
 /**

@@ -3,7 +3,7 @@ import { Crosshair, ExternalLink, Loader2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { List, useListRef, type RowComponentProps } from 'react-window';
 import type { WitnessCard } from '../api/review';
-import { imageGroupOf, pageImageUrl, type ScanPage } from '../api/scans';
+import { pageImageUrl, scanGroupOf, type ScanPage } from '../api/scans';
 import { useScanPages } from '../hooks/useReview';
 import { useProxyHeaders, useScanImage } from '../hooks/useScanImage';
 import { useTextPlace } from '../hooks/useVolumes';
@@ -47,7 +47,7 @@ export default function ScanPanel({
 }>) {
   const { t } = useTranslation();
   const card = cards[tag];
-  const imageGroup = imageGroupOf(card.image_url);
+  const imageGroup = scanGroupOf(card);
   const pagesQuery = useScanPages(imageGroup);
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data]);
   const getHeaders = useProxyHeaders();
@@ -175,7 +175,7 @@ export default function ScanPanel({
       <header className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-3 py-2">
         <div className="inline-flex rounded-md bg-gray-100 p-0.5" role="tablist" aria-label={t('dedup.witness.scannedPages')}>
           {(['A', 'B'] as const).map((k) => {
-            const has = Boolean(imageGroupOf(cards[k].image_url));
+            const has = Boolean(scanGroupOf(cards[k]));
             return (
               <button
                 key={k}

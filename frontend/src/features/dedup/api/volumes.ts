@@ -59,17 +59,16 @@ export async function locateText(
   opts?: { signal?: AbortSignal },
 ): Promise<TextPlace | null> {
   const { source_volume_id: id, source_cstart: cstart, source_cend: cend } = source ?? {};
-  if (id && cstart != null) {
-    try {
-      const { pages } = await getVolume(id);
-      return { pages, start: cstart, span: cend != null ? cend - cstart : null, exact: true };
-    } catch {
-      // Not served by /volumes: fall through to searching.
-    }
-  }
-  if (!card.rep_id) return null;
+  const span = cstart != null && cend != null ? cend - cstart : null;
+  // Asked side by side: when BDRC's volume does not open (it often does not), the search has
+  // not lost the time spent finding that out. A volume that does open always wins.
+  const [own, listed] = await Promise.all([
+    id && cstart != null ? getVolume(id).catch(() => null) : null,
+    card.rep_id ? fetchVolumes(card.rep_id, opts).catch(() => []) : [],
+  ]);
+  if (own && cstart != null) return { pages: own.pages, start: cstart, span, exact: true };
   const textVolume = card.volume_id ?? '';
-  const versions = (await fetchVolumes(card.rep_id, opts))
+  const versions = listed
     .filter((v) => textVolume.includes(v.vol_id))
     .sort((a, b) => versionRank(a, card) - versionRank(b, card))
     .slice(0, MAX_VERSIONS_SEARCHED);
@@ -80,7 +79,7 @@ export async function locateText(
     if (place) return place;
     // OCR too poor to search. BDRC's position still lands near the text in a volume of the
     // same book, which beats the first page.
-    if (cstart != null) nearest ??= { pages: volume.pages, start: cstart, span: cend != null ? cend - cstart : null, exact: false };
+    if (cstart != null) nearest ??= { pages: volume.pages, start: cstart, span, exact: false };
   }
   return nearest;
 }
