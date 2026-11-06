@@ -19,6 +19,7 @@ import {
 } from '../hooks/useCrossSelection';
 import { useVolume, useVolumeList } from '../hooks/useVolumes';
 import type { NewNote } from '../notes';
+import type { TextRange } from '../textMatch';
 import { rangeInVolume } from '../textPlace';
 import { displayText, formatNumber } from '../utils';
 import { SourceBadge, WitnessMeta } from './SourceBadge';
@@ -368,12 +369,34 @@ function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard
   const match = selection.selected ? matchMarks.ranges[matchMarks.active] : undefined;
   const activeRow = match ? (matchSide === 'A' ? sideA : sideB).starts.filter((s) => s <= match.start).length - 1 : -1;
   const rowsRef = useScrollToMark(activeRow);
+  const marksA = selection.marksFor('A');
+  const marksB = selection.marksFor('B');
+  const hitsOf = (index: number, row: DiffRow): RowHits => ({
+    a: hitsInRow(marksA, sideA.starts[index], sideA.starts[index] + piecesLength(row.a)),
+    b: hitsInRow(marksB, sideB.starts[index], sideB.starts[index] + piecesLength(row.b)),
+  });
   const pickRows = () => {
     const picked = window.getSelection();
-    const side = picked?.anchorNode?.parentElement?.closest<HTMLElement>('[data-side]')?.dataset.side as Tag | undefined;
     const text = picked?.toString() ?? '';
-    selection.select(side ?? 'A', side && text.trim() ? { text } : null);
+    const range = picked?.rangeCount ? picked.getRangeAt(0) : null;
+    const node = range?.startContainer;
+    const element = node instanceof Element ? node : node?.parentElement;
+    const rowText = element?.closest<HTMLElement>('[data-row-text]');
+    const side = rowText?.closest<HTMLElement>('[data-side]')?.dataset.side as Tag | undefined;
+    if (!range || !rowText || !side || !text.trim()) {
+      selection.select('A', null);
+      return;
+    }
+    const before = document.createRange();
+    before.selectNodeContents(rowText);
+    before.setEnd(range.startContainer, range.startOffset);
+    const { starts } = side === 'A' ? sideA : sideB;
+    const start = starts[Number(rowText.dataset.rowText)] + before.toString().length;
+    // Rows are separate blocks, so the browser puts a line break between them in the text.
+    selection.select(side, { text, range: { start, end: start + text.replace(/\n/g, '').length } });
   };
+  // A place in these rows means nothing on a note about the pair's texts, so only the words go.
+  const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, range: undefined }));
   const punctuationCount = useMemo(
     () => (punctuation === undefined ? 0 : chunks.filter((c) => dtypeOf(c) === punctuation).length),
     [chunks, punctuation],
@@ -470,15 +493,15 @@ function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard
         {diff.data &&
           blocks.map((block) =>
             block.kind === 'fold' ? (
-              <Fold key={`f${block.start}`} rows={block.rows} start={block.start} nums={nums} layout={layout} activeRow={activeRow} />
+              <Fold key={`f${block.start}`} rows={block.rows} start={block.start} nums={nums} layout={layout} activeRow={activeRow} hitsOf={hitsOf} />
             ) : (
               block.rows.map((row, k) => (
-                <Row key={block.start + k} row={row} num={nums[block.start + k]} layout={layout} active={block.start + k === activeRow} />
+                <Row key={block.start + k} row={row} index={block.start + k} num={nums[block.start + k]} layout={layout} active={block.start + k === activeRow} hits={hitsOf(block.start + k, row)} />
               ))
             ),
           )}
       </div>
-      <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
+      <SelectionBar selection={selection} onAddNote={addNote} className="border-t border-gray-200" />
     </div>
   );
 }
@@ -507,17 +530,54 @@ function ColumnHead({
 const TEXT = 'whitespace-pre-wrap break-words font-monlam text-base leading-loose sm:text-lg';
 const LINE_NO = 'w-8 shrink-0 select-none px-1 pt-1.5 text-right font-sans text-xs tabular-nums text-gray-400 sm:w-12 sm:px-2';
 
-function Pieces({ pieces, tone }: Readonly<{ pieces: Piece[]; tone: 'red' | 'green' }>) {
+type RowHit = TextRange & { active: boolean };
+type RowHits = { a: RowHit[]; b: RowHit[] };
+
+const piecesLength = (pieces: Piece[]) => pieces.reduce((sum, p) => sum + p.text.length, 0);
+
+/** The marks falling inside a row, as places in that row's own text. */
+function hitsInRow(marks: Marks, from: number, to: number): RowHit[] {
+  return marks.ranges.flatMap((r, i) =>
+    r.start < to && r.end > from
+      ? [{ start: Math.max(r.start, from) - from, end: Math.min(r.end, to) - from, active: i === marks.active }]
+      : [],
+  );
+}
+
+/** `text`, which starts at `at` in its row, with the marks that fall inside it. */
+function withHits(text: string, at: number, hits: RowHit[]) {
+  const parts: React.ReactNode[] = [];
+  let done = 0;
+  for (const hit of hits) {
+    const start = Math.max(hit.start - at, done);
+    const end = Math.min(hit.end - at, text.length);
+    if (end <= start) continue;
+    parts.push(text.slice(done, start));
+    parts.push(
+      <mark key={start} className={`rounded-sm ${hit.active ? 'bg-amber-300' : 'bg-amber-100'}`}>
+        {text.slice(start, end)}
+      </mark>,
+    );
+    done = end;
+  }
+  parts.push(text.slice(done));
+  return parts;
+}
+
+function Pieces({ pieces, tone, hits = [] }: Readonly<{ pieces: Piece[]; tone: 'red' | 'green'; hits?: RowHit[] }>) {
   const mark = tone === 'red' ? 'rounded-sm bg-red-200/80 text-red-950' : 'rounded-sm bg-green-200/80 text-green-950';
+  let at = 0;
   return (
     <>
-      {pieces.map((p, i) =>
-        p.changed ? (
-          <mark key={i} className={mark}>{p.text}</mark>
+      {pieces.map((p, i) => {
+        const shown = withHits(p.text, at, hits);
+        at += p.text.length;
+        return p.changed ? (
+          <span key={i} className={mark}>{shown}</span>
         ) : (
-          <span key={i}>{p.text}</span>
-        ),
-      )}
+          <span key={i}>{shown}</span>
+        );
+      })}
     </>
   );
 }
@@ -531,8 +591,10 @@ function numberRows(rows: DiffRow[]): RowNum[] {
 }
 
 
-function Side({ pieces, n, tone, changed, copy, className = '' }: Readonly<{
+function Side({ pieces, n, index, hits, tone, changed, copy, className = '' }: Readonly<{
   pieces: Piece[];
+  index: number;
+  hits: RowHit[];
   n: number | null;
   tone: 'red' | 'green';
   changed: boolean;
@@ -544,28 +606,31 @@ function Side({ pieces, n, tone, changed, copy, className = '' }: Readonly<{
   return (
     <div data-side={copy} className={`flex min-w-0 ${changed ? tint : ''} ${className}`}>
       <span className={LINE_NO}>{n}</span>
-      <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
-        <Pieces pieces={pieces} tone={tone} />
+      <div data-row-text={index} className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
+        <Pieces pieces={pieces} tone={tone} hits={hits} />
       </div>
     </div>
   );
 }
 
-function Row({ row, num, layout, active = false }: Readonly<{ row: DiffRow; num: RowNum; layout: DiffLayout; active?: boolean }>) {
-  if (!active) return <RowBody row={row} num={num} layout={layout} />;
-  return (
-    <div data-active-row className="ring-2 ring-inset ring-amber-400">
-      <RowBody row={row} num={num} layout={layout} />
+type RowProps = { row: DiffRow; index: number; num: RowNum; layout: DiffLayout; hits: RowHits };
+
+function Row({ active = false, ...row }: Readonly<RowProps & { active?: boolean }>) {
+  return active ? (
+    <div data-active-row>
+      <RowBody {...row} />
     </div>
+  ) : (
+    <RowBody {...row} />
   );
 }
 
-function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; layout: DiffLayout }>) {
+function RowBody({ row, index, num, layout, hits }: Readonly<RowProps>) {
   if (layout === 'split') {
     return (
       <div className="grid grid-cols-2 border-b border-gray-100">
-        <Side pieces={row.a} n={num.a} tone="red" changed={row.changed} copy="A" />
-        <Side pieces={row.b} n={num.b} tone="green" changed={row.changed} copy="B" className="border-l border-gray-200" />
+        <Side pieces={row.a} index={index} hits={hits.a} n={num.a} tone="red" changed={row.changed} copy="A" />
+        <Side pieces={row.b} index={index} hits={hits.b} n={num.b} tone="green" changed={row.changed} copy="B" className="border-l border-gray-200" />
       </div>
     );
   }
@@ -575,8 +640,9 @@ function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; lay
       <div data-side="A" className="flex border-b border-gray-100">
         <span className={LINE_NO}>{num.a}</span>
         <span className="w-6 shrink-0" />
-        <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
-          <Pieces pieces={row.a} tone="red" />
+        <div data-row-text={index} className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
+          {/* One line for both copies here, so it shows the marks of either. */}
+          <Pieces pieces={row.a} tone="red" hits={[...hits.a, ...hits.b].sort((x, y) => x.start - y.start)} />
         </div>
       </div>
     );
@@ -587,8 +653,8 @@ function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; lay
         <div data-side="A" className="flex bg-red-50">
           <span className={LINE_NO}>{num.a}</span>
           <span className="w-6 shrink-0 pt-1.5 text-center font-sans text-xs font-semibold text-red-700">A</span>
-          <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
-            <Pieces pieces={row.a} tone="red" />
+          <div data-row-text={index} className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
+            <Pieces pieces={row.a} tone="red" hits={hits.a} />
           </div>
         </div>
       )}
@@ -596,8 +662,8 @@ function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; lay
         <div data-side="B" className="flex bg-green-50">
           <span className={LINE_NO}>{num.b}</span>
           <span className="w-6 shrink-0 pt-1.5 text-center font-sans text-xs font-semibold text-green-700">B</span>
-          <div className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
-            <Pieces pieces={row.b} tone="green" />
+          <div data-row-text={index} className={`min-w-0 flex-1 py-1 pr-2 sm:pr-4 ${TEXT} text-gray-900`}>
+            <Pieces pieces={row.b} tone="green" hits={hits.b} />
           </div>
         </div>
       )}
@@ -605,12 +671,32 @@ function RowBody({ row, num, layout }: Readonly<{ row: DiffRow; num: RowNum; lay
   );
 }
 
-function Fold({ rows, start, nums, layout, activeRow }: Readonly<{ rows: DiffRow[]; start: number; nums: RowNum[]; layout: DiffLayout; activeRow: number }>) {
+function Fold({
+  rows,
+  start,
+  nums,
+  layout,
+  activeRow,
+  hitsOf,
+}: Readonly<{
+  rows: DiffRow[];
+  start: number;
+  nums: RowNum[];
+  layout: DiffLayout;
+  activeRow: number;
+  hitsOf: (index: number, row: DiffRow) => RowHits;
+}>) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const holdsMatch = activeRow >= start && activeRow < start + rows.length;
   if (open || holdsMatch) {
-    return <>{rows.map((row, k) => <Row key={start + k} row={row} num={nums[start + k]} layout={layout} active={start + k === activeRow} />)}</>;
+    return (
+      <>
+        {rows.map((row, k) => (
+          <Row key={start + k} row={row} index={start + k} num={nums[start + k]} layout={layout} active={start + k === activeRow} hits={hitsOf(start + k, row)} />
+        ))}
+      </>
+    );
   }
   return (
     <button
