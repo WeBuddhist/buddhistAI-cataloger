@@ -22,7 +22,7 @@ const MAX_CANDIDATES = 50;
 const MIN_SIMILARITY = 0.6;
 
 /** The letters of `text`, and where each one sits in `text`. */
-function lettersOf(text: string): { letters: string; at: number[] } {
+export function lettersOf(text: string): { letters: string; at: number[] } {
   const parts: string[] = [];
   const at: number[] = [];
   for (let i = 0; i < text.length; i++) {

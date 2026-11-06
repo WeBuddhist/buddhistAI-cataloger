@@ -1,6 +1,6 @@
 // Where a text sits in a volume, so its scans can open at the right page. No imports from
 // the app beyond the matching: every step here works on plain data.
-import { findMatches, type TextRange } from './textMatch';
+import { lettersOf, type TextRange } from './textMatch';
 
 export interface VolumePage {
   cstart: number;
@@ -25,35 +25,56 @@ export interface TextPlace {
 }
 
 const ENDS_LENGTH = 220;
-// Short stretches survive OCR differences that a long one does not, but a short stretch can
-// also turn up in the wrong place (liturgies repeat), so several have to agree.
-const PROBE_LENGTH = 70;
-const PROBE_COUNT = 12;
-const MIN_AGREEING = 2;
+// Poor OCR leaves few long stretches intact but many short ones, so the text is found by
+// vote: each short run of letters it shares with the volume says where the text would start
+// there, and the place most of them agree on wins. Runs seen all over the volume say nothing.
+const RUN_LETTERS = 12;
+const MAX_RUNS = 20000;
+const MAX_REPEATS = 4;
+const MIN_VOTES = 15;
+const MIN_AGREEMENT = 0.3;
 
-/** Stretches spread through the text, each with how far into the text it starts. */
-function probes(text: string): { at: number; part: string }[] {
-  const last = Math.max(0, text.length - PROBE_LENGTH);
-  const step = last / (PROBE_COUNT - 1);
-  return Array.from({ length: PROBE_COUNT }, (_, i) => {
-    const at = Math.round(i * step);
-    return { at, part: text.slice(at, at + PROBE_LENGTH) };
-  });
+/** Where each shared run of letters says the text starts, in letters of the volume, sorted. */
+function votes(volume: string, text: string): number[] {
+  const step = Math.max(1, Math.floor(text.length / MAX_RUNS));
+  const runs = new Map<string, number>();
+  for (let i = 0; i + RUN_LETTERS <= text.length; i += step) {
+    const run = text.slice(i, i + RUN_LETTERS);
+    if (!runs.has(run)) runs.set(run, i);
+  }
+  const seen = new Map<string, number[]>();
+  for (let i = 0; i + RUN_LETTERS <= volume.length; i++) {
+    const run = volume.slice(i, i + RUN_LETTERS);
+    if (!runs.has(run)) continue;
+    const at = seen.get(run);
+    if (at) at.push(i);
+    else seen.set(run, [i]);
+  }
+  const starts: number[] = [];
+  for (const [run, at] of seen) {
+    if (at.length <= MAX_REPEATS) for (const i of at) starts.push(i - runs.get(run)!);
+  }
+  return starts.sort((a, b) => a - b);
 }
 
-/** Finds the text in a volume by wording: where most of its stretches say it starts. */
+/** Finds the text in a volume by wording, even through poor OCR. */
 export function searchVolume(volume: Volume, text: string): TextPlace | null {
-  const starts = probes(text)
-    .flatMap(({ at, part }) => findMatches(volume.text, part).ranges.slice(0, 5).map((r) => r.start - at))
-    .sort((a, b) => a - b);
-  const window = Math.max(300, text.length * 0.15);
-  let best: number[] = [];
+  const { letters, at } = lettersOf(volume.text);
+  const wanted = lettersOf(text).letters;
+  const starts = votes(letters, wanted);
+  const window = Math.max(200, wanted.length * 0.2);
+  let most = 0;
+  let from = 0;
   for (let i = 0, j = 0; i < starts.length; i++) {
     while (starts[i] - starts[j] > window) j++;
-    if (i - j + 1 > best.length) best = starts.slice(j, i + 1);
+    if (i - j + 1 > most) {
+      most = i - j + 1;
+      from = j;
+    }
   }
-  if (best.length < MIN_AGREEING) return null;
-  return { pages: volume.pages, start: Math.max(0, best[Math.floor(best.length / 2)]), span: null, exact: false };
+  if (most < MIN_VOTES || most / starts.length < MIN_AGREEMENT) return null;
+  const start = Math.max(0, starts[from + Math.floor(most / 2)]);
+  return { pages: volume.pages, start: at[start], span: null, exact: false };
 }
 
 /** The page holding a character; the one before it if the character falls between pages. */

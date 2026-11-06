@@ -33,7 +33,7 @@ export default function WitnessPanel({
   tag: 'A' | 'B';
   card: WitnessCard;
   onShowScans?: () => void;
-  /** A click in the full text: how far through it, to bring the scans there. */
+  /** A click or selection in the text: how far through it, to bring the scans there. */
   onPointAt?: (share: number) => void;
   /** A selection, or the matches of one on the other side, to mark in the full text. */
   marks?: Marks;
@@ -50,6 +50,7 @@ export default function WitnessPanel({
   const tail = card.tail ?? ends?.tail ?? '';
   const length = card.text_length ?? 0;
   const unseen = Math.max(0, length - head.length - tail.length);
+  const wholeText = () => (full.data ? displayText(full.data.text_bo) : '');
   // Opening the note form takes the browser's selection away, so the words stay marked here.
   const excerpt = (text: string) => {
     const shown = displayText(text);
@@ -103,7 +104,11 @@ export default function WitnessPanel({
           {full.data && (
             <div
               ref={scrollRef}
-              onPointerUp={(e) => onSelect?.(tag, selectionIn(e.currentTarget))}
+              onPointerUp={(e) => {
+                const picked = selectionIn(e.currentTarget);
+                onSelect?.(tag, picked);
+                if (picked) onPointAt?.(picked.range.start / (e.currentTarget.textContent?.length || 1));
+              }}
               onClick={(e) => {
                 const share = clickedShare(e.currentTarget);
                 if (share != null) onPointAt?.(share);
@@ -120,6 +125,15 @@ export default function WitnessPanel({
           onPointerUp={(e) => {
             const picked = selectionIn(e.currentTarget);
             onSelect?.(tag, picked && { text: picked.text });
+            const at = picked ? wholeText().indexOf(picked.text) : -1;
+            if (at >= 0) onPointAt?.(at / wholeText().length);
+          }}
+          onClick={(e) => {
+            // A click on the words themselves, not on the labels or the button between them.
+            const place = window.getSelection();
+            if (e.target !== e.currentTarget || !place?.isCollapsed || !place.anchorNode?.textContent) return;
+            const at = wholeText().indexOf(place.anchorNode.textContent);
+            if (at >= 0) onPointAt?.((at + place.anchorOffset) / wholeText().length);
           }}
           className="whitespace-pre-wrap break-words px-4 py-4 font-monlam text-lg leading-loose text-gray-900 sm:px-5 sm:py-5 sm:text-xl"
         >

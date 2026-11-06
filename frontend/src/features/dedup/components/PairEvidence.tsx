@@ -49,9 +49,10 @@ export default function PairEvidence({
   const { t } = useTranslation();
   const closeScan = useCallback(() => onScanChange(null), [onScanChange]);
   const split = useSplit();
-  // A click in a full text: the scans go to that place.
+  // A click or selection in a text: open scans go to that place.
   const [pointAt, setPointAt] = useState<ScanPoint | null>(null);
-  const openScanAt = (tag: ScanTag) => (share: number) => {
+  const scansFollow = (tag: ScanTag) => (share: number) => {
+    if (!scan) return;
     onScanChange(tag);
     setPointAt({ tag, share });
   };
@@ -72,7 +73,7 @@ export default function PairEvidence({
       tag={tag}
       card={card}
       onShowScans={() => onScanChange(tag)}
-      onPointAt={openScanAt(tag)}
+      onPointAt={scansFollow(tag)}
       marks={selection.marksFor(tag)}
       onSelect={onSelect}
     />

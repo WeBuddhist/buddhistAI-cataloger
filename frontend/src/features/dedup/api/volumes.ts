@@ -49,7 +49,7 @@ export async function fetchVolume(id: string, opts?: { signal?: AbortSignal }): 
  * Where the text sits in a volume. BDRC's position when its volume opens; otherwise
  * (`_BDCR_Outline` sources, which `/volumes` does not serve, or no position at all) by
  * searching the OCR versions it does list. Their character counts differ, so BDRC's
- * position cannot be reused on them.
+ * position is only a last resort on them.
  */
 export async function locateText(
   card: WitnessCard,
@@ -73,11 +73,16 @@ export async function locateText(
     .filter((v) => textVolume.includes(v.vol_id))
     .sort((a, b) => versionRank(a, card) - versionRank(b, card))
     .slice(0, MAX_VERSIONS_SEARCHED);
+  let nearest: TextPlace | null = null;
   for (const version of versions) {
-    const place = searchVolume(await getVolume(version.id), text);
+    const volume = await getVolume(version.id);
+    const place = searchVolume(volume, text);
     if (place) return place;
+    // OCR too poor to search. BDRC's position still lands near the text in a volume of the
+    // same book, which beats the first page.
+    if (cstart != null) nearest ??= { pages: volume.pages, start: cstart, span: cend != null ? cend - cstart : null, exact: false };
   }
-  return null;
+  return nearest;
 }
 
 // BDRC can hold several OCR versions of one volume: the text's own version when there is
