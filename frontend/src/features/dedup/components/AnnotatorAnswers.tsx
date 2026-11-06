@@ -1,7 +1,9 @@
 import { Flag, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AnnotatorAnswer, WitnessCard } from '../api/review';
+import { notesOf } from '../notes';
 import { abstentionLabel, answerLabel, formatNumber, issueLabel } from '../utils';
+import { NoteList } from './PairNotes';
 
 const VERDICT_STYLE: Record<string, string> = {
   same: 'bg-green-50 text-green-700 border-green-200',
@@ -39,6 +41,7 @@ export default function AnnotatorAnswers({
 function AnswerCard({ n, answer, a, b }: Readonly<{ n: number; answer: AnnotatorAnswer; a: WitnessCard; b: WitnessCard }>) {
   const { t } = useTranslation();
   const preferred = answer.partner_payload?.preferred_mw_id as string | null | undefined;
+  const notes = notesOf(answer.partner_payload);
   let preferredNote: string | null = null;
   if (answer.verdict === 'same' && preferred !== undefined) {
     if (preferred === null) preferredNote = t('dedup.annotatorAnswers.noPreferredCopy');
@@ -84,6 +87,11 @@ function AnswerCard({ n, answer, a, b }: Readonly<{ n: number; answer: Annotator
             </li>
           ))}
         </ul>
+      )}
+      {notes.length > 0 && (
+        <div className="mt-2">
+          <NoteList notes={notes} />
+        </div>
       )}
     </div>
   );

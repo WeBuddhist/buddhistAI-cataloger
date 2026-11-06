@@ -24,7 +24,7 @@ from dedup.models.dedup import (
     DedupItem,
 )
 from dedup.repository import dedup_repository as repo
-from dedup.schemas import AssignmentOut, BatchOut, ClaimOut, DecisionIn, ItemOut, PairOut
+from dedup.schemas import AssignmentOut, BatchOut, ClaimOut, DecisionIn, ItemOut, PairOut, PairSourcesOut, TextSourceOut
 from user.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -268,6 +268,28 @@ def get_pair(db: Session, item_id: int) -> PairOut:
         subject=row.get("subject") or {},
         evidence=row.get("evidence") or {},
     )
+
+
+def get_pair_sources(db: Session, item_id: int) -> PairSourcesOut:
+    """Where the pair's two texts sit in their volumes. Pairs stored before BDRC added
+    these fields keep their evidence as first seen, so theirs are read from BDRC."""
+    item = repo.get_item(db, item_id)
+    evidence = item.evidence if item is not None else {}
+    if "source_cstart" not in (evidence.get("a") or {}):
+        try:
+            evidence = client.get_item(item_id).get("evidence") or {}
+        except ReviewApiError as exc:
+            raise bdrc_error(exc) from exc
+
+    def source(side: str) -> TextSourceOut:
+        card = evidence.get(side) or {}
+        return TextSourceOut(
+            source_volume_id=card.get("source_volume_id"),
+            source_cstart=card.get("source_cstart"),
+            source_cend=card.get("source_cend"),
+        )
+
+    return PairSourcesOut(a=source("a"), b=source("b"))
 
 
 def get_item(db: Session, user: User, item_id: int) -> ItemOut:

@@ -60,7 +60,7 @@ export default function PairView() {
         <CopyPairLink itemId={p.item_id} />
       </div>
 
-      <PairEvidence evidence={p.evidence} cardA={cardA} cardB={cardB} onFullText={setFullText} scan={scan} onScanChange={setScan} />
+      <PairEvidence itemId={p.item_id} evidence={p.evidence} cardA={cardA} cardB={cardB} onFullText={setFullText} scan={scan} onScanChange={setScan} />
 
       {fullText && (
         <FullTextDialog a={cardA} b={cardB} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} />

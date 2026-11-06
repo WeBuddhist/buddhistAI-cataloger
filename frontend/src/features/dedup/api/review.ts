@@ -242,6 +242,22 @@ export function fetchPair(itemId: number, opts?: { signal?: AbortSignal }) {
   return request<SharedPair>(`/pairs/${itemId}`, { signal: opts?.signal });
 }
 
+/** Where a text sits in a volume BDRC lists; all empty when BDRC gives no position. */
+export interface TextSource {
+  source_volume_id: string | null;
+  source_cstart: number | null;
+  source_cend: number | null;
+}
+
+export interface PairSources {
+  a: TextSource;
+  b: TextSource;
+}
+
+export function fetchPairSources(itemId: number, opts?: { signal?: AbortSignal }) {
+  return request<PairSources>(`/pairs/${itemId}/sources`, { signal: opts?.signal });
+}
+
 // Full text and diff: read-only, passed through from BDRC.
 
 export interface FullText {

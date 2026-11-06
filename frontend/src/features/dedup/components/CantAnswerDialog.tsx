@@ -21,28 +21,10 @@ import { hasIssue, issueLabel, verdictLabel } from '../utils';
 type Answer = { key: string; fields: DecisionInput };
 type IssueOption = { kind: string; needsNote?: boolean };
 
-export type CantAnswerStart = 'default' | 'contains' | 'issue';
+export type CantAnswerStart = 'default' | 'issue';
 
-// C = contains/part-of, Space = can't answer (plan §11 Screen 1). Both can also carry a
-// data problem; X adds one to an answer already saved.
+// Space = can't answer, which can also carry a data problem; X flags one on its own.
 const ANSWER_GROUPS: { mode: CantAnswerStart; answers: Answer[] }[] = [
-  {
-    mode: 'contains',
-    answers: [
-      {
-        key: 'a_contains_b',
-        fields: { verdict: 'contains' },
-      },
-      {
-        key: 'b_contains_a',
-        fields: { verdict: 'part_of' },
-      },
-      {
-        key: 'source_dup_verdict',
-        fields: { verdict: 'source_dup' },
-      },
-    ],
-  },
   {
     mode: 'default',
     answers: [
@@ -71,6 +53,7 @@ const ANSWER_GROUPS: { mode: CantAnswerStart; answers: Answer[] }[] = [
 ];
 
 const ISSUES: IssueOption[] = [
+  { kind: 'outline_issue' },
   { kind: 'author_conflict' },
   { kind: 'wrong_author' },
   { kind: 'undersegmented' },
@@ -129,7 +112,7 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
     setBusy(true);
     try {
       const issues = reporting ? { issues: [...(item.issues ?? []), newIssue()] } : {};
-      // Without an answer group this only adds the problem; the saved verdict stays.
+      // Without an answer group this only adds the problem; any saved verdict stays.
       await onSubmit(answer ? { ...answer.fields, ...issues } : issues);
       onOpenChange(false);
     } catch {
