@@ -49,10 +49,31 @@ export interface PairMetrics {
   len_ratio?: number | null;
 }
 
+/** One AI model's reading of a pair. */
+export interface LlmModelAnalysis {
+  model?: string;
+  label?: string | null;
+  confidence?: number | null;
+  rule?: string | null;
+  explanation?: string | null;
+  key_evidence?: string[] | null;
+}
+
+/** BDRC's AI reading of a pair (newer batches): the verdict, why, and each model's view. */
+export interface LlmAnalysis {
+  verdict?: string | null;
+  /** `agree`, or `tiebreak` when the models differed and a third one decided. */
+  agreement?: string | null;
+  summary_bo?: string | null;
+  summary_en?: string | null;
+  models?: LlmModelAnalysis[] | null;
+}
+
 export interface PairEvidence {
   schema_version?: string;
   why?: string;
   metrics?: PairMetrics;
+  llm_analysis?: LlmAnalysis | null;
   a?: WitnessCard;
   b?: WitnessCard;
 }

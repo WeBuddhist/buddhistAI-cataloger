@@ -921,6 +921,20 @@
         "lengthRatioNote": "1.00 = same length",
         "sameScan": "Same scan",
         "sameScanNote": "both from one reproduction"
+      },
+      "ai": {
+        "title": "AI verdict",
+        "agreement": {
+          "agree": "Both models agree",
+          "tiebreak": "The models disagreed, a third model decided"
+        },
+        "showIn": {
+          "en": "Show in English",
+          "bo": "Show in Tibetan"
+        },
+        "models_one": "{{count}} model’s reasoning",
+        "models_other": "Each model’s reasoning ({{count}})",
+        "confidence": "{{pct}} confident"
       }
     },
     "annotatorAnswers": {

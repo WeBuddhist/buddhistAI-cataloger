@@ -7,6 +7,7 @@ import { useFullText } from '../hooks/useReview';
 import type { NewNote } from '../notes';
 import type { FullTextView } from './FullTextDialog';
 import ScanPanel, { type ScanPoint, type ScanTag } from './ScanPanel';
+import AiAnalysis from './AiAnalysis';
 import { SelectionBar } from './TextSelection';
 import WitnessPanel from './WitnessPanel';
 import { displayText, issueLabel, overlapNote, pct } from '../utils';
@@ -123,6 +124,13 @@ export default function PairEvidence({
             </button>
           </div>
         </div>
+
+        {/* BDRC's AI reading, there to help the annotator decide. */}
+        {ev.llm_analysis && (
+          <div className="mt-3">
+            <AiAnalysis analysis={ev.llm_analysis} />
+          </div>
+        )}
 
         {children}
 
