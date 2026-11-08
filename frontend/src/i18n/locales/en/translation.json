@@ -807,7 +807,9 @@
       "sided_with_2": "Agreed with annotator 2",
       "new_label": "Chose a different answer",
       "unresolved": "Unresolved (also could not answer)",
-      "admin_corrected": "Corrected by an admin"
+      "admin_corrected": "Corrected by an admin",
+      "confirmed": "Final check: kept the annotators’ answer",
+      "overruled": "Final check: changed the annotators’ answer"
     },
     "answer": {
       "cantAnswer": "Can't answer",
@@ -946,7 +948,8 @@
       "bBetter": "B is the better copy",
       "annotatorN": "Annotator {{n}}",
       "confidenceTitle": "Confidence, 1 to 5",
-      "confidence": "confidence {{n}}/5"
+      "confidence": "confidence {{n}}/5",
+      "agreedCheck": "both gave the same answer. This is a final check: keep their answer or change it. Your answer is final."
     },
     "preferred": {
       "title": "Which copy is better?",

@@ -41,6 +41,10 @@ SIDED_WITH_1 = "sided_with_1"
 SIDED_WITH_2 = "sided_with_2"
 NEW_LABEL = "new_label"
 UNRESOLVED = "unresolved"
+# A final check of a pair both annotators answered alike: the adjudicator kept their
+# answer, or replaced it.
+CONFIRMED = "confirmed"
+OVERRULED = "overruled"
 # An admin corrected the pair before or after the adjudicator answered.
 ADMIN_CORRECTED = "admin_corrected"
 

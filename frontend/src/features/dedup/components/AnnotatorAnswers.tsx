@@ -19,13 +19,18 @@ export default function AnnotatorAnswers({
 }: Readonly<{ answers: AnnotatorAnswer[]; a: WitnessCard; b: WitnessCard }>) {
   const { t } = useTranslation();
   const bothUnsure = answers.length > 0 && answers.every((x) => x.verdict === 'not_sure');
+  // Queued as a final check: both annotators gave the same answer.
+  const agreed = answers.length === 2 && !bothUnsure && answers[0].verdict === answers[1].verdict;
+  let summary = 'dedup.annotatorAnswers.disagreed';
+  if (bothUnsure) summary = 'dedup.annotatorAnswers.bothUnsure';
+  else if (agreed) summary = 'dedup.annotatorAnswers.agreedCheck';
   return (
     <section className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <Users className="h-4 w-4 text-indigo-700" />
         <span className="font-medium text-indigo-900">{t('dedup.annotatorAnswers.title')}</span>
         <span className="text-indigo-800/80">
-          — {t(bothUnsure ? 'dedup.annotatorAnswers.bothUnsure' : 'dedup.annotatorAnswers.disagreed')}
+          — {t(summary)}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">

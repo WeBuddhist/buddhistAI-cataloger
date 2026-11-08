@@ -810,6 +810,20 @@ def latest_adjudicator_decisions(db: Session, item_ids: Iterable[int]) -> dict[i
     return out
 
 
+def disputed_item_ids(db: Session, item_ids: Optional[Iterable[int]] = None) -> set[int]:
+    """Pairs in adjudication because their annotators disagreed, or either could not
+    answer. The rest of the queue are final checks of pairs both answered alike, put
+    there on purpose: they do not count against the annotators' agreement."""
+    ids = [a.item_id for a in all_adjudications(db)] if item_ids is None else list(item_ids)
+    answers = annotator_answers_for(db, ids)
+    disputed = set()
+    for item_id in ids:
+        verdicts = [d.verdict for d in answers.get(item_id, {}).values()]
+        if len(verdicts) < 2 or len(set(verdicts)) > 1 or "not_sure" in verdicts:
+            disputed.add(item_id)
+    return disputed
+
+
 def double_review_counts(db: Session) -> dict[str, int]:
     """Double-review pairs by stage."""
     one_slot = (
@@ -838,7 +852,7 @@ def double_review_counts(db: Session) -> dict[str, int]:
     return {
         "awaiting_second": db.execute(select(func.count()).select_from(one_slot)).scalar_one(),
         "both_answered": both,
-        "agreed": both - adj[3],
+        "agreed": both - len(disputed_item_ids(db)),
         "adjudication_waiting": adj[0],
         "adjudication_in_progress": adj[1],
         "adjudicated": adj[2],

@@ -1,4 +1,5 @@
-"""Adjudication: settling double-review pairs whose two annotators disagree.
+"""Adjudication: settling double-review pairs whose two annotators disagree, and final
+checks of pairs they answered alike when an admin queues those too.
 
 Reviewers (shown as "Adjudicator") and admins adjudicate, never on a pair they
 annotated. The first to open a pair takes it; their answer is final and is what BDRC
@@ -18,7 +19,9 @@ from sqlalchemy.orm import Session
 from dedup.controller.dedup import CORRECTED_DETAIL, _item_view, merged_fields
 from dedup.deps import can_adjudicate
 from dedup.models.dedup import (
+    CONFIRMED,
     NEW_LABEL,
+    OVERRULED,
     ROLE_ADJUDICATOR,
     SIDED_WITH_1,
     SIDED_WITH_2,
@@ -141,6 +144,10 @@ def get_item(db: Session, user: User, item_id: int) -> AdjudicationItemOut:
 
 
 def _resolution(verdict: str, answers: dict[int, DedupDecision]) -> str:
+    agreed = {d.verdict for d in answers.values()}
+    if len(answers) == 2 and len(agreed) == 1 and "not_sure" not in agreed:
+        # A final check: both annotators gave this pair the same answer.
+        return CONFIRMED if verdict in agreed else OVERRULED
     if verdict == "not_sure":
         return UNRESOLVED
     if answers.get(1) is not None and verdict == answers[1].verdict:

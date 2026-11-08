@@ -103,7 +103,7 @@ def overview(db: Session, since: Optional[datetime] = None, until: Optional[date
         adjudications = [a for a in adjudications if in_period(a.completed_at)]
         # A pair counts as "both answered" on the day the second answer came in.
         finished_at = {(a.item_id, a.user_id): a.completed_at for a in assignments if a.completed_at}
-        disputed = {a.item_id for a in repo.all_adjudications(db)}
+        disputed = repo.disputed_item_ids(db)
         both = [
             item_id for item_id, uids in repo.answered_pairs(db)
             if all(finished_at.get((item_id, u)) for u in uids)
@@ -173,7 +173,7 @@ def annotators(
     finished_at.update({(a.item_id, a.user_id): a.completed_at for a in all_adjudications if a.user_id and a.completed_at})
 
     last_answer = repo.last_decision_by_user(db)
-    disputed = {a.item_id for a in all_adjudications}
+    disputed = repo.disputed_item_ids(db, [a.item_id for a in all_adjudications])
     paired: Counter[str] = Counter()
     agreed: Counter[str] = Counter()
     for item_id, uids in repo.answered_pairs(db):
