@@ -23,6 +23,16 @@ load_dotenv(override=True)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_MODEL = "gemini-2.5-flash"
+# Structured JSON output (response_mime_type/response_schema) only works on v1beta.
+# google-genai 3.0 switched its default to "v1", which rejects it with 400 INVALID_ARGUMENT.
+GEMINI_API_VERSION = "v1beta"
+
+
+def _gemini_client() -> genai.Client:
+    return genai.Client(
+        api_key=GEMINI_API_KEY,
+        http_options=genai.types.HttpOptions(api_version=GEMINI_API_VERSION),
+    )
 
 
 def _normalise_title_author_fields(data: Any) -> Dict[str, Optional[str]]:
@@ -104,7 +114,7 @@ def generate_title_author(content: str, response_schema: Any) -> Dict[str, Optio
     
     try:
         # Initialize the client
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = _gemini_client()
         
         # Get prompt from prompts module
         prompt = get_title_author_prompt(clipped_content)
@@ -159,7 +169,7 @@ def generate_title_from_start(content: str, response_schema: Any) -> Any:
         raise HTTPException(status_code=400, detail="Content is empty")
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = _gemini_client()
         prompt = get_title_from_start_prompt(excerpt)
         response = client.models.generate_content(
             model=GEMINI_API_MODEL,
@@ -202,7 +212,7 @@ def generate_author_from_end(content: str, response_schema: Any) -> Any:
     )
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = _gemini_client()
         prompt = get_author_from_end_prompt(excerpt)
         response = client.models.generate_content(
             model=GEMINI_API_MODEL,

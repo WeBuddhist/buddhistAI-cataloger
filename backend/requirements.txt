@@ -48,4 +48,4 @@ psycopg2-binary
 redis
 
 # --- GenAI ---
-google-genai
+google-genai>=2.7,<3
