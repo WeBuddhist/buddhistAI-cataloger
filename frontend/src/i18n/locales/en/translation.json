@@ -853,7 +853,10 @@
       "notLocated": "Page not found, showing from the start",
       "textStart": "Text start",
       "goToText": "Go to the page where the text starts",
-      "goToTextApprox": "Go to where the text starts. Found by searching, so it may be a page off"
+      "goToTextApprox": "Go to where the text starts. Found by searching, so it may be a page off",
+      "goToTextInEntry": "Go to the pages this text is in. BDRC records the pages of its whole outline entry, so the text starts somewhere in pages {{from}}–{{to}}",
+      "pageFailed": "Could not load this page from BDRC.",
+      "retry": "Try again"
     },
     "witness": {
       "characters": "{{n}} characters",

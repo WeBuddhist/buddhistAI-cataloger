@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, ExternalLink, Loader2, X } from 'lucide-react';
+import { Crosshair, ExternalLink, Loader2, RotateCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { List, useListRef, type RowComponentProps } from 'react-window';
 import type { WitnessCard } from '../api/review';
-import { pageImageUrl, scanGroupOf, type ScanPage } from '../api/scans';
-import { useScanPages } from '../hooks/useReview';
+import { pageImageUrl, pageListImageUrl, scanGroupOf, type ScanPage } from '../api/scans';
+import { useOutlinePlace, useScanList } from '../hooks/useReview';
 import { useProxyHeaders, useScanImage } from '../hooks/useScanImage';
 import { useTextPlace } from '../hooks/useVolumes';
-import { pageAt } from '../textPlace';
+import { bestRange, outlineRange, scanAtShare, scanIndexAtChar, textPlaceRange, type ScanRange } from '../scanPlace';
 import { formatNumber } from '../utils';
 
 export type ScanTag = 'A' | 'B';
@@ -48,8 +48,9 @@ export default function ScanPanel({
   const { t } = useTranslation();
   const card = cards[tag];
   const imageGroup = scanGroupOf(card);
-  const pagesQuery = useScanPages(imageGroup);
-  const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data]);
+  const listQuery = useScanList(imageGroup);
+  const pages = useMemo(() => listQuery.data?.pages ?? [], [listQuery.data]);
+  const volumeNumber = listQuery.data?.volumeNumber ?? null;
   const getHeaders = useProxyHeaders();
 
   const listRef = useListRef(null);
@@ -57,23 +58,38 @@ export default function ScanPanel({
   const [boxWidth, setBoxWidth] = useState(0);
   const [current, setCurrent] = useState(0);
   const [jump, setJump] = useState('');
-  const place = useTextPlace(itemId, tag === 'A' ? 'a' : 'b', card, Boolean(imageGroup));
-  const located = place.data ?? null;
-  const finding = place.isPending || place.isFetching;
   // Once the reader has moved the scans, finding the page late must not pull them away.
   const moved = useRef(false);
 
-  // The scan holding a character of the volume: pages are matched by file name, since the
-  // scan list leaves out the sheets in front of the volume.
-  const scanIndexAt = useCallback(
-    (char: number) => {
-      const page = located && pageAt(located.pages, char);
-      const index = page ? pages.findIndex((p) => p.filename === page.pname) : -1;
-      return index >= 0 ? index : null;
-    },
-    [located, pages],
+  // Where the text is. BDRC's catalogue gives the pages of texts from its outlines; the
+  // others (and later pieces of an outline entry) are found through `/volumes`, which
+  // downloads whole volumes, so that only runs when the catalogue cannot answer.
+  const outlineQuery = useOutlinePlace(card.mw_id, Boolean(imageGroup));
+  const outline = useMemo(
+    () => (outlineQuery.data && pages.length > 0 ? outlineRange(outlineQuery.data, pages, volumeNumber) : null),
+    [outlineQuery.data, pages, volumeNumber],
   );
-  const startIndex = located ? scanIndexAt(located.start) : null;
+  const outlineSettled = !outlineQuery.isPending;
+  const searching = Boolean(imageGroup) && outlineSettled && listQuery.isSuccess && !outline?.exact;
+  const place = useTextPlace(itemId, tag === 'A' ? 'a' : 'b', card, searching);
+  const located = searching ? (place.data ?? null) : null;
+  const found = useMemo(() => (located ? textPlaceRange(located, pages) : null), [located, pages]);
+  const range = useMemo(() => bestRange(outline, found), [outline, found]);
+  const finding = !outlineSettled || (searching && (place.isPending || place.isFetching));
+  const startIndex = range?.start ?? null;
+
+  // The scan `share` (0 to 1) of the way through the text. A position in the volume's text
+  // follows it more closely than spreading the text evenly over its pages.
+  const scanAt = useCallback(
+    (share: number) => {
+      if (!range) return null;
+      if (located && found?.start === range.start) {
+        return scanIndexAtChar(located, pages, located.start + share * (located.span ?? card.text_length ?? 0));
+      }
+      return scanAtShare(range, share);
+    },
+    [range, located, found, pages, card.text_length],
+  );
 
   const showScan = useCallback(
     (index: number) => {
@@ -99,7 +115,9 @@ export default function ScanPanel({
     moved.current = false;
   }, [card.mw_id]);
 
-  const listShown = boxWidth > ROW_INSET_PX && pages.length > 0;
+  // The list waits for the catalogue's answer (a second or so), so it does not first load
+  // the volume's opening pages only to jump away from them.
+  const listShown = boxWidth > ROW_INSET_PX && pages.length > 0 && outlineSettled;
 
   // Open at the page where the text starts.
   useEffect(() => {
@@ -108,14 +126,13 @@ export default function ScanPanel({
 
   // Follow a click in the text.
   useEffect(() => {
-    if (!pointAt || pointAt.tag !== tag || !located || !listShown) return;
-    const length = located.span ?? card.text_length ?? 0;
-    const index = scanIndexAt(located.start + pointAt.share * length);
+    if (!pointAt || pointAt.tag !== tag || !listShown) return;
+    const index = scanAt(pointAt.share);
     if (index != null) {
       moved.current = true;
       showScan(index);
     }
-  }, [pointAt, tag, located, listShown, card.text_length, scanIndexAt, showScan]);
+  }, [pointAt, tag, listShown, scanAt, showScan]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -137,9 +154,12 @@ export default function ScanPanel({
       imageWidth,
       getHeaders,
       pageLabel: (n: number) => t('dedup.scans.page', { n: formatNumber(n), total: formatNumber(pages.length) }),
+      failedLabel: t('dedup.scans.pageFailed'),
+      retryLabel: t('dedup.scans.retry'),
     }),
     [pages, imageGroup, imageWidth, getHeaders, t],
   );
+  const startTitle = startTitleOf(t, range, outline);
 
   const goToPage = (n: number) => {
     moved.current = true;
@@ -148,9 +168,18 @@ export default function ScanPanel({
 
   let body;
   if (!imageGroup) body = <Note>{t('dedup.witness.noScan')}</Note>;
-  else if (pagesQuery.isLoading) body = <Note><Loader2 className="h-5 w-5 animate-spin" /></Note>;
-  else if (pagesQuery.error) body = <Note>{t('dedup.scans.loadFailed', { error: pagesQuery.error.message })}</Note>;
+  else if (listQuery.isLoading) body = <Note><Loader2 className="h-5 w-5 animate-spin" /></Note>;
+  else if (listQuery.error)
+    body = (
+      <Note>
+        <span className="flex flex-col items-center gap-2">
+          {t('dedup.scans.loadFailed', { error: listQuery.error.message })}
+          <RetryButton label={t('dedup.scans.retry')} onClick={() => void listQuery.refetch()} />
+        </span>
+      </Note>
+    );
   else if (pages.length === 0) body = <Note>{t('dedup.scans.noPages')}</Note>;
+  else if (!outlineSettled) body = <Note><Loader2 className="h-5 w-5 animate-spin" /></Note>;
   else
     body = imageWidth > 0 && (
       <List
@@ -223,7 +252,7 @@ export default function ScanPanel({
               moved.current = true;
               showScan(startIndex);
             }}
-            title={t(located?.exact ? 'dedup.scans.goToText' : 'dedup.scans.goToTextApprox')}
+            title={startTitle}
             className="inline-flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
           >
             <Crosshair className="h-3.5 w-3.5" /> {t('dedup.scans.textStart')}
@@ -233,9 +262,10 @@ export default function ScanPanel({
           <span className="text-xs text-gray-500">{t('dedup.scans.notLocated')}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {card.image_url && (
+          {imageGroup && (
             <a
-              href={card.image_url}
+              // The image group, not `image_url`: BDRC's link drops the end of some ids.
+              href={`https://library.bdrc.io/view/bdr:${imageGroup}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-800"
@@ -269,34 +299,93 @@ export default function ScanPanel({
   );
 }
 
+/** What the "Text start" button says about how sure the start is. */
+function startTitleOf(t: (key: string, opts?: Record<string, unknown>) => string, range: ScanRange | null, outline: ScanRange | null) {
+  if (range?.exact) return t('dedup.scans.goToText');
+  // A later piece of an outline entry: BDRC records only the whole entry's pages.
+  if (range && range.end != null && range.start === outline?.start) {
+    return t('dedup.scans.goToTextInEntry', { from: formatNumber(range.start + 1), to: formatNumber(range.end + 1) });
+  }
+  return t('dedup.scans.goToTextApprox');
+}
+
 type PageRowProps = {
   pages: ScanPage[];
   imageGroup: string;
   imageWidth: number;
   getHeaders: () => Promise<HeadersInit | undefined>;
   pageLabel: (n: number) => string;
+  failedLabel: string;
+  retryLabel: string;
 };
 
-function PageRow({ index, style, ariaAttributes, pages, imageGroup, imageWidth, getHeaders, pageLabel }: RowComponentProps<PageRowProps>) {
+function PageRow({
+  index,
+  style,
+  ariaAttributes,
+  pages,
+  imageGroup,
+  imageWidth,
+  getHeaders,
+  pageLabel,
+  failedLabel,
+  retryLabel,
+}: RowComponentProps<PageRowProps>) {
   const page = pages[index];
-  const src = useScanImage(pageImageUrl(imageGroup, page), getHeaders);
+  const pixels = imageWidth * (globalThis.devicePixelRatio || 1);
+  const listUrl = pageListImageUrl(imageGroup, page, pixels);
+  const fullUrl = pageImageUrl(imageGroup, page);
+  const image = useScanImage(listUrl, imageGroup, getHeaders);
   const height = Math.ceil((imageWidth * page.height) / page.width);
+  let content;
+  if (image.src) {
+    content = (
+      <ZoomableImage
+        src={image.src}
+        fullUrl={fullUrl === listUrl ? null : fullUrl}
+        imageGroup={imageGroup}
+        getHeaders={getHeaders}
+        alt={pageLabel(index + 1)}
+      />
+    );
+  } else if (image.failed) {
+    content = (
+      <span className="flex h-full flex-col items-center justify-center gap-2 p-2 text-center text-xs text-gray-500">
+        {failedLabel}
+        <RetryButton label={retryLabel} onClick={image.retry} />
+      </span>
+    );
+  } else {
+    content = (
+      <span className="flex h-full items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+      </span>
+    );
+  }
   return (
     <div {...ariaAttributes} style={style} className="px-3 pt-2.5">
       <div
         className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm"
         style={{ width: imageWidth, height }}
       >
-        {src ? (
-          <ZoomableImage src={src} alt={pageLabel(index + 1)} />
-        ) : (
-          <span className="flex h-full items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-          </span>
-        )}
+        {content}
       </div>
-      <div className="text-center text-[11px] leading-[22px] tabular-nums text-gray-500">{pageLabel(index + 1)}</div>
+      <div className="text-center text-[11px] leading-[22px] tabular-nums text-gray-500">
+        {pageLabel(index + 1)}
+      </div>
     </div>
+  );
+}
+
+function RetryButton({ label, onClick }: Readonly<{ label: string; onClick: () => void }>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex cursor-pointer items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+    >
+      <RotateCw className="h-3.5 w-3.5" /> {label}
+    </button>
   );
 }
 
@@ -305,10 +394,26 @@ const ZOOM = 2.5;
 // In-place zoom, like the outliner's: click to magnify inside the page's own frame, move the
 // pointer to look around, click again to go back. The zoom is relative to the page as
 // shown, so it is the same on every screen, and the page around it never moves (no
-// scroll lock, no layout shift), so one click is always one zoom.
-function ZoomableImage({ src, alt }: Readonly<{ src: string; alt: string }>) {
+// scroll lock, no layout shift), so one click is always one zoom. The list shows a page
+// about as wide as the panel; zooming in loads it at full size, over the smaller one.
+function ZoomableImage({
+  src,
+  fullUrl,
+  imageGroup,
+  getHeaders,
+  alt,
+}: Readonly<{
+  src: string;
+  /** The page at full size; null when the list already shows it so. */
+  fullUrl: string | null;
+  imageGroup: string;
+  getHeaders: () => Promise<HeadersInit | undefined>;
+  alt: string;
+}>) {
   const [zoomed, setZoomed] = useState(false);
   const [origin, setOrigin] = useState('50% 50%');
+  const full = useScanImage(zoomed ? fullUrl : null, imageGroup, getHeaders);
+  const shown = full.src ?? src;
   const pointAt = (e: React.MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const x = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100));
@@ -328,7 +433,7 @@ function ZoomableImage({ src, alt }: Readonly<{ src: string; alt: string }>) {
       className={`block h-full w-full overflow-hidden ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
     >
       <img
-        src={src}
+        src={shown}
         alt=""
         draggable={false}
         className="h-full w-full select-none object-contain transition-transform duration-150 ease-out"

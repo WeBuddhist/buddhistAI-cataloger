@@ -34,7 +34,7 @@ import {
   type ReviewItem,
   type ReviewMode,
 } from '../api/review';
-import { fetchScanPages } from '../api/scans';
+import { fetchOutlinePlace, fetchScanList } from '../api/scans';
 import { batchNames } from '../utils';
 
 /** Root key for every review query; use with invalidateQueries. */
@@ -53,6 +53,7 @@ const keys = {
   text: (mwId: string) => [...reviewQueryKeyRoot, 'text', mwId] as const,
   diff: (a: string, b: string, g: DiffGranularity) => [...reviewQueryKeyRoot, 'diff', a, b, g] as const,
   scanPages: (imageGroup: string) => [...reviewQueryKeyRoot, 'scan-pages', imageGroup] as const,
+  outlinePlace: (mwId: string) => [...reviewQueryKeyRoot, 'outline-place', mwId] as const,
   adminRoot: [...reviewQueryKeyRoot, 'admin'] as const,
   adminOverview: (period: PeriodRange) =>
     [...reviewQueryKeyRoot, 'admin', 'overview', period.since ?? '', period.until ?? ''] as const,
@@ -236,14 +237,28 @@ export function useFullText(mwId: string | undefined, enabled = true) {
   });
 }
 
-/** BDRC's page list for one image group (a scanned volume). */
-export function useScanPages(imageGroup: string | null) {
+/**
+ * BDRC's page list for one image group (a scanned volume). iiifpres answers 404 now and then
+ * when busy, and a second later serves the same list, hence the retries.
+ */
+export function useScanList(imageGroup: string | null) {
   return useQuery({
     queryKey: keys.scanPages(imageGroup ?? ''),
-    queryFn: ({ signal }) => fetchScanPages(imageGroup!, { signal }),
+    queryFn: ({ signal }) => fetchScanList(imageGroup!, { signal }),
     enabled: Boolean(imageGroup),
     staleTime: Infinity,
-    retry: 1,
+    retry: 3,
+  });
+}
+
+/** BDRC's catalogue page range for a text from one of its outlines; null for other texts. */
+export function useOutlinePlace(mwId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.outlinePlace(mwId),
+    queryFn: ({ signal }) => fetchOutlinePlace(mwId, { signal }),
+    enabled,
+    staleTime: Infinity,
+    retry: 2,
   });
 }
 
