@@ -40,7 +40,7 @@ rdflib
 requests
 
 # --- Database ---
-sqlalchemy
+sqlalchemy<2.1
 alembic
 psycopg2-binary
 
