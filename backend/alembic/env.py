@@ -21,7 +21,7 @@ from outliner.models.outliner import (
     SegmentRejection,
     SegmentReview,
 )
-from dedup.models import DedupActiveTime, DedupAdjudication, DedupAssignment, DedupDecision, DedupItem, DedupSetting
+from dedup.models import DedupActiveTime, DedupAdjudication, DedupAssignment, DedupDecision, DedupItem, DedupSetting, DedupVoiceNote
 from outline_fix.models import OutlineFixEdit, OutlineFixWork
 
 import os

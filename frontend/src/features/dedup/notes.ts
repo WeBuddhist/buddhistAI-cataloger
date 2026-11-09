@@ -3,7 +3,7 @@
 // nothing to save onto, so its notes and flagged issues wait in this browser as a draft
 // and go with the answer.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReviewIssue } from './api/review';
+import type { ReviewIssue, SttRequest } from './api/review';
 import type { TextRange } from './textMatch';
 
 export type NoteTarget = 'a' | 'b' | 'both';
@@ -16,13 +16,50 @@ export interface PairNote {
   quote?: string;
   /** Where the passage sits in that text as displayed. */
   range?: TextRange;
+  /** The recordings behind a spoken note, oldest first (`dedup_voice_notes`, audio in
+   * S3). Editing a note with the mic adds one; earlier ones are kept. */
+  voice_note_ids?: string[];
+  /** Older notes: a single recording. Read through `recordingIds`. */
+  voice_note_id?: string;
   created_at: string;
+  /** Set when the note was edited after it was first saved. */
+  updated_at?: string;
 }
 
-export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range'>;
+/** Every recording behind a note, oldest first. */
+export function recordingIds(note: PairNote): string[] {
+  return [...(note.voice_note_id ? [note.voice_note_id] : []), ...(note.voice_note_ids ?? [])];
+}
 
-export function makeNote(note: NewNote): PairNote {
-  return { ...note, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+/** A spoken note's recording, waiting to be stored when the note is saved. */
+export interface VoiceRecording {
+  audio: Blob;
+  stt: SttRequest[];
+}
+
+export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids'> & {
+  recording?: VoiceRecording;
+};
+
+/** What an edit changes on a saved note; a new recording is added to its list. */
+export type NoteEdit = Pick<PairNote, 'target' | 'text'> & { recording?: VoiceRecording };
+
+/** The note as stored: the recording itself never goes into it, only its id. */
+export function makeNote(added: NewNote): PairNote {
+  const note: PairNote = { ...added, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+  delete (note as NewNote).recording;
+  if (!note.voice_note_ids?.length) delete note.voice_note_ids;
+  return note;
+}
+
+/** `note` after an edit; `newRecordingId` is the recording stored with this edit, if any. */
+export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: string): PairNote {
+  const ids = [...recordingIds(note), ...(newRecordingId ? [newRecordingId] : [])];
+  const next: PairNote = { ...note, target: edit.target, text: edit.text, updated_at: new Date().toISOString() };
+  delete next.voice_note_id;
+  if (ids.length) next.voice_note_ids = ids;
+  else delete next.voice_note_ids;
+  return next;
 }
 
 export function notesOf(payload: Record<string, unknown> | null | undefined): PairNote[] {
@@ -90,8 +127,15 @@ export function usePairDraft(itemId: number | undefined) {
     (id: string) => update((d) => ({ ...d, notes: d.notes.filter((n) => n.id !== id) })),
     [update],
   );
+  const replaceNote = useCallback(
+    (note: PairNote) => update((d) => ({ ...d, notes: d.notes.map((n) => (n.id === note.id ? note : n)) })),
+    [update],
+  );
   const setIssues = useCallback((issues: ReviewIssue[]) => update((d) => ({ ...d, issues })), [update]);
   const clear = useCallback(() => update(() => EMPTY), [update]);
 
-  return useMemo(() => ({ ...draft, addNote, removeNote, setIssues, clear }), [draft, addNote, removeNote, setIssues, clear]);
+  return useMemo(
+    () => ({ ...draft, addNote, removeNote, replaceNote, setIssues, clear }),
+    [draft, addNote, removeNote, replaceNote, setIssues, clear],
+  );
 }

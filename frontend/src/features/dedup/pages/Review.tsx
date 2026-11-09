@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { AdjudicationItem, AdminPair, DecisionInput, MyItemsState, ReviewItem } from '../api/review';
+import { saveVoiceNote, type AdjudicationItem, type AdminPair, type DecisionInput, type MyItemsState, type ReviewItem } from '../api/review';
 import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
@@ -27,7 +27,7 @@ import {
   useSaveAdjudication,
   useSaveDecision,
 } from '../hooks/useReview';
-import { makeNote, notesOf, usePairDraft, withNotes, type NewNote, type PairNote } from '../notes';
+import { editedNote, makeNote, notesOf, usePairDraft, withNotes, type NewNote, type NoteEdit, type PairNote, type VoiceRecording } from '../notes';
 import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
 
 const CONFIDENCE = [1, 2, 3, 4, 5];
@@ -220,13 +220,43 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [item, adjudicate, saveAdjudication, saveAnswer, t],
   );
 
+  /** Stores a spoken note's recording (S3); its id, or undefined if that failed. The
+   * note's text is saved either way, only without the audio. */
+  const storeRecording = useCallback(
+    async (recording: VoiceRecording | undefined) => {
+      if (!recording || !item) return undefined;
+      try {
+        return await saveVoiceNote(item.item_id, recording.audio, recording.stt);
+      } catch (e) {
+        toast.error(t('dedup.notes.voice.audioNotSaved'), { description: e instanceof Error ? e.message : undefined });
+        return undefined;
+      }
+    },
+    [item, t],
+  );
+
   const addNote = useCallback(
-    (added: NewNote) => {
-      const made = makeNote(added);
+    async (added: NewNote) => {
+      const recordingId = await storeRecording(added.recording);
+      const made = makeNote({ ...added, voice_note_ids: recordingId ? [recordingId] : undefined });
       if (item?.verdict) saveNotes([...savedNotes, made]);
       else draft.addNote(made);
     },
-    [item?.verdict, saveNotes, savedNotes, draft],
+    [item?.verdict, storeRecording, saveNotes, savedNotes, draft],
+  );
+
+  const editNote = useCallback(
+    async (id: string, edit: NoteEdit) => {
+      const recordingId = await storeRecording(edit.recording);
+      const saved = savedNotes.find((n) => n.id === id);
+      if (saved) {
+        saveNotes(savedNotes.map((n) => (n.id === id ? editedNote(n, edit, recordingId) : n)));
+        return;
+      }
+      const drafted = draft.notes.find((n) => n.id === id);
+      if (drafted) draft.replaceNote(editedNote(drafted, edit, recordingId));
+    },
+    [storeRecording, saveNotes, savedNotes, draft],
   );
 
   const removeNote = useCallback(
@@ -383,7 +413,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onScanChange={setScan}
         bottomInset={barHeight}
         onAddNote={canWriteNotes ? addNote : undefined}
-        afterTexts={<PairNotes notes={notes} onRemove={canWriteNotes ? removeNote : undefined} pending={!answered} />}
+        afterTexts={<PairNotes notes={notes} onRemove={canWriteNotes ? removeNote : undefined} onEdit={canWriteNotes ? editNote : undefined} pending={!answered} />}
       >
         {adjItem && <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} />}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}

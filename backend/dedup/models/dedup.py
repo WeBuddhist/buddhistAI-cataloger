@@ -5,6 +5,7 @@
 * ``dedup_decisions``      every decision, append-only, each with its own sync state
 * ``dedup_adjudications``  pairs whose two answers disagree, and who settles them
 * ``dedup_settings``       tool-wide settings an admin changes (e.g. review mode)
+* ``dedup_voice_notes``    the S3 recording behind each spoken note
 
 Double review: two annotators answer each pair without seeing each other's answer. If
 their verdicts match, that verdict is final; otherwise the pair goes to an adjudicator,
@@ -18,7 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -194,3 +195,24 @@ class DedupSetting(Base):
     value: Mapped[str] = mapped_column(String, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class DedupVoiceNote(Base):
+    """The recording behind a spoken note, kept in S3. The note's text (as the user
+    corrected it) stays in the decision's ``partner_payload.notes``, which points here by
+    ``voice_note_ids`` (a note edited with the mic gains one more). The raw
+    speech-to-text output is not kept."""
+
+    __tablename__ = "dedup_voice_notes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("dedup_items.item_id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+    s3_key: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Monlam's service_request for each recording that went into the note
+    # ([{"request_id", "model_id"}]), to trace a transcription with Monlam.
+    stt_requests: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

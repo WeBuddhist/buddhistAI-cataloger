@@ -13,6 +13,8 @@ mangum
 aiofiles
 anyio
 httpx
+# S3 (Deduplicator voice-note audio)
+boto3
 
 # --- Data / validation ---
 pydantic[email]

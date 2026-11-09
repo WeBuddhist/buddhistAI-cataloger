@@ -182,7 +182,8 @@ export interface DecisionInput {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('accept', 'application/json');
-  if (init?.body) headers.set('content-type', 'application/json');
+  // FormData sets its own multipart content-type (with the boundary).
+  if (init?.body && !(init.body instanceof FormData)) headers.set('content-type', 'application/json');
   const response = await fetchWithAccessToken(`${BASE}${path}`, { ...init, headers });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -214,6 +215,34 @@ export function fetchMyItems(state: MyItemsState, batchId?: string, opts?: { sig
 
 export function fetchItem(itemId: number, opts?: { signal?: AbortSignal }) {
   return request<ReviewItem>(`/items/${itemId}`, { signal: opts?.signal });
+}
+
+/** Monlam's id for one transcription, kept with the recording to trace it. */
+export interface SttRequest {
+  request_id: string | null;
+  model_id: string | null;
+}
+
+/** Text of one recording (Monlam STT, through the Cataloger backend). Nothing is stored. */
+export async function transcribeVoiceNote(audio: Blob) {
+  const form = new FormData();
+  form.append('file', audio, 'note.wav');
+  return request<{ text: string } & SttRequest>('/notes/transcribe', { method: 'POST', body: form });
+}
+
+/** Keep a saved note's recording (S3). Returns the id the note stores as `voice_note_id`. */
+export async function saveVoiceNote(itemId: number, audio: Blob, sttRequests: SttRequest[]) {
+  const form = new FormData();
+  form.append('file', audio, 'note.wav');
+  form.append('stt_requests', JSON.stringify(sttRequests));
+  const { id } = await request<{ id: string }>(`/items/${itemId}/voice-notes`, { method: 'POST', body: form });
+  return id;
+}
+
+/** A short-lived link to play a note's recording. */
+export async function fetchVoiceNoteUrl(voiceNoteId: string) {
+  const { url } = await request<{ url: string }>(`/voice-notes/${encodeURIComponent(voiceNoteId)}/audio`);
+  return url;
 }
 
 /** `keepalive` lets the request finish while the page is closing. */

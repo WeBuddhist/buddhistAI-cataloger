@@ -45,7 +45,7 @@ export default function PairEvidence({
   /** Goes straight under the texts (the notes). */
   afterTexts?: ReactNode;
   /** Lets selected text get a note. Left out where notes cannot be written. */
-  onAddNote?: (note: NewNote) => void;
+  onAddNote?: (note: NewNote) => Promise<void> | void;
 }>) {
   const { t } = useTranslation();
   const closeScan = useCallback(() => onScanChange(null), [onScanChange]);

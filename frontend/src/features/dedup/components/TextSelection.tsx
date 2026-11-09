@@ -28,8 +28,9 @@ export function SelectionBar({
   className = '',
 }: Readonly<{
   selection: CrossSelection;
-  /** Left out where notes cannot be written. */
-  onAddNote?: (note: NewNote) => void;
+  /** Left out where notes cannot be written. May return a promise (storing a recording);
+   * the note form stays open until it settles. */
+  onAddNote?: (note: NewNote) => Promise<void> | void;
   className?: string;
 }>) {
   const { t } = useTranslation();
@@ -67,8 +68,8 @@ export function SelectionBar({
           <NoteForm
             target={target}
             onCancel={() => setNoting(false)}
-            onSave={(note) => {
-              onAddNote({ ...note, quote: selected.text, range: selected.range });
+            onSave={async (note) => {
+              await onAddNote({ ...note, quote: selected.text, range: selected.range });
               clear();
             }}
           />

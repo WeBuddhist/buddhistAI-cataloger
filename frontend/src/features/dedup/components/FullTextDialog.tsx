@@ -37,7 +37,7 @@ type Props = {
   onViewChange: (v: FullTextView) => void;
   onClose: () => void;
   /** Lets a selected passage get a note. Left out where notes cannot be written. */
-  onAddNote?: (note: NewNote) => void;
+  onAddNote?: (note: NewNote) => Promise<void> | void;
 };
 
 export default function FullTextDialog({ a, b, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
@@ -122,7 +122,7 @@ function PaneTabs({ pane, onPane }: Readonly<{ pane: Tag; onPane: (tag: Tag) => 
   );
 }
 
-function SideBySide({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
+function SideBySide({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
   const [pane, setPane] = useState<Tag>('A');
   const textA = useFullText(a.mw_id);
   const textB = useFullText(b.mw_id);
@@ -187,7 +187,7 @@ function TextPane({
 }
 
 // Whole volumes, for context around each text. Each side moves through its own work.
-function VolumeView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
+function VolumeView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
   const [pane, setPane] = useState<Tag>('A');
   const [shown, setShown] = useState<Record<Tag, string>>({ A: '', B: '' });
   const onShown = useCallback((tag: Tag, text: string) => setShown((s) => ({ ...s, [tag]: text })), []);
@@ -338,7 +338,7 @@ function sideOfRows(rows: DiffRow[], side: 'a' | 'b') {
   return { text, starts };
 }
 
-function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => void }>) {
+function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
   const { t } = useTranslation();
   const [granularity, setGranularity] = useState<DiffGranularity>('syllable');
   // Two columns are too narrow on a phone.

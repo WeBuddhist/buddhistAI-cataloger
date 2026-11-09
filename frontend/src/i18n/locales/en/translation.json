@@ -1479,7 +1479,21 @@
       },
       "savedWithAnswer": "Saved with your answer",
       "save": "Save note",
-      "voiceLater": "Voice notes are coming soon"
+      "voice": {
+        "record": "Record a voice note",
+        "stop": "Stop recording",
+        "transcribing": "Transcribing…",
+        "failed": "Could not turn the recording into text. Try again, or type the note.",
+        "nothingHeard": "No speech was heard in the recording.",
+        "micBlocked": "The microphone is blocked. Allow it in the browser to record a note.",
+        "play": "Play the recording",
+        "pause": "Pause",
+        "playFailed": "Could not play the recording.",
+        "audioNotSaved": "The note was saved, but its recording could not be stored.",
+        "playMany": "Play the {{count}} recordings"
+      },
+      "edit": "Edit note",
+      "edited": "edited"
     }
   }
 }

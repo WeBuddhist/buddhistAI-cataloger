@@ -5,11 +5,12 @@ import type { LlmAnalysis } from '../api/review';
 import { pct, verdictLabel } from '../utils';
 
 // BDRC's AI reading of a pair (`evidence.llm_analysis`, newer batches only), shown under
-// the shared-wording score to help the annotator. The summary comes in Tibetan and English;
+// the shared-wording score to help the annotator. The summary comes in Tibetan and English:
+// Tibetan first (English only when there is no Tibetan), with a button for the other;
 // each model's reasoning is folded away.
 export default function AiAnalysis({ analysis }: Readonly<{ analysis: LlmAnalysis }>) {
-  const { t, i18n } = useTranslation();
-  const [lang, setLang] = useState<'bo' | 'en'>(i18n.language?.startsWith('bo') ? 'bo' : 'en');
+  const { t } = useTranslation();
+  const [lang, setLang] = useState<'bo' | 'en'>(analysis.summary_bo ? 'bo' : 'en');
   const summary = lang === 'bo' ? analysis.summary_bo : analysis.summary_en;
   const other = lang === 'bo' ? 'en' : 'bo';
   const hasOther = Boolean(other === 'bo' ? analysis.summary_bo : analysis.summary_en);

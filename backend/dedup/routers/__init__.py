@@ -7,10 +7,12 @@ shared as a link.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from core.database import get_db
@@ -19,6 +21,7 @@ from dedup.client import ReviewApiError
 from dedup.controller import adjudication as adj_ctrl
 from dedup.controller import admin as admin_ctrl
 from dedup.controller import dedup as ctrl
+from dedup.controller import voice_notes as voice_ctrl
 from dedup.deps import require_dedup_access, require_dedup_admin, require_logged_in
 from dedup.repository import dedup_repository as repo
 from dedup.schemas import (
@@ -134,6 +137,46 @@ def add_active_time(
 ):
     """Add one visit's active time (seconds on screen and in use) to my pair."""
     ctrl.add_active_time(db, user, item_id, body.seconds)
+
+
+# --- spoken notes --------------------------------------------------------------------
+
+@annotator_router.post("/notes/transcribe")
+async def transcribe_voice_note(file: UploadFile = File(...)):
+    """Turn one recording into text (Monlam STT). Nothing is stored: the text goes into
+    the note box, where the user corrects it before saving the note."""
+    audio = await file.read(voice_ctrl.MAX_BYTES + 1)
+    return await run_in_threadpool(
+        voice_ctrl.transcribe, audio, file.filename or "note.wav", file.content_type or "audio/wav"
+    )
+
+
+@annotator_router.post("/items/{item_id}/voice-notes")
+async def save_voice_note(
+    item_id: int,
+    file: UploadFile = File(...),
+    stt_requests: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_dedup_access),
+):
+    """Keep a saved note's recording in S3. ``stt_requests``: JSON list of the Monlam
+    ``{request_id, model_id}`` behind the note's text. Returns the id the note stores."""
+    audio = await file.read(voice_ctrl.MAX_BYTES + 1)
+    try:
+        requests = json.loads(stt_requests) if stt_requests else []
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="stt_requests is not valid JSON") from exc
+    if not isinstance(requests, list):
+        raise HTTPException(status_code=400, detail="stt_requests must be a list")
+    return await run_in_threadpool(
+        voice_ctrl.save, db, user, item_id, audio, file.content_type or "audio/wav", requests
+    )
+
+
+@annotator_router.get("/voice-notes/{voice_note_id}/audio")
+def voice_note_audio(voice_note_id: str, db: Session = Depends(get_db)):
+    """A short-lived link to play a note's recording."""
+    return voice_ctrl.playback_url(db, voice_note_id)
 
 
 # --- adjudication (reviewer or admin; never on a pair they annotated) ----------------
