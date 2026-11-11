@@ -63,7 +63,7 @@ export default function PairView() {
       <PairEvidence itemId={p.item_id} evidence={p.evidence} cardA={cardA} cardB={cardB} onFullText={setFullText} scan={scan} onScanChange={setScan} />
 
       {fullText && (
-        <FullTextDialog a={cardA} b={cardB} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} />
+        <FullTextDialog a={cardA} b={cardB} itemId={p.item_id} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} />
       )}
     </div>
   );

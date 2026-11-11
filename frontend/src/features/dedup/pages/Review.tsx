@@ -563,6 +563,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         <FullTextDialog
           a={cardA}
           b={cardB}
+          itemId={item.item_id}
           view={fullText}
           onViewChange={setFullText}
           onClose={() => setFullText(null)}

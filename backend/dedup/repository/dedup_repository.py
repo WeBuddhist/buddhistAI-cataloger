@@ -594,6 +594,8 @@ def search_pairs(
     batch_id: Optional[str] = None,
     verdict: Optional[str] = None,
     annotator_id: Optional[str] = None,
+    adjudicator_id: Optional[str] = None,
+    corrected_by: Optional[str] = None,
     corrected: Optional[bool] = None,
     q: Optional[str] = None,
     sort: str = "newest",
@@ -604,7 +606,8 @@ def search_pairs(
     sorted and paged, plus the total before paging.
 
     ``verdict`` "none" means no final answer yet; ``annotator_id`` is anyone assigned to
-    the pair; ``q`` is a pair number, or part of a batch id, an MW id or a title.
+    the pair; ``adjudicator_id`` the person its adjudication is with, settled or not;
+    ``corrected_by`` an admin who corrected its answer; ``q`` is a pair number, or part of a batch id, an MW id or a title.
     """
     ranked = (
         select(
@@ -631,6 +634,22 @@ def search_pairs(
         stmt = stmt.where(
             select(DedupAssignment.id)
             .where(DedupAssignment.item_id == DedupItem.item_id, DedupAssignment.user_id == annotator_id)
+            .exists()
+        )
+    if adjudicator_id:
+        stmt = stmt.where(
+            select(DedupAdjudication.item_id)
+            .where(DedupAdjudication.item_id == DedupItem.item_id, DedupAdjudication.user_id == adjudicator_id)
+            .exists()
+        )
+    if corrected_by:
+        stmt = stmt.where(
+            select(DedupDecision.id)
+            .where(
+                DedupDecision.item_id == DedupItem.item_id,
+                DedupDecision.role == ROLE_ADMIN_CORRECTION,
+                DedupDecision.user_id == corrected_by,
+            )
             .exists()
         )
     if corrected is not None:

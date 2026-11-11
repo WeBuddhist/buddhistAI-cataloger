@@ -326,15 +326,29 @@ class AnnotatorOut(WorkCounts):
     # admin | reviewer (shown as "Adjudicator") | annotator
     role: Optional[str] = None
     has_access: bool = True
-    # Active time on screen: in total, and on average per answered pair.
+    # Active time on screen: in total (annotation and adjudication), on average per
+    # answered pair (annotation only), and on the pairs this person adjudicated (in
+    # total, and on average per settled pair).
     total_active_seconds: int = 0
     avg_active_seconds: Optional[float] = None
+    adjudication_active_seconds: int = 0
+    avg_adjudication_seconds: Optional[float] = None
     last_active: Optional[datetime] = None
     # Double-review pairs where both annotators answered, and how many of those agreed.
     paired: int = 0
     agreed: int = 0
-    # Pairs this person settled as adjudicator.
+    # Of those, the ones that went to adjudication (paired - agreed); and of the settled
+    # ones where this person gave Same or Different, how many ended with their answer.
+    disputed: int = 0
+    upheld: int = 0
+    upheld_of: int = 0
+    # Answered pairs where this person left a note.
+    notes: int = 0
+    # Pairs this person settled as adjudicator, their final answers by verdict, and how
+    # many of those decisions carry a note.
     adjudicated: int = 0
+    adjudication_answers: dict[str, int] = Field(default_factory=dict)
+    adjudication_notes: int = 0
     # Pairs whose answer this person changed after first answering (in the period, if one
     # is chosen). Saving the same answer again is not a change.
     changed: int = 0

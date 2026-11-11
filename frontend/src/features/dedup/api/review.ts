@@ -408,12 +408,26 @@ export interface Annotator extends WorkCounts {
   has_access: boolean;
   total_active_seconds: number;
   avg_active_seconds: number | null;
+  // Part of the total: time on the pairs this person adjudicated.
+  adjudication_active_seconds: number;
+  // Average per pair this person settled as adjudicator.
+  avg_adjudication_seconds: number | null;
   last_active: string | null;
   // Double-review pairs where both annotators answered, and how many of those agreed.
   paired: number;
   agreed: number;
-  // Pairs this person settled as adjudicator.
+  // Of those, the ones that went to adjudication; and of the settled ones where this
+  // person gave Same or Different, how many ended with their answer (upheld of upheld_of).
+  disputed: number;
+  upheld: number;
+  upheld_of: number;
+  // Answered pairs where this person left a note.
+  notes: number;
+  // Pairs this person settled as adjudicator, their final answers by verdict, and how
+  // many of those decisions carry a note.
   adjudicated: number;
+  adjudication_answers: Record<string, number>;
+  adjudication_notes: number;
   // Pairs whose answer this person changed after first answering (in the period, if chosen).
   changed: number;
   // Their own current answer per pair, counted by verdict (same, different, contains, …).
@@ -586,6 +600,10 @@ export interface PairFilters {
   // An answer, or 'none' for pairs with no final answer yet.
   verdict?: string;
   annotator_id?: string;
+  // Pairs whose adjudication is with this person, settled or not.
+  adjudicator_id?: string;
+  // Pairs this admin corrected.
+  corrected_by?: string;
   corrected?: boolean;
   // A pair number, or part of an MW id or a title.
   q?: string;

@@ -20,6 +20,7 @@ import AnswerCounts from './AnswerCounts';
 import InfoTip from './InfoTip';
 import PeriodFilter from './PeriodFilter';
 import { usePeriod } from '../hooks/usePeriod';
+import { notesOf } from '../notes';
 
 const TABS: MyItemsState[] = ['all', 'open', 'done'];
 
@@ -51,7 +52,9 @@ export default function AdminAnnotator() {
   const targetPerson = targets.find((a) => a.user_id === target);
   const names = useMemo(() => batchNames(overview.data?.batches ?? []), [overview.data?.batches]);
 
-  const rows = items.data ?? [];
+  // Notes are saved with the answer, so only answered pairs can have them.
+  const [withNotes, setWithNotes] = useState(false);
+  const rows = (items.data ?? []).filter((it) => !withNotes || notesOf(it.partner_payload).length > 0);
   const movable = rows.filter((it) => !isFinished(it));
   const allMovableSelected = movable.length > 0 && movable.every((it) => selected.has(it.item_id));
 
@@ -138,6 +141,14 @@ export default function AdminAnnotator() {
         <PeriodFilter state={period} />
         {period.filtered && <p className="mt-2 text-xs text-gray-500">{t('dedup.admin.period.annotatorHint')}</p>}
       </div>
+
+      {(withNotes || (person?.notes ?? 0) > 0) && (
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={withNotes} onChange={(e) => setWithNotes(e.target.checked)} />
+          {t('dedup.admin.annotator.withNotes')}
+          <span className="tabular-nums text-gray-500">({formatNumber(person?.notes ?? 0)})</span>
+        </label>
+      )}
 
       {!period.filtered && (
         <div className="mt-5 mb-3 flex flex-wrap items-center justify-between gap-3">

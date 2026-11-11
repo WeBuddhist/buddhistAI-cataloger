@@ -63,6 +63,12 @@ export function bestRange(outline: ScanRange | null, found: ScanRange | null): S
   return inside ? { start: found.start, end: outline.end, exact: found.exact } : outline;
 }
 
+/** How wide a page is drawn: the column's width, unless that would make it taller than allowed. */
+export function pageWidth(page: ScanPage, imageWidth: number, maxImageHeight?: number): number {
+  if (!maxImageHeight) return imageWidth;
+  return Math.max(1, Math.min(imageWidth, Math.floor((maxImageHeight * page.width) / page.height)));
+}
+
 /** The scan `share` (0 to 1) of the way through the text. */
 export function scanAtShare(range: ScanRange, share: number): number {
   if (range.end == null) return range.start;
