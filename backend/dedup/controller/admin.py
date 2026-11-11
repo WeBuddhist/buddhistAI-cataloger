@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from typing import Optional
@@ -23,6 +24,7 @@ from dedup.models.dedup import (
     ROLE_ADMIN_CORRECTION,
     SETTING_REVIEW_MODE,
     SYNC_PENDING,
+    DedupAdjudication,
     DedupAssignment,
     DedupDecision,
     DedupItem,
@@ -149,6 +151,73 @@ def _dedup_users(db: Session) -> list[User]:
     return [u for u in rows if has_dedup_access(u)]
 
 
+@dataclass
+class _Outcomes:
+    upheld: Counter[str]
+    upheld_of: Counter[str]
+    notes: Counter[str]
+    final_answers: dict[str, dict[str, int]]
+    adjudication_notes: Counter[str]
+
+
+def _has_notes(d: Optional[DedupDecision]) -> bool:
+    if d is None:
+        return False
+    notes = (d.partner_payload or {}).get("notes")
+    return bool(d.note and d.note.strip()) or (isinstance(notes, list) and len(notes) > 0)
+
+
+def _gave_answer(d: Optional[DedupDecision]) -> bool:
+    return d is not None and bool(d.verdict) and d.verdict != "not_sure"
+
+
+def _review_outcomes(
+    db: Session,
+    all_assignments: list[DedupAssignment],
+    settled: list[DedupAdjudication],
+    disputed: set[int],
+    pairs_of: dict[str, list[int]],
+    in_period,
+    filtered: bool,
+) -> _Outcomes:
+    """What became of each person's answers, and the notes they left.
+
+    Upheld: of an annotator's disputed pairs that are settled, how many ended with
+    their answer. Pairs where they chose "can't answer" are left out: there is no
+    answer of theirs to choose. Final answers and notes for adjudicators count their
+    settled pairs.
+    """
+    answered = [a for a in all_assignments if a.completed_at and (not filtered or in_period(a.completed_at))]
+    mine = repo.latest_decisions(db, {a.item_id for a in answered})
+    adj_decisions = repo.latest_adjudicator_decisions(db, [a.item_id for a in settled])
+
+    notes = Counter(a.user_id for a in answered if _has_notes(mine.get((a.item_id, a.user_id))))
+
+    final_answers: dict[str, dict[str, int]] = {}
+    adjudication_notes: Counter[str] = Counter()
+    settled_verdict: dict[int, str] = {}
+    for a in settled:
+        d = adj_decisions.get(a.item_id)
+        if d is None or d.user_id != a.user_id:
+            continue
+        if d.verdict:
+            counts = final_answers.setdefault(a.user_id, {})
+            counts[d.verdict] = counts.get(d.verdict, 0) + 1
+            settled_verdict[a.item_id] = d.verdict
+        adjudication_notes[a.user_id] += _has_notes(d)
+
+    upheld: Counter[str] = Counter()
+    upheld_of: Counter[str] = Counter()
+    for uid, ids in pairs_of.items():
+        for item_id in ids:
+            d = mine.get((item_id, uid))
+            if item_id not in disputed or item_id not in settled_verdict or not _gave_answer(d):
+                continue
+            upheld_of[uid] += 1
+            upheld[uid] += d.verdict == settled_verdict[item_id]
+    return _Outcomes(upheld, upheld_of, notes, final_answers, adjudication_notes)
+
+
 def annotators(
     db: Session, since: Optional[datetime] = None, until: Optional[datetime] = None
 ) -> list[AnnotatorOut]:
@@ -176,26 +245,37 @@ def annotators(
     disputed = repo.disputed_item_ids(db, [a.item_id for a in all_adjudications])
     paired: Counter[str] = Counter()
     agreed: Counter[str] = Counter()
+    pairs_of: dict[str, list[int]] = {}
     for item_id, uids in repo.answered_pairs(db):
         for uid in uids:
             if filtered and not in_period(finished_at.get((item_id, uid))):
                 continue
             paired[uid] += 1
             agreed[uid] += item_id not in disputed
-    adjudicated = Counter(
-        a.user_id for a in all_adjudications if a.completed_at and (not filtered or in_period(a.completed_at))
-    )
+            pairs_of.setdefault(uid, []).append(item_id)
+    settled = [a for a in all_adjudications if a.completed_at and (not filtered or in_period(a.completed_at))]
+    adjudicated = Counter(a.user_id for a in settled)
+    outcomes = _review_outcomes(db, all_assignments, settled, disputed, pairs_of, in_period, filtered)
     answers = repo.answer_counts_by_user(db, since, until)
     changed = Counter(
         uid for (_, uid), whens in repo.answer_changes(db).items() if any(not filtered or in_period(w) for w in whens)
     )
+    adjudicator_of = {(a.item_id, a.user_id) for a in all_adjudications if a.user_id}
     time: dict[tuple[int, str], int] = {}
     total_by_user: dict[str, int] = {}
+    adjudication_by_user: dict[str, int] = {}
     for row in repo.all_active_time(db):
         if filtered and not in_period(finished_at.get((row.item_id, row.user_id)) or row.updated_at):
             continue
         time[(row.item_id, row.user_id)] = row.seconds
         total_by_user[row.user_id] = total_by_user.get(row.user_id, 0) + row.seconds
+        if (row.item_id, row.user_id) in adjudicator_of:
+            adjudication_by_user[row.user_id] = adjudication_by_user.get(row.user_id, 0) + row.seconds
+    # Per settled pair, like "per pair" is per answered pair.
+    adjudicated_time: dict[str, list[int]] = {}
+    for a in all_adjudications:
+        if a.user_id and a.completed_at and time.get((a.item_id, a.user_id)):
+            adjudicated_time.setdefault(a.user_id, []).append(time[(a.item_id, a.user_id)])
     users = {u.id: u for u in _dedup_users(db)}
     missing = (set(by_user) | set(total_by_user)) - set(users)
     if missing:
@@ -224,10 +304,20 @@ def annotators(
                 has_access=has_dedup_access(u),
                 total_active_seconds=total_by_user.get(uid, 0),
                 avg_active_seconds=sum(answered_time) / len(answered_time) if answered_time else None,
+                adjudication_active_seconds=adjudication_by_user.get(uid, 0),
+                avg_adjudication_seconds=(
+                    sum(adjudicated_time[uid]) / len(adjudicated_time[uid]) if uid in adjudicated_time else None
+                ),
                 last_active=max(stamps) if stamps else None,
                 paired=paired[uid],
                 agreed=agreed[uid],
+                disputed=paired[uid] - agreed[uid],
+                upheld=outcomes.upheld[uid],
+                upheld_of=outcomes.upheld_of[uid],
+                notes=outcomes.notes[uid],
                 adjudicated=adjudicated[uid],
+                adjudication_answers=outcomes.final_answers.get(uid, {}),
+                adjudication_notes=outcomes.adjudication_notes[uid],
                 changed=changed[uid],
                 answers=answers.get(uid, {}),
             )
