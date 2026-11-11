@@ -4,7 +4,6 @@ import { ArrowLeft, ArrowRight, Check, Flag, Lock, ShieldCheck } from 'lucide-re
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { saveVoiceNote, type AdjudicationItem, type AdminPair, type DecisionInput, type MyItemsState, type ReviewItem } from '../api/review';
 import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
@@ -68,7 +67,7 @@ function correctionItem(p: AdminPair): ReviewItem {
 // 1-5 confidence, arrows move.
 //
 // `adjudicate`: the same screen for a disputed pair, with both annotators' answers above
-// the texts and an optional note. The adjudicator's answer is final.
+// the texts; notes go on the text, as for annotators. The adjudicator's answer is final.
 // `correct` (admins, /dedup-admin/pairs/:id): any pair, with every answer saved on it
 // above the texts; the admin's answer replaces the final one. Previous / next follow the
 // admin pair list the pair was opened from.
@@ -136,10 +135,6 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     Boolean(!correct && item && loaded.some((i) => i.item_id === item.item_id)),
     Boolean(item && isDecided(item)),
   );
-  const [note, setNote] = useState('');
-  useEffect(() => {
-    setNote(adjItem?.note ?? '');
-  }, [adjItem?.item_id, adjItem?.note]);
   const [confidence, setConfidence] = useState<number | null>(null);
   const draft = usePairDraft(item?.item_id);
   const savedNotes = useMemo(() => notesOf(item?.partner_payload), [item?.partner_payload]);
@@ -189,7 +184,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
           toast.success(t('dedup.admin.pair.saved'));
           return;
         }
-        if (adjudicate) await saveAdjudication.mutateAsync({ itemId: item.item_id, fields: { ...body, note: note.trim() || null } });
+        // No `note` sent: the server keeps a note written in the old box.
+        if (adjudicate) await saveAdjudication.mutateAsync({ itemId: item.item_id, fields: body });
         else await saveAnswer.mutateAsync({ itemId: item.item_id, fields: body });
         if (fields.verdict) draft.clear();
         // Reporting a problem on an answered pair stays here; answering moves on.
@@ -199,7 +195,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         throw e;
       }
     },
-    [item, confidence, correct, adjudicate, note, notes, draft, saveCorrection, saveAdjudication, saveAnswer, goTo, nextId, commitActiveTime, t],
+    [item, confidence, correct, adjudicate, notes, draft, saveCorrection, saveAdjudication, saveAnswer, goTo, nextId, commitActiveTime, t],
   );
 
   // Notes on a saved answer go onto that same answer; without one they wait for it.
@@ -266,23 +262,6 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     },
     [saveNotes, savedNotes, draft],
   );
-
-  // A note on an answer already saved goes with that same answer.
-  const saveNote = useCallback(() => {
-    if (!item?.verdict) return;
-    saveAdjudication
-      .mutateAsync({
-        itemId: item.item_id,
-        fields: {
-          verdict: item.verdict,
-          abstention_reason: item.abstention_reason,
-          confidence: item.confidence,
-          note: note.trim() || null,
-        },
-      })
-      .then(() => toast.success(t('dedup.review.noteSaved')))
-      .catch((e: Error) => toast.error(t('dedup.review.saveFailed', { error: e.message })));
-  }, [item, note, saveAdjudication, t]);
 
   const decide = useCallback(
     (verdict: 'same' | 'different') => {
@@ -419,26 +398,12 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
       </PairEvidence>
 
-      {adjudicate && (
+      {/* The old free-text note box is gone: adjudicators note on the text itself, like
+          annotators. A note written in it before stays, shown here read-only. */}
+      {adjudicate && adjItem?.note && (
         <div className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3">
-          <label htmlFor="adjudication-note" className="text-sm font-medium text-gray-700">
-            {t('dedup.review.note')} <span className="font-normal text-gray-400">{t('dedup.cantAnswer.optional')}</span>
-          </label>
-          <Textarea
-            id="adjudication-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t('dedup.review.notePlaceholder')}
-            maxLength={2000}
-            className="mt-1.5 min-h-[64px] text-sm"
-          />
-          {answered && note.trim() !== (adjItem?.note ?? '') && (
-            <div className="mt-2 flex justify-end">
-              <Button size="sm" variant="outline" className={PTR} onClick={saveNote} disabled={save.isPending}>
-                {t('dedup.review.saveNote')}
-              </Button>
-            </div>
-          )}
+          <div className="text-sm font-medium text-gray-700">{t('dedup.review.earlierNote')}</div>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{adjItem.note}</p>
         </div>
       )}
 
