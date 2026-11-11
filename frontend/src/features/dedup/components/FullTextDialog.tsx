@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsUpDown, Columns2, Rows2, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsUpDown, Columns2, Images, Rows2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import i18n from '@/i18n/config';
@@ -22,6 +22,7 @@ import type { NewNote } from '../notes';
 import type { TextRange } from '../textMatch';
 import { rangeInVolume } from '../textPlace';
 import { displayText, formatNumber } from '../utils';
+import ScanStrip, { type ReadingPlace } from './ScanStrip';
 import { SourceBadge, WitnessMeta } from './SourceBadge';
 import { IconButton, MarkedText, SelectionBar } from './TextSelection';
 
@@ -33,6 +34,8 @@ export type FullTextView = 'side' | 'diff' | 'volume';
 type Props = {
   a: WitnessCard;
   b: WitnessCard;
+  /** The pair, to find a text's page in its scans when BDRC's catalogue cannot say. */
+  itemId?: number;
   view: FullTextView;
   onViewChange: (v: FullTextView) => void;
   onClose: () => void;
@@ -40,8 +43,55 @@ type Props = {
   onAddNote?: (note: NewNote) => Promise<void> | void;
 };
 
-export default function FullTextDialog({ a, b, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
+const SCANS_KEY = 'dedup.fullText.scans';
+const SCAN_HEIGHT_KEY = 'dedup.fullText.scanHeight';
+const SCAN_HEIGHT = 300;
+const MIN_SCAN_HEIGHT = 140;
+const MIN_TEXT_HEIGHT = 160;
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Remembering is a convenience only.
+  }
+}
+
+/** Reports where the reader is once scrolling stops, not on every scroll event. */
+function useSettled(report: () => void, delay = 200) {
+  const timer = useRef<number | undefined>(undefined);
+  const latest = useRef(report);
+  latest.current = report;
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => latest.current(), delay);
+  }, [delay]);
+}
+
+/** Share of the way through a scrolled box at its top edge: the scans follow the top line. */
+const shareAtTop = (el: HTMLElement) => el.scrollTop / Math.max(1, el.scrollHeight);
+
+type OnPlace = (place: Partial<ReadingPlace>) => void;
+
+export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
   const { t } = useTranslation();
+  const [scans, setScans] = useState(() => stored(SCANS_KEY) === '1');
+  const toggleScans = () => {
+    setScans(!scans);
+    store(SCANS_KEY, scans ? '0' : '1');
+  };
+  const [place, setPlace] = useState<ReadingPlace>({ A: null, B: null });
+  const onPlace = useCallback<OnPlace>((p) => setPlace((prev) => ({ ...prev, ...p })), []);
+  useEffect(() => setPlace({ A: null, B: null }), [view]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -87,15 +137,98 @@ export default function FullTextDialog({ a, b, view, onViewChange, onClose, onAd
           {view === 'side' && (
             <span className="hidden text-xs text-gray-500 sm:inline">{t('dedup.fullText.scrollHint')}</span>
           )}
-          <Button variant="outline" size="sm" className="ml-auto cursor-pointer" onClick={onClose}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={scans}
+            onClick={toggleScans}
+            title={t('dedup.fullText.scansTitle')}
+            className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Images className="h-4 w-4" /> {t('dedup.fullText.scans')}
+            <span className={`relative h-4 w-7 rounded-full transition-colors ${scans ? 'bg-blue-600' : 'bg-gray-300'}`} aria-hidden="true">
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${scans ? 'left-3.5' : 'left-0.5'}`} />
+            </span>
+          </button>
+          <Button variant="outline" size="sm" className="cursor-pointer" onClick={onClose}>
             <X className="h-4 w-4" /> {t('dedup.common.close')} <kbd className="ml-1 hidden rounded border px-1 font-mono text-[10px] opacity-60 sm:inline">Esc</kbd>
           </Button>
         </div>
 
-        {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} />}
-        {view === 'diff' && <DiffView a={a} b={b} onAddNote={onAddNote} />}
-        {view === 'volume' && <VolumeView a={a} b={b} onAddNote={onAddNote} />}
+        <WithScans show={scans} itemId={itemId} cards={{ A: a, B: b }} place={place}>
+          {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+          {view === 'diff' && <DiffView a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+          {view === 'volume' && <VolumeView a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+        </WithScans>
       </div>
+    </div>
+  );
+}
+
+// The texts above, the scans below, with a line between them to drag.
+function WithScans({
+  show,
+  itemId,
+  cards,
+  place,
+  children,
+}: Readonly<{ show: boolean; itemId?: number; cards: Record<Tag, WitnessCard>; place: ReadingPlace; children: React.ReactNode }>) {
+  const { t } = useTranslation();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(() => Number(stored(SCAN_HEIGHT_KEY)) || SCAN_HEIGHT);
+  const [total, setTotal] = useState(0);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setTotal(e.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const fit = (h: number) => Math.round(Math.max(MIN_SCAN_HEIGHT, Math.min(h, total - MIN_TEXT_HEIGHT)));
+  const resize = (h: number) => {
+    const next = fit(h);
+    setHeight(next);
+    store(SCAN_HEIGHT_KEY, String(next));
+  };
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const bottom = boxRef.current?.getBoundingClientRect().bottom ?? 0;
+    const move = (ev: PointerEvent) => setHeight(fit(bottom - ev.clientY));
+    const up = (ev: PointerEvent) => {
+      resize(bottom - ev.clientY);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div ref={boxRef} className="flex min-h-0 flex-1 flex-col">
+      {children}
+      {show && (
+        <>
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('dedup.scans.resize')}
+            title={t('dedup.scans.resize')}
+            tabIndex={0}
+            onPointerDown={drag}
+            onDoubleClick={() => resize(SCAN_HEIGHT)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp') resize(height + 24);
+              if (e.key === 'ArrowDown') resize(height - 24);
+            }}
+            className="group flex h-2 shrink-0 cursor-row-resize touch-none items-center justify-center border-t border-gray-300 bg-gray-50 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+          >
+            <span className="h-0.5 w-10 rounded-full bg-gray-300 group-hover:bg-blue-400" />
+          </div>
+          {/* A height remembered on a taller screen still leaves the texts room. */}
+          <div className="shrink-0" style={{ height: total ? fit(height) : height }}>
+            <ScanStrip itemId={itemId} cards={cards} place={place} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -122,7 +255,12 @@ function PaneTabs({ pane, onPane }: Readonly<{ pane: Tag; onPane: (tag: Tag) => 
   );
 }
 
-function SideBySide({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
+function SideBySide({
+  a,
+  b,
+  onAddNote,
+  onPlace,
+}: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void; onPlace?: OnPlace }>) {
   const [pane, setPane] = useState<Tag>('A');
   const textA = useFullText(a.mw_id);
   const textB = useFullText(b.mw_id);
@@ -136,8 +274,8 @@ function SideBySide({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCa
         onPointerDownCapture={noteSelectingSide}
         className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 ${ONE_SIDE_SELECTION}`}
       >
-        <TextPane tag="A" card={a} query={textA} shown={shownA} marks={selection.marksFor('A')} onSelect={selection.select} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
-        <TextPane tag="B" card={b} query={textB} shown={shownB} marks={selection.marksFor('B')} onSelect={selection.select} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
+        <TextPane tag="A" card={a} query={textA} shown={shownA} marks={selection.marksFor('A')} onSelect={selection.select} onPlace={onPlace} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
+        <TextPane tag="B" card={b} query={textB} shown={shownB} marks={selection.marksFor('B')} onSelect={selection.select} onPlace={onPlace} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
       </div>
       <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
     </div>
@@ -151,6 +289,7 @@ function TextPane({
   shown,
   marks,
   onSelect,
+  onPlace,
   className = 'flex',
 }: Readonly<{
   tag: Tag;
@@ -159,14 +298,22 @@ function TextPane({
   shown: string;
   marks: Marks;
   onSelect: (side: Tag, picked: Picked | null) => void;
+  onPlace?: OnPlace;
   className?: string;
 }>) {
   const { t } = useTranslation();
   const scrollRef = useScrollToMark(marks.ranges[marks.active]?.start, marks.follow);
+  // The whole text is one block here, so how far down the box is how far through the text.
+  const report = useSettled(() => {
+    if (scrollRef.current && onPlace) onPlace({ [tag]: shareAtTop(scrollRef.current) });
+  });
+  useEffect(() => {
+    if (onPlace && shown) report();
+  }, [onPlace, shown, report]);
   return (
     <section data-side={tag} className={`${className} min-h-0 flex-col`}>
       <PaneHeader tag={tag} card={card} />
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+      <div ref={scrollRef} onScroll={onPlace && report} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
         {query.isLoading && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.witness.loadingFullText')}</div>}
         {query.error && (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -187,7 +334,12 @@ function TextPane({
 }
 
 // Whole volumes, for context around each text. Each side moves through its own work.
-function VolumeView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
+function VolumeView({
+  a,
+  b,
+  onAddNote,
+  onPlace,
+}: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void; onPlace?: OnPlace }>) {
   const [pane, setPane] = useState<Tag>('A');
   const [shown, setShown] = useState<Record<Tag, string>>({ A: '', B: '' });
   const onShown = useCallback((tag: Tag, text: string) => setShown((s) => ({ ...s, [tag]: text })), []);
@@ -201,8 +353,8 @@ function VolumeView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCa
         onPointerDownCapture={noteSelectingSide}
         className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 ${ONE_SIDE_SELECTION}`}
       >
-        <VolumePane tag="A" card={a} marks={selection.marksFor('A')} onSelect={selection.select} onShown={onShown} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
-        <VolumePane tag="B" card={b} marks={selection.marksFor('B')} onSelect={selection.select} onShown={onShown} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
+        <VolumePane tag="A" card={a} marks={selection.marksFor('A')} onSelect={selection.select} onShown={onShown} onPlace={onPlace} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
+        <VolumePane tag="B" card={b} marks={selection.marksFor('B')} onSelect={selection.select} onShown={onShown} onPlace={onPlace} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
       </div>
       <SelectionBar selection={selection} onAddNote={addNote} className="border-t border-gray-200" />
     </div>
@@ -215,6 +367,7 @@ function VolumePane({
   marks,
   onSelect,
   onShown,
+  onPlace,
   className,
 }: Readonly<{
   tag: Tag;
@@ -222,6 +375,7 @@ function VolumePane({
   marks: Marks;
   onSelect: (side: Tag, picked: Picked | null) => void;
   onShown: (tag: Tag, text: string) => void;
+  onPlace?: OnPlace;
   className: string;
 }>) {
   const { t } = useTranslation();
@@ -244,6 +398,17 @@ function VolumePane({
   useEffect(() => {
     onShown(tag, shown);
   }, [tag, shown, onShown]);
+  // The scans are of the text's own volume: in another one there is nothing to follow.
+  // Before or after the text, the share runs below 0 or above 1.
+  const report = useSettled(() => {
+    const box = scrollRef.current;
+    if (!box || !onPlace || !place) return;
+    const char = shareAtTop(box) * shown.length;
+    onPlace({ [tag]: (char - place.start) / Math.max(1, place.end - place.start) });
+  });
+  useEffect(() => {
+    if (onPlace && place) report();
+  }, [onPlace, place, report]);
   const unavailable = !list.isLoading && (list.error != null || volumes.length === 0);
   const otherVersion = volume != null && card.etext_source != null && volume.etext_source !== card.etext_source;
 
@@ -279,7 +444,7 @@ function VolumePane({
       {otherVersion && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 sm:px-5">{t('dedup.volume.otherVersion')}</div>
       )}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+      <div ref={scrollRef} onScroll={onPlace && report} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
         {(list.isLoading || text.isLoading) && <div className="py-12 text-center text-sm text-gray-500">{t('dedup.volume.loading')}</div>}
         {unavailable && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{t('dedup.volume.unavailable')}</div>}
         {text.error && (
@@ -338,7 +503,31 @@ function sideOfRows(rows: DiffRow[], side: 'a' | 'b') {
   return { text, starts };
 }
 
-function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void }>) {
+/** Index of the first row showing at the top of the scrolled box (rows are in page order). */
+function firstRowInView(box: HTMLElement): number | null {
+  const rows = box.querySelectorAll<HTMLElement>('[data-row-text]');
+  const top = box.getBoundingClientRect().top;
+  let lo = 0;
+  let hi = rows.length - 1;
+  let found: number | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (rows[mid].getBoundingClientRect().bottom > top + 1) {
+      found = Number(rows[mid].dataset.rowText);
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return found;
+}
+
+function DiffView({
+  a,
+  b,
+  onAddNote,
+  onPlace,
+}: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void; onPlace?: OnPlace }>) {
   const { t } = useTranslation();
   const [granularity, setGranularity] = useState<DiffGranularity>('syllable');
   // Two columns are too narrow on a phone.
@@ -369,6 +558,19 @@ function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard
   const match = selection.selected ? matchMarks.ranges[matchMarks.active] : undefined;
   const activeRow = match ? (matchSide === 'A' ? sideA : sideB).starts.filter((s) => s <= match.start).length - 1 : -1;
   const rowsRef = useScrollToMark(activeRow);
+  // A row is the same place in both copies, so one row gives where the reader is in each.
+  const report = useSettled(() => {
+    const box = rowsRef.current;
+    const index = box && onPlace ? firstRowInView(box) : null;
+    if (index == null || !onPlace) return;
+    onPlace({
+      A: sideA.starts[index] / Math.max(1, sideA.text.length),
+      B: sideB.starts[index] / Math.max(1, sideB.text.length),
+    });
+  });
+  useEffect(() => {
+    if (onPlace && rows.length > 0) report();
+  }, [onPlace, rows, layout, report]);
   const marksA = selection.marksFor('A');
   const marksB = selection.marksFor('B');
   const hitsOf = (index: number, row: DiffRow): RowHits => ({
@@ -480,6 +682,7 @@ function DiffView({ a, b, onAddNote }: Readonly<{ a: WitnessCard; b: WitnessCard
 
       <div
         ref={rowsRef}
+        onScroll={onPlace && report}
         onPointerDownCapture={noteSelectingSide}
         onPointerUp={pickRows}
         className={`min-h-0 flex-1 overflow-auto ${ONE_SIDE_SELECTION}`}

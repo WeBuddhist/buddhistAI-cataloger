@@ -321,6 +321,8 @@ def admin_pairs(
     batch_id: str | None = None,
     verdict: Literal["same", "different", "contains", "part_of", "source_dup", "not_sure", "none"] | None = None,
     annotator_id: str | None = None,
+    adjudicator_id: str | None = None,
+    corrected_by: str | None = None,
     corrected: bool | None = None,
     q: str | None = Query(None, max_length=200),
     sort: Literal["newest", "oldest", "id_desc", "id_asc"] = "newest",
@@ -329,9 +331,12 @@ def admin_pairs(
     db: Session = Depends(get_db),
 ):
     """Every handed-out pair with its current final answer, filtered and sorted.
-    ``verdict=none``: no final answer yet. ``q``: a pair number, or part of a batch id, MW id or title."""
+    ``verdict=none``: no final answer yet. ``adjudicator_id``: pairs whose adjudication is
+    with that person, settled or not. ``corrected_by``: pairs that admin corrected.
+    ``q``: a pair number, or part of a batch id, MW id or title."""
     return admin_ctrl.list_pairs(
-        db, batch_id=batch_id, verdict=verdict, annotator_id=annotator_id, corrected=corrected,
+        db, batch_id=batch_id, verdict=verdict, annotator_id=annotator_id, adjudicator_id=adjudicator_id,
+        corrected_by=corrected_by, corrected=corrected,
         q=q, sort=sort, offset=offset, limit=limit,
     )
 

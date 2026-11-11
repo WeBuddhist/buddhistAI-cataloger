@@ -856,7 +856,14 @@
       "goToTextApprox": "Go to where the text starts. Found by searching, so it may be a page off",
       "goToTextInEntry": "Go to the pages this text is in. BDRC records the pages of its whole outline entry, so the text starts somewhere in pages {{from}}–{{to}}",
       "pageFailed": "Could not load this page from BDRC.",
-      "retry": "Try again"
+      "retry": "Try again",
+      "backToText": "Back to text",
+      "following": "Following the text",
+      "followingTitle": "This scan shows the page of the line at the top of the text above, and moves when you scroll to another page",
+      "followingApprox": "Following the text (approx.)",
+      "followingApproxTitle": "Only the text's page range is known, not the page of each line, so this scan may be a page or two off",
+      "previousPage": "Previous page",
+      "nextPage": "Next page"
     },
     "witness": {
       "characters": "{{n}} characters",
@@ -1043,7 +1050,10 @@
       "previousMatch": "Previous match",
       "nextMatch": "Next match",
       "clearSelection": "Clear selection",
-      "searching": "Searching the other text…"
+      "searching": "Searching the other text…",
+      "scans": "Scans",
+      "scansTitle": "Show each text's scanned pages under it, following the page you are reading",
+      "scansOf": "Scanned pages of {{tag}}"
     },
     "diff": {
       "layout": "Layout",
@@ -1464,6 +1474,9 @@
         "answer": "Answer",
         "noAnswer": "Not answered yet",
         "annotator": "Annotator",
+        "adjudicator": "Adjudicator",
+        "admin": "Admin",
+        "personRole": "Filter by what the person did on the pair: annotated it, adjudicated it, or (admins) corrected its answer",
         "corrected": "Correction",
         "correctedYes": "Corrected by an admin",
         "correctedNo": "Not corrected",

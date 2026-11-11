@@ -600,6 +600,10 @@ export interface PairFilters {
   // An answer, or 'none' for pairs with no final answer yet.
   verdict?: string;
   annotator_id?: string;
+  // Pairs whose adjudication is with this person, settled or not.
+  adjudicator_id?: string;
+  // Pairs this admin corrected.
+  corrected_by?: string;
   corrected?: boolean;
   // A pair number, or part of an MW id or a title.
   q?: string;

@@ -4,10 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { List, useListRef, type RowComponentProps } from 'react-window';
 import type { WitnessCard } from '../api/review';
 import { pageImageUrl, pageListImageUrl, scanGroupOf, type ScanPage } from '../api/scans';
-import { useOutlinePlace, useScanList } from '../hooks/useReview';
 import { useProxyHeaders, useScanImage } from '../hooks/useScanImage';
-import { useTextPlace } from '../hooks/useVolumes';
-import { bestRange, outlineRange, scanAtShare, scanIndexAtChar, textPlaceRange, type ScanRange } from '../scanPlace';
+import { useScanLocation } from '../hooks/useScanLocation';
+import { pageWidth, type ScanRange } from '../scanPlace';
 import { formatNumber } from '../utils';
 
 export type ScanTag = 'A' | 'B';
@@ -47,10 +46,11 @@ export default function ScanPanel({
 }>) {
   const { t } = useTranslation();
   const card = cards[tag];
-  const imageGroup = scanGroupOf(card);
-  const listQuery = useScanList(imageGroup);
-  const pages = useMemo(() => listQuery.data?.pages ?? [], [listQuery.data]);
-  const volumeNumber = listQuery.data?.volumeNumber ?? null;
+  const { imageGroup, listQuery, pages, outline, outlineSettled, range, finding, startIndex, scanAt } = useScanLocation(
+    card,
+    tag === 'A' ? 'a' : 'b',
+    itemId,
+  );
   const getHeaders = useProxyHeaders();
 
   const listRef = useListRef(null);
@@ -60,36 +60,6 @@ export default function ScanPanel({
   const [jump, setJump] = useState('');
   // Once the reader has moved the scans, finding the page late must not pull them away.
   const moved = useRef(false);
-
-  // Where the text is. BDRC's catalogue gives the pages of texts from its outlines; the
-  // others (and later pieces of an outline entry) are found through `/volumes`, which
-  // downloads whole volumes, so that only runs when the catalogue cannot answer.
-  const outlineQuery = useOutlinePlace(card.mw_id, Boolean(imageGroup));
-  const outline = useMemo(
-    () => (outlineQuery.data && pages.length > 0 ? outlineRange(outlineQuery.data, pages, volumeNumber) : null),
-    [outlineQuery.data, pages, volumeNumber],
-  );
-  const outlineSettled = !outlineQuery.isPending;
-  const searching = Boolean(imageGroup) && outlineSettled && listQuery.isSuccess && !outline?.exact;
-  const place = useTextPlace(itemId, tag === 'A' ? 'a' : 'b', card, searching);
-  const located = searching ? (place.data ?? null) : null;
-  const found = useMemo(() => (located ? textPlaceRange(located, pages) : null), [located, pages]);
-  const range = useMemo(() => bestRange(outline, found), [outline, found]);
-  const finding = !outlineSettled || (searching && (place.isPending || place.isFetching));
-  const startIndex = range?.start ?? null;
-
-  // The scan `share` (0 to 1) of the way through the text. A position in the volume's text
-  // follows it more closely than spreading the text evenly over its pages.
-  const scanAt = useCallback(
-    (share: number) => {
-      if (!range) return null;
-      if (located && found?.start === range.start) {
-        return scanIndexAtChar(located, pages, located.start + share * (located.span ?? card.text_length ?? 0));
-      }
-      return scanAtShare(range, share);
-    },
-    [range, located, found, pages, card.text_length],
-  );
 
   const showScan = useCallback(
     (index: number) => {
@@ -309,29 +279,33 @@ function startTitleOf(t: (key: string, opts?: Record<string, unknown>) => string
   return t('dedup.scans.goToTextApprox');
 }
 
-type PageRowProps = {
+export type PageRowProps = {
   pages: ScanPage[];
   imageGroup: string;
   imageWidth: number;
+  /** When set, a tall page shrinks to this height (and narrows to keep its shape). */
+  maxImageHeight?: number;
   getHeaders: () => Promise<HeadersInit | undefined>;
   pageLabel: (n: number) => string;
   failedLabel: string;
   retryLabel: string;
 };
 
-function PageRow({
+export function PageRow({
   index,
   style,
   ariaAttributes,
   pages,
   imageGroup,
-  imageWidth,
+  imageWidth: columnWidth,
+  maxImageHeight,
   getHeaders,
   pageLabel,
   failedLabel,
   retryLabel,
 }: RowComponentProps<PageRowProps>) {
   const page = pages[index];
+  const imageWidth = pageWidth(page, columnWidth, maxImageHeight);
   const pixels = imageWidth * (globalThis.devicePixelRatio || 1);
   const listUrl = pageListImageUrl(imageGroup, page, pixels);
   const fullUrl = pageImageUrl(imageGroup, page);
@@ -365,7 +339,7 @@ function PageRow({
   return (
     <div {...ariaAttributes} style={style} className="px-3 pt-2.5">
       <div
-        className="overflow-hidden rounded border border-gray-200 bg-white shadow-sm"
+        className="mx-auto overflow-hidden rounded border border-gray-200 bg-white shadow-sm"
         style={{ width: imageWidth, height }}
       >
         {content}
@@ -377,7 +351,7 @@ function PageRow({
   );
 }
 
-function RetryButton({ label, onClick }: Readonly<{ label: string; onClick: () => void }>) {
+export function RetryButton({ label, onClick }: Readonly<{ label: string; onClick: () => void }>) {
   return (
     <button
       type="button"
@@ -443,6 +417,6 @@ function ZoomableImage({
   );
 }
 
-function Note({ children }: Readonly<{ children: React.ReactNode }>) {
+export function Note({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-500">{children}</div>;
 }

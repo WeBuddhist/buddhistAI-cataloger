@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowDownUp, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowDownUp, ChevronDown, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,12 @@ const SORTS: PairSort[] = ['newest', 'oldest', 'id_desc', 'id_asc'];
 // "none" = no final answer yet.
 const ANSWERS = ['same', 'different', 'contains', 'part_of', 'source_dup', 'not_sure', 'none'];
 // URL keys of the filters behind the Filters button (search and sort sit outside it).
-const FILTER_KEYS = ['batch', 'answer', 'annotator', 'corrected'] as const;
+const FILTER_KEYS = ['batch', 'answer', 'annotator', 'adjudicator', 'admin', 'corrected'] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
+// What the chosen person did on the pair (an admin: corrected its answer); its URL key
+// holds the person.
+type PersonRole = 'annotator' | 'adjudicator' | 'admin';
+const PERSON_ROLES: PersonRole[] = ['annotator', 'adjudicator', 'admin'];
 const CORRECTED: Record<string, boolean | undefined> = { yes: true, no: false };
 const SELECT = 'h-9 w-full cursor-pointer rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-900';
 
@@ -48,8 +52,28 @@ export default function AdminPairList() {
   const batches = useBatches();
   const annotators = useAnnotators();
   const names = useMemo(() => batchNames(batches.data ?? []), [batches.data]);
-  // People who have ever held a pair.
-  const people = (annotators.data ?? []).filter((a) => a.assigned > 0);
+  const everyone = annotators.data ?? [];
+  // The names offered for each role: people who have ever held a pair to annotate, and
+  // adjudicators plus anyone (admins too) who has adjudicated, and the admins. Someone doing
+  // several jobs is in each of those lists.
+  const peopleFor: Record<PersonRole, typeof everyone> = {
+    annotator: everyone.filter((a) => a.assigned > 0),
+    adjudicator: everyone.filter((a) => a.role === 'reviewer' || a.adjudicated > 0 || a.adjudication_active_seconds > 0),
+    admin: everyone.filter((a) => a.role === 'admin'),
+  };
+  // The role picked in the label: the one with a person chosen, else the last one picked.
+  const [roleChoice, setRoleChoice] = useState<PersonRole>(PERSON_ROLES.find((r) => params.get(r)) ?? 'annotator');
+  const personRole = PERSON_ROLES.find((r) => params.get(r)) ?? roleChoice;
+  const person = params.get(personRole) ?? '';
+  // Switching role keeps the person when they are in the other list too.
+  const switchRole = (next: PersonRole) => {
+    setRoleChoice(next);
+    const nextParams = new URLSearchParams(params);
+    PERSON_ROLES.forEach((r) => nextParams.delete(r));
+    if (person && peopleFor[next].some((a) => a.user_id === person)) nextParams.set(next, person);
+    nextParams.delete('page');
+    setParams(nextParams, { replace: true });
+  };
 
   const page = Math.max(0, Number(params.get('page') ?? 0) || 0);
   const corrected = params.get('corrected');
@@ -57,6 +81,8 @@ export default function AdminPairList() {
     batch_id: params.get('batch') ?? undefined,
     verdict: params.get('answer') ?? undefined,
     annotator_id: params.get('annotator') ?? undefined,
+    adjudicator_id: params.get('adjudicator') ?? undefined,
+    corrected_by: params.get('admin') ?? undefined,
     corrected: CORRECTED[corrected ?? ''],
     q: params.get('q') ?? undefined,
     sort: (params.get('sort') as PairSort | null) ?? 'newest',
@@ -102,8 +128,8 @@ export default function AdminPairList() {
   const valueLabel = (key: FilterKey, v: string): string => {
     if (key === 'batch') return names[v] ?? v;
     if (key === 'answer') return v === 'none' ? t('dedup.admin.pairs.noAnswer') : answerLabel(v);
-    if (key === 'annotator') {
-      const a = people.find((p) => p.user_id === v);
+    if (key === 'annotator' || key === 'adjudicator' || key === 'admin') {
+      const a = everyone.find((p) => p.user_id === v);
       return a?.name ?? a?.email ?? v;
     }
     return t(v === 'yes' ? 'dedup.admin.pairs.correctedYes' : 'dedup.admin.pairs.correctedNo');
@@ -183,16 +209,39 @@ export default function AdminPairList() {
               ))}
             </select>
           </FilterField>
-          <FilterField label={t('dedup.admin.pairs.annotator')}>
-            <select className={SELECT} value={filters.annotator_id ?? ''} onChange={(e) => set('annotator', e.target.value)}>
+          {/* The label is itself a choice: which role the person below had on the pair. */}
+          <div>
+            {/* Same height as the other filters' labels, so the boxes below line up. */}
+            <span className="relative mb-1 flex h-4 w-fit items-center text-xs leading-4 text-gray-600 hover:text-gray-900">
+              <select
+                value={personRole}
+                onChange={(e) => switchRole(e.target.value as PersonRole)}
+                aria-label={t('dedup.admin.pairs.personRole')}
+                title={t('dedup.admin.pairs.personRole')}
+                className="h-4 cursor-pointer appearance-none rounded-sm border-0 bg-transparent p-0 pr-4 text-xs font-medium leading-4 text-inherit focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+              >
+                {PERSON_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`dedup.admin.pairs.${r}`)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-0 h-3.5 w-3.5" aria-hidden />
+            </span>
+            <select
+              className={SELECT}
+              value={person}
+              onChange={(e) => set(personRole, e.target.value)}
+              aria-label={t(`dedup.admin.pairs.${personRole}`)}
+            >
               <option value="">{t('dedup.admin.pairs.any')}</option>
-              {people.map((a) => (
+              {peopleFor[personRole].map((a) => (
                 <option key={a.user_id} value={a.user_id}>
                   {a.name ?? a.email ?? a.user_id}
                 </option>
               ))}
             </select>
-          </FilterField>
+          </div>
           <FilterField label={t('dedup.admin.pairs.corrected')}>
             <select className={SELECT} value={corrected ?? ''} onChange={(e) => set('corrected', e.target.value)}>
               <option value="">{t('dedup.admin.pairs.any')}</option>
