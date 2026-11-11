@@ -44,6 +44,55 @@ def bdrc_error(exc: ReviewApiError) -> HTTPException:
 
 CORRECTED_DETAIL = "An admin corrected this pair, so its answer can no longer be changed here"
 
+# Set on a stored pair once its scan ids have been brought up to date with BDRC.
+SCAN_IDS_CHECKED = "scan_ids_checked"
+_SCAN_FIELDS = ("image_url", "volume_id")
+
+
+def _image_group(image_url: Optional[str]) -> Optional[str]:
+    """`https://library.bdrc.io/view/bdr:I4PD3658` -> `I4PD3658` (as the frontend's)."""
+    if not image_url or "bdr:" not in image_url:
+        return None
+    return image_url.split("bdr:", 1)[1].split("/", 1)[0].split("?", 1)[0] or None
+
+
+def _scan_ids_may_be_stale(card: dict[str, Any]) -> bool:
+    """BDRC once sent NLM volumes with the end of the id dropped, in both `image_url` and
+    `volume_id` (`I1NLM102` for `I1NLM102_001`); only the full id has scans. A card whose
+    link already has a full (`_`) id, or whose `volume_id` carries one, is fine; any other
+    card with scans is checked."""
+    group = _image_group(card.get("image_url"))
+    if group is None or "_" in group:
+        return False
+    return not (card.get("volume_id") or "").startswith(f"{group}_")
+
+
+def refresh_scan_ids(db: Session, item: DedupItem) -> None:
+    """Bring a stored pair's scan ids (`image_url`, `volume_id`) up to date with BDRC, once.
+
+    Only those two fields change: the texts, and the `evidence_hash` that records what the
+    annotators were shown, stay as first seen. Commits when something was written."""
+    evidence = item.evidence or {}
+    if evidence.get(SCAN_IDS_CHECKED):
+        return
+    if not any(_scan_ids_may_be_stale(evidence.get(side) or {}) for side in ("a", "b")):
+        return
+    try:
+        fresh = client.get_item(item.item_id).get("evidence") or {}
+    except ReviewApiError as exc:
+        if exc.status_code != 404:  # unreachable: try again next time the pair is opened
+            logger.warning("dedup item=%s scan id refresh failed: %s", item.item_id, exc)
+            return
+        fresh = {}
+    updated = {**evidence, SCAN_IDS_CHECKED: True}
+    for side in ("a", "b"):
+        old, new = evidence.get(side), fresh.get(side)
+        if isinstance(old, dict) and isinstance(new, dict) and new.get("mw_id") == old.get("mw_id"):
+            updated[side] = {**old, **{k: new[k] for k in _SCAN_FIELDS if new.get(k)}}
+    item.evidence = updated  # a new dict, so the JSON column is written
+    db.commit()
+    logger.info("dedup item=%s scan ids refreshed from BDRC", item.item_id)
+
 
 # --- views -------------------------------------------------------------------------
 
@@ -256,6 +305,7 @@ def get_pair(db: Session, item_id: int) -> PairOut:
     read from BDRC without being stored."""
     item = repo.get_item(db, item_id)
     if item is not None:
+        refresh_scan_ids(db, item)
         return PairOut(item_id=item.item_id, batch_id=item.batch_id, kind=item.kind, subject=item.subject, evidence=item.evidence)
     try:
         row = client.get_item(item_id)
@@ -295,9 +345,11 @@ def get_pair_sources(db: Session, item_id: int) -> PairSourcesOut:
 def get_item(db: Session, user: User, item_id: int) -> ItemOut:
     item, assignment = _load_owned(db, user, item_id)
     if assignment is None:  # an admin looking at someone else's pair: no answer to show
+        refresh_scan_ids(db, item)
         return _item_view(item, None, None)
     repo.mark_opened(db, assignment)
     db.commit()
+    refresh_scan_ids(db, item)
     locked = _is_locked(item, repo.answered_counts(db, [item_id]).get(item_id, 0))
     corrected = bool(repo.corrected_item_ids(db, [item_id]))
     return _item_view(item, repo.latest_decision(db, item_id, user.id), assignment, locked=locked, corrected=corrected)

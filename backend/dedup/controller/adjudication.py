@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from dedup.controller.dedup import CORRECTED_DETAIL, _item_view, merged_fields
+from dedup.controller.dedup import CORRECTED_DETAIL, _item_view, merged_fields, refresh_scan_ids
 from dedup.deps import can_adjudicate
 from dedup.models.dedup import (
     CONFIRMED,
@@ -137,6 +137,7 @@ def get_item(db: Session, user: User, item_id: int) -> AdjudicationItemOut:
     if adj.first_opened_at is None:
         adj.first_opened_at = datetime.utcnow()
     db.commit()
+    refresh_scan_ids(db, item)
     decision = repo.latest_decision(db, item_id, user.id, ROLE_ADJUDICATOR)
     time = repo.active_seconds(db, user.id).get((item_id, user.id), 0)
     corrected = bool(repo.corrected_item_ids(db, [item_id]))

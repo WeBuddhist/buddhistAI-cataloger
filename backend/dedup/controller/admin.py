@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from dedup import client
 from dedup.client import ReviewApiError
 from dedup.controller.adjudication import annotations
-from dedup.controller.dedup import _views_for, bdrc_error, get_pair, merged_fields
+from dedup.controller.dedup import _views_for, bdrc_error, get_pair, merged_fields, refresh_scan_ids
 from dedup.deps import can_adjudicate, can_annotate, dedup_role, has_dedup_access
 from dedup.models.dedup import (
     ADMIN_CORRECTED,
@@ -447,6 +447,7 @@ def pair(db: Session, item_id: int) -> AdminPairOut:
     item = repo.get_item(db, item_id)
     if item is None:
         return AdminPairOut(**get_pair(db, item_id).model_dump(), handed_out=False)
+    refresh_scan_ids(db, item)
     return _pair_view(db, item)
 
 
