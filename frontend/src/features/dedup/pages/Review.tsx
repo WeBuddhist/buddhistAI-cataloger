@@ -63,6 +63,24 @@ function correctionItem(p: AdminPair): ReviewItem {
   };
 }
 
+// The order of each list tab as first seen this session, plus pairs added since. A pair
+// that drops out of the tab (answered from "To do") stays where it was, so Previous and
+// Next keep walking the list the person is working through. A reload starts afresh.
+const seenOrder = new Map<string, ReviewItem[]>();
+
+function useSteadyOrder(tab: MyItemsState | undefined, items: ReviewItem[] | undefined): ReviewItem[] {
+  return useMemo(() => {
+    if (!tab || !items) return [];
+    const before = seenOrder.get(tab) ?? [];
+    const now = new Map(items.map((i) => [i.item_id, i]));
+    const kept = before.map((i) => now.get(i.item_id) ?? i);
+    const known = new Set(kept.map((i) => i.item_id));
+    const steady = [...kept, ...items.filter((i) => !known.has(i.item_id))];
+    seenOrder.set(tab, steady);
+    return steady;
+  }, [tab, items]);
+}
+
 // Keys (plan §11): J same, F different, Space can't answer, X flag an issue,
 // 1-5 confidence, arrows move.
 //
@@ -98,10 +116,13 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   // the whole list). A pair not in that tab, e.g. one just answered from "To do" with no
   // more left, falls back to the whole list too.
   const myTabList = useMyItems(tab ?? 'all', undefined, mode === 'annotate' && tab != null);
-  const inTab = Boolean(tab && myTabList.data?.some((i) => i.item_id === itemId));
+  // A pair answered from "To do" leaves that list, so it keeps its place here: Previous
+  // from the next pair still comes back to it.
+  const tabOrder = useSteadyOrder(tab, myTabList.data);
+  const inTab = Boolean(tab && tabOrder.some((i) => i.item_id === itemId));
   const adjudicationList = useAdjudicationQueue('all', adjudicate);
   const adminList = useMemo(() => ({ data: (fromList?.ids ?? []).map((id) => ({ item_id: id }) as ReviewItem) }), [fromList?.ids]);
-  const list: { data?: ReviewItem[] } = correct ? adminList : adjudicate ? adjudicationList : inTab ? myTabList : myList;
+  const list: { data?: ReviewItem[] } = correct ? adminList : adjudicate ? adjudicationList : inTab ? { data: tabOrder } : myList;
   const loaded = useMemo(() => list.data ?? [], [list.data]);
   const total = loaded.length;
   const index = loaded.findIndex((i) => i.item_id === itemId);
