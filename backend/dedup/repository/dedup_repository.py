@@ -597,6 +597,7 @@ def search_pairs(
     adjudicator_id: Optional[str] = None,
     corrected_by: Optional[str] = None,
     corrected: Optional[bool] = None,
+    has_notes: Optional[bool] = None,
     q: Optional[str] = None,
     sort: str = "newest",
     offset: int = 0,
@@ -607,7 +608,8 @@ def search_pairs(
 
     ``verdict`` "none" means no final answer yet; ``annotator_id`` is anyone assigned to
     the pair; ``adjudicator_id`` the person its adjudication is with, settled or not;
-    ``corrected_by`` an admin who corrected its answer; ``q`` is a pair number, or part of a batch id, an MW id or a title.
+    ``corrected_by`` an admin who corrected its answer; ``has_notes`` whether anyone has a
+    note on it now; ``q`` is a pair number, or part of a batch id, an MW id or a title.
     """
     ranked = (
         select(
@@ -672,6 +674,10 @@ def search_pairs(
             | DedupItem.evidence[("b", "title_bo")].as_string().ilike(like)
         )
 
+    if has_notes is not None:
+        noted = DedupItem.item_id.in_(_answers_with_notes(DedupDecision.item_id).distinct())
+        stmt = stmt.where(noted if has_notes else ~noted)
+
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     order = {
         "newest": (final.decided_at.desc().nulls_last(), DedupItem.item_id.desc()),
@@ -681,6 +687,49 @@ def search_pairs(
     }[sort]
     rows = db.execute(stmt.order_by(*order).offset(offset).limit(limit)).all()
     return [(item, decision) for item, decision in rows], total
+
+
+def _answers_with_notes(*columns):
+    """``columns`` of each person's current answer on each pair, per role (the newest
+    decision for every (pair, person, role)), where it holds a note. Decisions are
+    append-only and each re-save carries the notes along, so the current one holds exactly
+    the notes that person has on the pair now. The note test runs in SQL because most
+    answers carry other data in ``partner_payload``."""
+    ranked = (
+        select(
+            DedupDecision.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=(DedupDecision.item_id, DedupDecision.user_id, DedupDecision.role),
+                order_by=_NEWEST_FIRST,
+            )
+            .label("rn"),
+        )
+        .subquery()
+    )
+    return (
+        select(*columns)
+        .join(ranked, (ranked.c.id == DedupDecision.id) & (ranked.c.rn == 1))
+        .where(
+            # Bracketed whole: it is ANDed with further conditions.
+            text(
+                "((json_typeof(dedup_decisions.partner_payload::json -> 'notes') = 'array'"
+                " AND json_array_length(dedup_decisions.partner_payload::json -> 'notes') > 0)"
+                " OR btrim(coalesce(dedup_decisions.note, '')) <> '')"
+            )
+        )
+        .correlate(None)
+    )
+
+
+def answers_with_notes(db: Session, item_ids: Iterable[int]) -> list[DedupDecision]:
+    """The current answers on these pairs that hold a note (see ``_answers_with_notes``)."""
+    ids = list(item_ids)
+    if not ids:
+        return []
+    return list(
+        db.execute(_answers_with_notes(DedupDecision).where(DedupDecision.item_id.in_(ids))).scalars().all()
+    )
 
 
 def corrected_item_ids(db: Session, item_ids: Iterable[int]) -> set[int]:

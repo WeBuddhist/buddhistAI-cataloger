@@ -242,11 +242,36 @@ class AdminPairRow(BaseModel):
     corrected: bool = False
     # Everyone assigned to the pair (one or two annotators).
     annotator_names: list[str] = Field(default_factory=list)
+    # Notes on the pair now, by anyone: on text A, on text B, and on both (old note-box
+    # notes count as both).
+    notes_a: int = 0
+    notes_b: int = 0
+    notes_both: int = 0
 
 
 class AdminPairListOut(BaseModel):
     total: int
     rows: list[AdminPairRow]
+
+
+class AdminPairNoteOut(BaseModel):
+    """One note on a pair, with who wrote it, for the admin pair list."""
+
+    # The note's own id; "decision:<id>" for a note from the adjudicators' old note box.
+    id: str
+    author_id: str
+    author_name: Optional[str] = None
+    # annotator | adjudicator | admin (an admin's correction)
+    role: str
+    # Annotator 1 or 2 on a double-review pair.
+    slot: Optional[int] = None
+    # a | b | both; None for an old note-box note (about the whole pair).
+    target: Optional[str] = None
+    quote: Optional[str] = None
+    text: str
+    voice_note_ids: list[str] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class BatchOut(BaseModel):

@@ -591,6 +591,31 @@ export interface AdminPairRow {
   sync_state: string | null;
   corrected: boolean;
   annotator_names: string[];
+  // Notes on the pair now: on text A, on text B, and on both (old note-box notes count as both).
+  notes_a: number;
+  notes_b: number;
+  notes_both: number;
+}
+
+// One note on a pair, with who wrote it, for the admin pair list.
+export interface AdminPairNote {
+  id: string;
+  author_id: string;
+  author_name: string | null;
+  role: 'annotator' | 'adjudicator' | 'admin';
+  // Annotator 1 or 2 on a double-review pair.
+  slot: number | null;
+  // null: an old note-box note, about the whole pair.
+  target: 'a' | 'b' | 'both' | null;
+  quote: string | null;
+  text: string;
+  voice_note_ids: string[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export function fetchAdminPairNotes(itemId: number, opts?: { signal?: AbortSignal }) {
+  return request<AdminPairNote[]>(`/admin/pairs/${itemId}/notes`, { signal: opts?.signal });
 }
 
 export type PairSort = 'newest' | 'oldest' | 'id_desc' | 'id_asc';
@@ -605,6 +630,8 @@ export interface PairFilters {
   // Pairs this admin corrected.
   corrected_by?: string;
   corrected?: boolean;
+  // Whether anyone has a note on the pair now.
+  has_notes?: boolean;
   // A pair number, or part of an MW id or a title.
   q?: string;
   sort?: PairSort;

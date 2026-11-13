@@ -56,7 +56,7 @@ export default function WitnessPanel({
     const shown = displayText(text);
     const at = marks?.quote ? shown.indexOf(marks.quote) : -1;
     const ranges = at < 0 ? [] : [{ start: at, end: at + marks!.quote!.length }];
-    return <MarkedText text={shown} marks={{ ranges, active: 0 }} />;
+    return <MarkedText text={shown} marks={{ ranges, active: 0, own: marks?.own }} />;
   };
 
   return (

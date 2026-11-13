@@ -80,6 +80,44 @@ function useSettled(report: () => void, delay = 200) {
 /** Share of the way through a scrolled box at its top edge: the scans follow the top line. */
 const shareAtTop = (el: HTMLElement) => el.scrollTop / Math.max(1, el.scrollHeight);
 
+/** How much of the line at the top goes to the scans, to find its page by its words. */
+const WORDS_LENGTH = 120;
+
+type CaretDocument = Document & {
+  caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  caretRangeFromPoint?: (x: number, y: number) => Range | null;
+};
+
+/**
+ * The character of `el`'s text at the top line showing in the scrolled `box`. Null when
+ * the browser cannot say or `el` is not showing there (a hidden pane): the share of the
+ * scroll is used instead.
+ */
+function charAtTop(box: HTMLElement, el: HTMLElement): number | null {
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null;
+  // Just inside the first line showing, at the start of the line.
+  const x = rect.left + 4;
+  const y = Math.max(box.getBoundingClientRect().top, rect.top) + 8;
+  const doc = document as CaretDocument;
+  let node: Node | null = null;
+  let offset = 0;
+  if (doc.caretPositionFromPoint) {
+    const p = doc.caretPositionFromPoint(x, y);
+    node = p?.offsetNode ?? null;
+    offset = p?.offset ?? 0;
+  } else if (doc.caretRangeFromPoint) {
+    const r = doc.caretRangeFromPoint(x, y);
+    node = r?.startContainer ?? null;
+    offset = r?.startOffset ?? 0;
+  }
+  if (!node || !el.contains(node)) return null;
+  const before = document.createRange();
+  before.selectNodeContents(el);
+  before.setEnd(node, offset);
+  return before.toString().length;
+}
+
 type OnPlace = (place: Partial<ReadingPlace>) => void;
 
 export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
@@ -303,9 +341,18 @@ function TextPane({
 }>) {
   const { t } = useTranslation();
   const scrollRef = useScrollToMark(marks.ranges[marks.active]?.start, marks.follow);
-  // The whole text is one block here, so how far down the box is how far through the text.
+  const textRef = useRef<HTMLDivElement>(null);
+  // The character at the top line, and its words; how far down the box is only the fallback.
   const report = useSettled(() => {
-    if (scrollRef.current && onPlace) onPlace({ [tag]: shareAtTop(scrollRef.current) });
+    const box = scrollRef.current;
+    if (!box || !onPlace) return;
+    const at = textRef.current ? charAtTop(box, textRef.current) : null;
+    onPlace({
+      [tag]:
+        at == null
+          ? { share: shareAtTop(box) }
+          : { share: at / Math.max(1, shown.length), words: shown.slice(at, at + WORDS_LENGTH) },
+    });
   });
   useEffect(() => {
     if (onPlace && shown) report();
@@ -322,6 +369,7 @@ function TextPane({
         )}
         {query.data != null && (
           <div
+            ref={textRef}
             onPointerUp={(e) => onSelect(tag, selectionIn(e.currentTarget))}
             className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl"
           >
@@ -400,11 +448,14 @@ function VolumePane({
   }, [tag, shown, onShown]);
   // The scans are of the text's own volume: in another one there is nothing to follow.
   // Before or after the text, the share runs below 0 or above 1.
+  const textRef = useRef<HTMLDivElement>(null);
   const report = useSettled(() => {
     const box = scrollRef.current;
     if (!box || !onPlace || !place) return;
-    const char = shareAtTop(box) * shown.length;
-    onPlace({ [tag]: (char - place.start) / Math.max(1, place.end - place.start) });
+    const at = textRef.current ? charAtTop(box, textRef.current) : null;
+    const char = at ?? shareAtTop(box) * shown.length;
+    const share = (char - place.start) / Math.max(1, place.end - place.start);
+    onPlace({ [tag]: at == null ? { share } : { share, words: shown.slice(at, at + WORDS_LENGTH) } });
   });
   useEffect(() => {
     if (onPlace && place) report();
@@ -454,6 +505,7 @@ function VolumePane({
         )}
         {text.data != null && (
           <div
+            ref={textRef}
             onPointerUp={(e) => onSelect(tag, selectionIn(e.currentTarget))}
             className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl"
           >
@@ -503,23 +555,34 @@ function sideOfRows(rows: DiffRow[], side: 'a' | 'b') {
   return { text, starts };
 }
 
-/** Index of the first row showing at the top of the scrolled box (rows are in page order). */
+/**
+ * Index of the row at the top of the scrolled box (rows are in page order): the first one
+ * at least half showing. A sliver of the row above, left by the scroll, is not what is read.
+ */
 function firstRowInView(box: HTMLElement): number | null {
   const rows = box.querySelectorAll<HTMLElement>('[data-row-text]');
   const top = box.getBoundingClientRect().top;
   let lo = 0;
   let hi = rows.length - 1;
-  let found: number | null = null;
+  let found = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     if (rows[mid].getBoundingClientRect().bottom > top + 1) {
-      found = Number(rows[mid].dataset.rowText);
+      found = mid;
       hi = mid - 1;
     } else {
       lo = mid + 1;
     }
   }
-  return found;
+  if (found < 0) return null;
+  const rect = rows[found].getBoundingClientRect();
+  if (rect.bottom - top < rect.height / 2) {
+    // The next row down: in the split view the other copy's half of a row sits beside it.
+    let next = found + 1;
+    while (next < rows.length && rows[next].getBoundingClientRect().top < rect.bottom - 1) next++;
+    if (next < rows.length) found = next;
+  }
+  return Number(rows[found].dataset.rowText);
 }
 
 function DiffView({
@@ -563,10 +626,11 @@ function DiffView({
     const box = rowsRef.current;
     const index = box && onPlace ? firstRowInView(box) : null;
     if (index == null || !onPlace) return;
-    onPlace({
-      A: sideA.starts[index] / Math.max(1, sideA.text.length),
-      B: sideB.starts[index] / Math.max(1, sideB.text.length),
+    const spot = ({ text, starts }: { text: string; starts: number[] }) => ({
+      share: starts[index] / Math.max(1, text.length),
+      words: text.slice(starts[index], starts[index] + WORDS_LENGTH),
     });
+    onPlace({ A: spot(sideA), B: spot(sideB) });
   });
   useEffect(() => {
     if (onPlace && rows.length > 0) report();
@@ -733,7 +797,7 @@ function ColumnHead({
 const TEXT = 'whitespace-pre-wrap break-words font-monlam text-base leading-loose sm:text-lg';
 const LINE_NO = 'w-8 shrink-0 select-none px-1 pt-1.5 text-right font-sans text-xs tabular-nums text-gray-400 sm:w-12 sm:px-2';
 
-type RowHit = TextRange & { active: boolean };
+type RowHit = TextRange & { active: boolean; own?: string };
 type RowHits = { a: RowHit[]; b: RowHit[] };
 
 const piecesLength = (pieces: Piece[]) => pieces.reduce((sum, p) => sum + p.text.length, 0);
@@ -742,7 +806,7 @@ const piecesLength = (pieces: Piece[]) => pieces.reduce((sum, p) => sum + p.text
 function hitsInRow(marks: Marks, from: number, to: number): RowHit[] {
   return marks.ranges.flatMap((r, i) =>
     r.start < to && r.end > from
-      ? [{ start: Math.max(r.start, from) - from, end: Math.min(r.end, to) - from, active: i === marks.active }]
+      ? [{ start: Math.max(r.start, from) - from, end: Math.min(r.end, to) - from, active: i === marks.active, own: marks.own }]
       : [],
   );
 }
@@ -757,7 +821,7 @@ function withHits(text: string, at: number, hits: RowHit[]) {
     if (end <= start) continue;
     parts.push(text.slice(done, start));
     parts.push(
-      <mark key={start} className={`rounded-sm ${hit.active ? 'bg-amber-300' : 'bg-amber-100'}`}>
+      <mark key={start} data-own={hit.own} className={`rounded-sm ${hit.active ? 'bg-amber-300' : 'bg-amber-100'}`}>
         {text.slice(start, end)}
       </mark>,
     );

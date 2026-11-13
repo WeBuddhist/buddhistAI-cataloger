@@ -1,6 +1,6 @@
 // Selecting text, the same on every screen that shows the two copies: the passage is
 // looked for in the other copy, and can get a note.
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { canSearch, findMatches, type TextRange } from '../textMatch';
 import { formatNumber } from '../utils';
@@ -15,7 +15,26 @@ export type Marks = {
   follow: boolean;
   /** The selected words, when their place is not known: the opening or ending was selected. */
   quote?: string;
+  /** Set on the selection's own side: its marks carry it as `data-own`, so the browser's
+   * selection can be put back over them. */
+  own?: string;
 };
+
+// Marking the selection re-renders the words under it, and the browser drops its own
+// selection with them: Ctrl/Cmd+C would copy nothing. So it is put back over the marks.
+function reselectMarks(own: string) {
+  const marks = document.querySelectorAll(`mark[data-own="${CSS.escape(own)}"]`);
+  const selection = window.getSelection();
+  if (!selection || marks.length === 0) return;
+  // Typing in the note form must keep its caret.
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+  const range = document.createRange();
+  range.setStartBefore(marks[0]);
+  range.setEndAfter(marks[marks.length - 1]);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
 
 const NO_MARKS: Marks = { ranges: [], active: 0, follow: false };
 
@@ -48,7 +67,11 @@ export function selectionIn(el: HTMLElement): Required<Picked> | null {
 
 export function useCrossSelection(shown: Record<Tag, string>) {
   const { t } = useTranslation();
+  const own = useId();
   const [selected, setSelected] = useState<(Picked & { side: Tag }) | null>(null);
+  useLayoutEffect(() => {
+    if (selected) reselectMarks(own);
+  }, [selected, own]);
   const [matchIndex, setMatchIndex] = useState(0);
   const [noting, setNoting] = useState(false);
   const searchIn = selected ? otherSide(selected.side) : null;
@@ -78,7 +101,9 @@ export function useCrossSelection(shown: Record<Tag, string>) {
   const marksFor = (side: Tag): Marks => {
     if (!selected) return NO_MARKS;
     if (selected.side === side) {
-      return selected.range ? { ranges: [selected.range], active: 0, follow: false } : { ...NO_MARKS, quote: selected.text };
+      return selected.range
+        ? { ranges: [selected.range], active: 0, follow: false, own }
+        : { ...NO_MARKS, quote: selected.text, own };
     }
     return { ranges: matches?.ranges ?? [], active: matchIndex, follow: true };
   };

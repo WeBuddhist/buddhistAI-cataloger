@@ -3,6 +3,7 @@ import type { WitnessCard } from '../api/review';
 import { scanGroupOf } from '../api/scans';
 import { bestRange, outlineRange, scanAtShare, scanIndexAtChar, textPlaceRange } from '../scanPlace';
 import { useOutlinePlace, useScanList } from './useReview';
+import { charOfWords } from '../textPlace';
 import { useTextPlace } from './useVolumes';
 
 /**
@@ -56,13 +57,17 @@ export function useScanLocation(
 
   // The scan `share` of the way through the text (0 to 1; outside that, before or after
   // it in the volume). A position in the volume's text follows it more closely than
-  // spreading the text evenly over its pages.
+  // spreading the text evenly over its pages; the `words` there (the line being read),
+  // found in the volume near that position, more closely still: the share alone drifts by
+  // the difference in length between the OCRs, and on small pages that is a page or more.
   const scanAt = useCallback(
-    (share: number) => {
+    (share: number, words?: string) => {
       if (!range) return null;
       let index: number | null;
       if (lineByLine && located) {
-        index = scanIndexAtChar(located, pages, located.start + share * (located.span ?? card.text_length ?? 0));
+        const guess = located.start + share * (located.span ?? card.text_length ?? 0);
+        const char = (words ? charOfWords(located, guess, words) : null) ?? guess;
+        index = scanIndexAtChar(located, pages, char);
       } else if (share >= 0 && share <= 1) {
         index = scanAtShare(range, share);
       } else {

@@ -11,7 +11,7 @@ import { recordingIds, type NoteEdit, type NoteTarget, type PairNote } from '../
 const MAX_LENGTH = 2000;
 
 /** Plays a spoken note's recordings one after another, each from a short-lived S3 link. */
-function PlayRecordings({ ids }: Readonly<{ ids: string[] }>) {
+export function PlayRecordings({ ids }: Readonly<{ ids: string[] }>) {
   const { t } = useTranslation();
   const player = useRef<HTMLAudioElement | null>(null);
   // Bumped on every start and stop, so a sequence that was stopped does not carry on.
