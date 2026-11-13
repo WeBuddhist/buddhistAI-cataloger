@@ -8,18 +8,20 @@ import { SimplePagination } from '@/components/ui/simple-pagination';
 import type { AdminPairRow, PairFilters, PairSort } from '../api/review';
 import { useAdminPairs, useAnnotators, useBatches } from '../hooks/useReview';
 import { abstentionLabel, answerLabel, batchNames, formatDateTime, formatNumber } from '../utils';
+import PairNotesDialog, { NotesButton, type NoteText } from './PairNotesDialog';
 
 const PAGE = 50;
 const SORTS: PairSort[] = ['newest', 'oldest', 'id_desc', 'id_asc'];
 // "none" = no final answer yet.
 const ANSWERS = ['same', 'different', 'contains', 'part_of', 'source_dup', 'not_sure', 'none'];
 // URL keys of the filters behind the Filters button (search and sort sit outside it).
-const FILTER_KEYS = ['batch', 'answer', 'annotator', 'adjudicator', 'admin', 'corrected'] as const;
+const FILTER_KEYS = ['batch', 'answer', 'annotator', 'adjudicator', 'admin', 'corrected', 'notes'] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
 // What the chosen person did on the pair (an admin: corrected its answer); its URL key
 // holds the person.
 type PersonRole = 'annotator' | 'adjudicator' | 'admin';
 const PERSON_ROLES: PersonRole[] = ['annotator', 'adjudicator', 'admin'];
+// A yes / no filter's URL value as the boolean the server takes.
 const CORRECTED: Record<string, boolean | undefined> = { yes: true, no: false };
 const SELECT = 'h-9 w-full cursor-pointer rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-900';
 
@@ -77,6 +79,7 @@ export default function AdminPairList() {
 
   const page = Math.max(0, Number(params.get('page') ?? 0) || 0);
   const corrected = params.get('corrected');
+  const notes = params.get('notes');
   const filters: PairFilters = {
     batch_id: params.get('batch') ?? undefined,
     verdict: params.get('answer') ?? undefined,
@@ -84,6 +87,7 @@ export default function AdminPairList() {
     adjudicator_id: params.get('adjudicator') ?? undefined,
     corrected_by: params.get('admin') ?? undefined,
     corrected: CORRECTED[corrected ?? ''],
+    has_notes: CORRECTED[notes ?? ''],
     q: params.get('q') ?? undefined,
     sort: (params.get('sort') as PairSort | null) ?? 'newest',
     offset: page * PAGE,
@@ -132,6 +136,7 @@ export default function AdminPairList() {
       const a = everyone.find((p) => p.user_id === v);
       return a?.name ?? a?.email ?? v;
     }
+    if (key === 'notes') return t(v === 'yes' ? 'dedup.admin.pairs.notesYes' : 'dedup.admin.pairs.notesNo');
     return t(v === 'yes' ? 'dedup.admin.pairs.correctedYes' : 'dedup.admin.pairs.correctedNo');
   };
   const active = FILTER_KEYS.filter((k) => params.get(k));
@@ -142,6 +147,8 @@ export default function AdminPairList() {
   const to = Math.min(total, (page + 1) * PAGE);
   const open = (id: number) =>
     navigate(`/dedup-admin/pairs/${id}`, { state: { from: location.search, ids: rows.map((r) => r.item_id) } });
+  // The pair and text whose notes popup is open.
+  const [notesFor, setNotesFor] = useState<{ row: AdminPairRow; text: NoteText } | null>(null);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -188,7 +195,7 @@ export default function AdminPairList() {
       </div>
 
       {showFilters && (
-        <div className="mt-2 grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-2 grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:grid-cols-3 lg:grid-cols-5">
           <FilterField label={t('dedup.admin.pairs.batch')}>
             <select className={SELECT} value={filters.batch_id ?? ''} onChange={(e) => set('batch', e.target.value)}>
               <option value="">{t('dedup.admin.pairs.any')}</option>
@@ -247,6 +254,13 @@ export default function AdminPairList() {
               <option value="">{t('dedup.admin.pairs.any')}</option>
               <option value="yes">{t('dedup.admin.pairs.correctedYes')}</option>
               <option value="no">{t('dedup.admin.pairs.correctedNo')}</option>
+            </select>
+          </FilterField>
+          <FilterField label={t('dedup.admin.pairs.notes')}>
+            <select className={SELECT} value={notes ?? ''} onChange={(e) => set('notes', e.target.value)}>
+              <option value="">{t('dedup.admin.pairs.any')}</option>
+              <option value="yes">{t('dedup.admin.pairs.notesYes')}</option>
+              <option value="no">{t('dedup.admin.pairs.notesNo')}</option>
             </select>
           </FilterField>
         </div>
@@ -316,8 +330,13 @@ export default function AdminPairList() {
                   </div>
                 </td>
                 <td className="min-w-[16rem] px-3 py-2.5 align-top">
-                  <div className="break-words font-monlam text-sm leading-relaxed text-gray-900">{r.title_a || '—'}</div>
-                  <div className="break-words font-monlam text-sm leading-relaxed text-gray-500">{r.title_b || '—'}</div>
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="break-words font-monlam text-sm leading-relaxed text-gray-900">{r.title_a || '—'}</div>
+                      <div className="break-words font-monlam text-sm leading-relaxed text-gray-500">{r.title_b || '—'}</div>
+                    </div>
+                    <NotesButton row={r} onOpen={() => setNotesFor({ row: r, text: 'all' })} />
+                  </div>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2.5 align-top">
                   <Answer row={r} />
@@ -363,6 +382,15 @@ export default function AdminPairList() {
         }
         labelPosition="left"
         isDisabled={list.isFetching}
+      />
+
+      {/* Outside the table: a click inside the popup must not reach the row it was opened from. */}
+      <PairNotesDialog
+        row={notesFor?.row ?? null}
+        text={notesFor?.text ?? 'all'}
+        onText={(text) => setNotesFor((v) => v && { ...v, text })}
+        onClose={() => setNotesFor(null)}
+        onOpenPair={open}
       />
     </div>
   );

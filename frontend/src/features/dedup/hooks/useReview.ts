@@ -8,6 +8,7 @@ import {
   fetchAdminAdjudications,
   fetchAdminOverview,
   fetchAdminPair,
+  fetchAdminPairNotes,
   fetchAdminPairs,
   fetchAnnotatorItems,
   fetchAnnotators,
@@ -64,6 +65,7 @@ const keys = {
   adminAdjudications: (state: MyItemsState) => [...reviewQueryKeyRoot, 'admin', 'adjudications', state] as const,
   adminPair: (itemId: number) => [...reviewQueryKeyRoot, 'admin', 'pair', itemId] as const,
   adminPairs: (filters: PairFilters) => [...reviewQueryKeyRoot, 'admin', 'pairs', filters] as const,
+  adminPairNotes: (itemId: number) => [...reviewQueryKeyRoot, 'admin', 'pair-notes', itemId] as const,
   settings: [...reviewQueryKeyRoot, 'admin', 'settings'] as const,
 };
 
@@ -380,6 +382,16 @@ export function useCorrectPair() {
 }
 
 /** Every handed-out pair with its final answer, filtered and paged (admin pair list). */
+// Fetched when the notes popup on the admin pair list opens.
+export function useAdminPairNotes(itemId: number | undefined) {
+  return useQuery({
+    queryKey: keys.adminPairNotes(itemId ?? 0),
+    queryFn: ({ signal }) => fetchAdminPairNotes(itemId!, { signal }),
+    enabled: itemId != null,
+    staleTime: 0,
+  });
+}
+
 export function useAdminPairs(filters: PairFilters) {
   return useQuery({
     queryKey: keys.adminPairs(filters),

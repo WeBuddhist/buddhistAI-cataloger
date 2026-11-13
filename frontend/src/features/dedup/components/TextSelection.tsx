@@ -1,7 +1,8 @@
 // What a selection looks like on screen; `useCrossSelection` holds what it does.
 import type { ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, MessageSquarePlus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, MessageSquarePlus, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { CrossSelection, Marks } from '../hooks/useCrossSelection';
 import type { NewNote, NoteTarget } from '../notes';
@@ -36,6 +37,14 @@ export function SelectionBar({
   const { t } = useTranslation();
   const { selected, found, status, step, clear, noting, setNoting } = selection;
   if (!selected) return null;
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(t('dedup.fullText.copied'));
+    } catch {
+      toast.error(t('dedup.fullText.copyFailed'));
+    }
+  };
   const target: NoteTarget = selected.side === 'A' ? 'a' : 'b';
   return (
     <div className={`bg-gray-50 px-3 py-2 text-sm sm:px-4 ${className}`}>
@@ -52,6 +61,9 @@ export function SelectionBar({
           </span>
         )}
         <span className="ml-auto inline-flex items-center gap-1">
+          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => void copy(selected.text)}>
+            <Copy className="h-4 w-4" /> {t('dedup.fullText.copy')}
+          </Button>
           {onAddNote && !noting && (
             <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => setNoting(true)}>
               <MessageSquarePlus className="h-4 w-4" /> {t('dedup.notes.add')}
@@ -80,15 +92,15 @@ export function SelectionBar({
 }
 
 /** `text` with `ranges` marked; ranges are in order and do not overlap. */
-export function MarkedText({ text, marks, soft = false }: Readonly<{ text: string; marks: Pick<Marks, 'ranges' | 'active'>; soft?: boolean }>) {
-  const { ranges, active } = marks;
+export function MarkedText({ text, marks, soft = false }: Readonly<{ text: string; marks: Pick<Marks, 'ranges' | 'active' | 'own'>; soft?: boolean }>) {
+  const { ranges, active, own } = marks;
   if (ranges.length === 0) return <>{text}</>;
   const parts: ReactNode[] = [];
   let at = 0;
   ranges.forEach((r, i) => {
     parts.push(text.slice(at, r.start));
     parts.push(
-      <mark key={r.start} data-active={i === active ? '' : undefined} className={`rounded-sm ${i === active && !soft ? 'bg-amber-300' : 'bg-amber-100'}`}>
+      <mark key={r.start} data-active={i === active ? '' : undefined} data-own={own} className={`rounded-sm ${i === active && !soft ? 'bg-amber-300' : 'bg-amber-100'}`}>
         {text.slice(r.start, r.end)}
       </mark>,
     );

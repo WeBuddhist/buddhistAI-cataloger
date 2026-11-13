@@ -36,6 +36,7 @@ from dedup.schemas import (
     AdminBatchOut,
     AdminOverviewOut,
     AdminPairListOut,
+    AdminPairNoteOut,
     AdminPairOut,
     AdminPairRow,
     AnnotatorOut,
@@ -454,12 +455,93 @@ def update_settings(db: Session, admin: User, body: SettingsIn) -> SettingsOut:
 
 # --- correcting a pair -----------------------------------------------------------------
 
+NOTE_ROLES = {"annotator": "annotator", "adjudicator": "adjudicator", ROLE_ADMIN_CORRECTION: "admin"}
+
+
+def _when(value) -> Optional[datetime]:
+    """A note's ISO time (written by the browser, in UTC) as a naive UTC datetime."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return utc_naive(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _saved_note(d: DedupDecision, n: dict, index: int) -> dict:
+    """One note as saved in ``partner_payload.notes`` (older ones hold one ``voice_note_id``)."""
+    ids = [n["voice_note_id"]] if n.get("voice_note_id") else []
+    return {
+        "id": str(n.get("id") or f"{d.id}:{index}"),
+        "target": n.get("target"),
+        "quote": n.get("quote") or None,
+        "text": n["text"],
+        "voice_note_ids": ids + list(n.get("voice_note_ids") or []),
+        "created_at": _when(n.get("created_at")) or d.decided_at,
+        "updated_at": _when(n.get("updated_at")),
+    }
+
+
+def _notes_of(d: DedupDecision) -> list[dict]:
+    """The decision's notes, plus an old note-box note as one more (about the whole pair)."""
+    saved = [n for n in (d.partner_payload or {}).get("notes") or [] if isinstance(n, dict) and (n.get("text") or "").strip()]
+    out = [_saved_note(d, n, i) for i, n in enumerate(saved)]
+    if d.note and d.note.strip():
+        out.append({
+            "id": f"decision:{d.id}", "target": None, "quote": None, "text": d.note.strip(),
+            "voice_note_ids": [], "created_at": d.decided_at, "updated_at": None,
+        })
+    return out
+
+
+def _note_counts(db: Session, item_ids: list[int]) -> dict[int, Counter]:
+    """``{item_id: Counter(a=…, b=…, both=…)}``: the notes on each pair now; old note-box
+    notes (about the whole pair) count as both."""
+    counts: dict[int, Counter] = {}
+    for d in repo.answers_with_notes(db, item_ids):
+        if d.role in NOTE_ROLES:
+            c = counts.setdefault(d.item_id, Counter())
+            for n in _notes_of(d):
+                c[n["target"] if n["target"] in ("a", "b") else "both"] += 1
+    return counts
+
+
+def pair_notes(db: Session, item_id: int) -> list[AdminPairNoteOut]:
+    """Every note on the pair now, by anyone, oldest first, with who wrote it."""
+    decisions = [d for d in repo.answers_with_notes(db, [item_id]) if d.role in NOTE_ROLES]
+    users = {d.user_id for d in decisions}
+    names = {
+        u.id: u.name or u.email or u.id
+        for u in db.execute(select(User).where(User.id.in_(users))).scalars()
+    } if users else {}
+    slots = {a.user_id: a.slot for a in repo.assignments_for_items(db, [item_id])}
+    notes = [
+        AdminPairNoteOut(
+            id=n["id"],
+            author_id=d.user_id,
+            author_name=names.get(d.user_id, d.user_id),
+            role=NOTE_ROLES[d.role],
+            slot=slots.get(d.user_id) if d.role == "annotator" else None,
+            target=n["target"],
+            quote=n["quote"],
+            text=n["text"],
+            voice_note_ids=n["voice_note_ids"],
+            created_at=n["created_at"],
+            updated_at=n["updated_at"],
+        )
+        for d in decisions
+        for n in _notes_of(d)
+    ]
+    return sorted(notes, key=lambda n: n.created_at or datetime.min)
+
+
 def list_pairs(db: Session, **filters) -> AdminPairListOut:
     """Handed-out pairs with their current final answer, for the admin pair list."""
     found, total = repo.search_pairs(db, **filters)
     ids = [item.item_id for item, _ in found]
     assignments = repo.assignments_for_items(db, ids)
     corrected = repo.corrected_item_ids(db, ids)
+    notes = _note_counts(db, ids)
     user_ids = {a.user_id for a in assignments} | {d.user_id for _, d in found if d}
     names = {
         u.id: u.name or u.email or u.id
@@ -486,6 +568,9 @@ def list_pairs(db: Session, **filters) -> AdminPairListOut:
                 sync_state=d.sync_state if d else None,
                 corrected=item.item_id in corrected,
                 annotator_names=assignees.get(item.item_id, []),
+                notes_a=notes.get(item.item_id, Counter())["a"],
+                notes_b=notes.get(item.item_id, Counter())["b"],
+                notes_both=notes.get(item.item_id, Counter())["both"],
             )
             for item, d in found
         ],

@@ -9,8 +9,14 @@ import { formatNumber } from '../utils';
 import { pageWidth } from '../scanPlace';
 import { Note, PageRow, RetryButton, type ScanTag } from './ScanPanel';
 
-/** How far through each text the reader is (0 to 1, outside that before or after it); null: unknown. */
-export type ReadingPlace = Record<ScanTag, number | null>;
+/**
+ * Where the reader is in a text: how far through it (0 to 1, outside that before or after
+ * it), and the words of the line at the top, to find that line's page in the scans.
+ */
+export type ReadingSpot = { share: number; words?: string };
+
+/** Where the reader is in each text; null: unknown. */
+export type ReadingPlace = Record<ScanTag, ReadingSpot | null>;
 
 // As in the Scan tab: space under each page for its number, and above it (the row's top
 // padding); row padding on each side plus a scrollbar.
@@ -18,9 +24,10 @@ const FOOTER_PX = 22;
 const GAP_PX = 10;
 const ROW_INSET_PX = 12 + 12 + 16;
 
-// The scans under the full texts: A's under A, B's under B (one at a time on small
-// screens). Each follows its text, moving only when the page being read changes. Moving
-// a scan by hand stops that until "Back to text".
+// The scans under the full texts, one copy at a time so its page gets the whole width:
+// side by side, each was too small to read without zooming. Both stay mounted, each
+// following its text, moving only when the page being read changes. Moving a scan by
+// hand stops that until "Back to text".
 export default function ScanStrip({
   itemId,
   cards,
@@ -30,7 +37,7 @@ export default function ScanStrip({
   const [tag, setTag] = useState<ScanTag>('A');
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-100">
-      <div className="flex border-b border-gray-200 bg-white lg:hidden" role="tablist">
+      <div className="flex border-b border-gray-200 bg-white" role="tablist">
         {(['A', 'B'] as const).map((k) => (
           <button
             key={k}
@@ -45,9 +52,9 @@ export default function ScanStrip({
           </button>
         ))}
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-300">
-        <ScanColumn tag="A" card={cards.A} itemId={itemId} share={place.A} className={tag === 'A' ? 'flex' : 'hidden lg:flex'} />
-        <ScanColumn tag="B" card={cards.B} itemId={itemId} share={place.B} className={tag === 'B' ? 'flex' : 'hidden lg:flex'} />
+      <div className="grid min-h-0 flex-1 grid-cols-1">
+        <ScanColumn tag="A" card={cards.A} itemId={itemId} spot={place.A} className={tag === 'A' ? 'flex' : 'hidden'} />
+        <ScanColumn tag="B" card={cards.B} itemId={itemId} spot={place.B} className={tag === 'B' ? 'flex' : 'hidden'} />
       </div>
     </div>
   );
@@ -59,9 +66,9 @@ function ScanColumn({
   tag,
   card,
   itemId,
-  share,
+  spot,
   className,
-}: Readonly<{ tag: ScanTag; card: WitnessCard; itemId?: number; share: number | null; className: string }>) {
+}: Readonly<{ tag: ScanTag; card: WitnessCard; itemId?: number; spot: ReadingSpot | null; className: string }>) {
   const { t } = useTranslation();
   const { imageGroup, listQuery, pages, outlineSettled, finding, lineByLine, startIndex, scanAt } = useScanLocation(
     card,
@@ -92,7 +99,10 @@ function ScanColumn({
   // A whole page fits in the strip, however tall it is.
   const maxImageHeight = Math.max(40, box.height - FOOTER_PX - GAP_PX);
   const listShown = imageWidth > 0 && pages.length > 0 && outlineSettled;
-  const target = share == null ? startIndex : (scanAt(share) ?? startIndex);
+  const target = useMemo(
+    () => (spot == null ? startIndex : (scanAt(spot.share, spot.words) ?? startIndex)),
+    [spot, startIndex, scanAt],
+  );
 
   const rowHeight = useCallback(
     (index: number) => {

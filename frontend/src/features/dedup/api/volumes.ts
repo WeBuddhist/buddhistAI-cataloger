@@ -66,7 +66,7 @@ export async function locateText(
     id && cstart != null ? getVolume(id).catch(() => null) : null,
     card.rep_id ? fetchVolumes(card.rep_id, opts).catch(() => []) : [],
   ]);
-  if (own && cstart != null) return { pages: own.pages, start: cstart, span, exact: true };
+  if (own && cstart != null) return { pages: own.pages, start: cstart, span, exact: true, text: own.text };
   const textVolume = card.volume_id ?? '';
   const versions = listed
     .filter((v) => textVolume.includes(v.vol_id))
@@ -79,7 +79,7 @@ export async function locateText(
     if (place) return place;
     // OCR too poor to search. BDRC's position still lands near the text in a volume of the
     // same book, which beats the first page.
-    if (cstart != null) nearest ??= { pages: volume.pages, start: cstart, span, exact: false };
+    if (cstart != null) nearest ??= { pages: volume.pages, start: cstart, span, exact: false, text: volume.text };
   }
   return nearest;
 }

@@ -32,6 +32,7 @@ from dedup.schemas import (
     AdminAdjudicationOut,
     AdminOverviewOut,
     AdminPairListOut,
+    AdminPairNoteOut,
     AdminPairOut,
     AnnotatorOut,
     BatchOut,
@@ -324,6 +325,7 @@ def admin_pairs(
     adjudicator_id: str | None = None,
     corrected_by: str | None = None,
     corrected: bool | None = None,
+    has_notes: bool | None = None,
     q: str | None = Query(None, max_length=200),
     sort: Literal["newest", "oldest", "id_desc", "id_asc"] = "newest",
     offset: int = Query(0, ge=0),
@@ -333,12 +335,19 @@ def admin_pairs(
     """Every handed-out pair with its current final answer, filtered and sorted.
     ``verdict=none``: no final answer yet. ``adjudicator_id``: pairs whose adjudication is
     with that person, settled or not. ``corrected_by``: pairs that admin corrected.
+    ``has_notes``: whether anyone has a note on the pair now.
     ``q``: a pair number, or part of a batch id, MW id or title."""
     return admin_ctrl.list_pairs(
         db, batch_id=batch_id, verdict=verdict, annotator_id=annotator_id, adjudicator_id=adjudicator_id,
-        corrected_by=corrected_by, corrected=corrected,
+        corrected_by=corrected_by, corrected=corrected, has_notes=has_notes,
         q=q, sort=sort, offset=offset, limit=limit,
     )
+
+
+@admin_router.get("/pairs/{item_id}/notes", response_model=list[AdminPairNoteOut])
+def admin_pair_notes(item_id: int, db: Session = Depends(get_db)):
+    """Every note on the pair now, by anyone, with who wrote it, oldest first."""
+    return admin_ctrl.pair_notes(db, item_id)
 
 
 @admin_router.get("/pairs/{item_id}", response_model=AdminPairOut)
