@@ -83,6 +83,8 @@ export interface OutlinerDocumentListItem {
    * and is marked resolved. Shown on reviewer-facing document lists.
    */
   rejection_resolved?: boolean;
+  /** Segments the reviewer split/merged or added during review. */
+  reviewer_changed_segments?: number;
   /** Segments currently in rejected status (admin list). */
   rejection_count?: number;
   /** Total rejection comment rows on this document (admin list). */

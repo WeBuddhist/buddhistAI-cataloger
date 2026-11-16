@@ -34,6 +34,9 @@ interface FilterSegmentsProps {
   /** Filter by completion status. */
   readonly completionFilter: CompletionFilterValue;
   readonly onCompletionFilterChange: (value: CompletionFilterValue) => void;
+  /** Only segments the reviewer split/merged or added (same rule as the segment badges). */
+  readonly reviewerChangedOnly: boolean;
+  readonly onReviewerChangedOnlyChange: (value: boolean) => void;
 }
 
 export function FilterSegments({
@@ -41,6 +44,8 @@ export function FilterSegments({
   onChange,
   completionFilter,
   onCompletionFilterChange,
+  reviewerChangedOnly,
+  onReviewerChangedOnlyChange,
 }: FilterSegmentsProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -132,6 +137,21 @@ export function FilterSegments({
                   </div>
                 )
               })}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-600 mb-2">{t('outliner.filter.reviewer')}</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="reviewer-changed-filter"
+                checked={reviewerChangedOnly}
+                onChange={(e) => onReviewerChangedOnlyChange(e.target.checked)}
+                className="size-4 shrink-0 rounded border border-input accent-primary"
+              />
+              <Label htmlFor="reviewer-changed-filter" className="text-sm font-normal cursor-pointer text-gray-700 hover:text-gray-900">
+                {t('outliner.filter.reviewerChangedOnly')}
+              </Label>
             </div>
           </div>
         </div>

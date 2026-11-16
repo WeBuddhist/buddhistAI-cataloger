@@ -1,7 +1,7 @@
 """Read/query helpers for outliner_segment rows."""
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, exists, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from outliner.models.outliner import OutlinerDocument, OutlinerSegment, SegmentRejection
@@ -76,6 +76,17 @@ def _segment_aggregate_counts_by_document_ids(
     unchecked_expr = case((unchecked_when, 1), else_=0)
     annotated_expr = case((OutlinerSegment.is_annotated == True, 1), else_=0)
     rejected_expr = case((OutlinerSegment.status == "rejected", 1), else_=0)
+    # Same rule as the "Corrected by reviewer" / "Added by reviewer" segment badges.
+    reviewer_changed_expr = case(
+        (
+            or_(
+                OutlinerSegment.corrected_by_reviewer.is_(True),
+                OutlinerSegment.created_by_id.isnot(None),
+            ),
+            1,
+        ),
+        else_=0,
+    )
 
     rows = (
         db.query(
@@ -85,6 +96,7 @@ def _segment_aggregate_counts_by_document_ids(
             func.sum(unchecked_expr).label("unchecked_segments"),
             func.sum(annotated_expr).label("annotated_segments"),
             func.sum(rejected_expr).label("rejection_count"),
+            func.sum(reviewer_changed_expr).label("reviewer_changed_segments"),
         )
         .filter(OutlinerSegment.document_id.in_(document_ids))
         .group_by(OutlinerSegment.document_id)
@@ -98,6 +110,7 @@ def _segment_aggregate_counts_by_document_ids(
             "unchecked_segments": int(row.unchecked_segments or 0),
             "annotated_segments": int(row.annotated_segments or 0),
             "rejection_count": int(row.rejection_count or 0),
+            "reviewer_changed_segments": int(row.reviewer_changed_segments or 0),
         }
     return out
 
@@ -260,6 +273,41 @@ def get_document_review_context_for_segment(
         str(owner_id) if owner_id is not None else None,
         str(reviewer_id) if reviewer_id is not None else None,
     )
+
+
+def document_has_rejected_segment(db: Session, document_id: str) -> bool:
+    """True when a reviewer has sent at least one segment of the document back for fixing."""
+    return bool(
+        db.query(
+            exists().where(
+                and_(
+                    OutlinerSegment.document_id == document_id,
+                    OutlinerSegment.status == "rejected",
+                )
+            )
+        ).scalar()
+    )
+
+
+def get_document_lock_context_for_segment(
+    db: Session, segment_id: str
+) -> Tuple[Optional[str], bool]:
+    """(document status, has a rejected segment) for the document a segment belongs to.
+
+    The rejected-segment check only runs for approved documents, the only case it matters.
+    Returns ``(None, False)`` if the segment is unknown.
+    """
+    row = (
+        db.query(OutlinerDocument.id, OutlinerDocument.status)
+        .join(OutlinerSegment, OutlinerSegment.document_id == OutlinerDocument.id)
+        .filter(OutlinerSegment.id == segment_id)
+        .first()
+    )
+    if not row:
+        return None, False
+    document_id, status = row
+    has_rejected = status == "approved" and document_has_rejected_segment(db, document_id)
+    return status, has_rejected
 
 
 def map_segment_ids_to_document_user_ids(

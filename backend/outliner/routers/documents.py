@@ -10,6 +10,7 @@ from outliner.controller.segment_review import (
     get_segment_review_statuses as get_segment_review_statuses_ctrl,
 )
 from outliner.repository.document import fetch_document_by_id, fetch_document_reviewer_id
+from outliner.repository.segment import document_has_rejected_segment
 from outliner.controller.bdrc import check_document_sanity as check_document_sanity_ctrl
 from outliner.controller.outliner import (
     approve_document as approve_document_ctrl,
@@ -40,6 +41,7 @@ from outliner.deps import (
     assert_assigned_document_annotator,
     assert_assigned_document_participant,
     assert_assigned_document_reviewer,
+    assert_document_editable,
     enforce_segment_review_patch_authorization,
     is_user_admin_or_reviewer,
     require_outliner_access,
@@ -282,12 +284,24 @@ def delete_document(
     return None
 
 
+def _assert_doc_editable(db: Session, doc, user: User) -> None:
+    """Refuse changes to an approved document (see ``assert_document_editable``)."""
+    assert_document_editable(
+        doc.status,
+        doc.reviewer_id,
+        user,
+        has_rejected_segment=doc.status == "approved"
+        and document_has_rejected_segment(db, doc.id),
+    )
+
+
 def _assert_document_participant(db: Session, document_id: str, user: User) -> None:
     """Segment-creating routes are limited to the document's assigned annotator or reviewer."""
     doc = fetch_document_by_id(db, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     assert_assigned_document_participant(doc.user_id, doc.reviewer_id, user)
+    _assert_doc_editable(db, doc, user)
 
 
 @router.post("/documents/{document_id}/segments", response_model=SegmentResponse, status_code=201)
@@ -369,6 +383,7 @@ def bulk_segment_operations(
         raise HTTPException(status_code=404, detail="Document not found")
     doc_owner = doc.user_id
     doc_reviewer = doc.reviewer_id
+    _assert_doc_editable(db, doc, current_user)
     if operations.update:
         for row in operations.update:
             if not isinstance(row, dict):
@@ -410,6 +425,7 @@ def reset_segments(
     assert_assigned_document_participant(
         doc.user_id, doc.reviewer_id, current_user
     )
+    _assert_doc_editable(db, doc, current_user)
     reset_segments_ctrl(db, document_id)
     return None
 

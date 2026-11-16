@@ -307,7 +307,10 @@ const OutlinerUpload: React.FC = () => {
               <TableBody>
                 {documents.map((doc) => {
                   const isDeleted = doc.status === 'deleted';
-                  const isActive=doc.status==='active'||doc.status==='completed';
+                  // Approved documents open read-only, so the annotator can see the reviewer's changes.
+                  const isActive =
+                    doc.status === 'active' || doc.status === 'completed' || doc.status === 'approved';
+                  const reviewerChanged = doc.reviewer_changed_segments ?? 0;
                   const checked_percentage = (doc.checked_segments || 0) / (doc.total_segments || 1) * 100;
                   const utcDate = new Date(doc.updated_at);
                   const timestamp = new Date(utcDate.getTime() + (5 * 60 + 30) * 60 * 1000);
@@ -368,6 +371,14 @@ const OutlinerUpload: React.FC = () => {
                                 {doc.reviewer_user?.name?.trim() || 'Assigned'}
                               </span>
                             </div>
+                          )}
+                          {doc.status === 'approved' && reviewerChanged > 0 && (
+                            <span
+                              className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                              title="Segments the reviewer split, merged or added. Open the document to see them."
+                            >
+                              {reviewerChanged} changed by reviewer
+                            </span>
                           )}
                           {doc.rejected_segment && (
                             <div className="flex items-start gap-2">

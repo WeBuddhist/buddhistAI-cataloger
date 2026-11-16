@@ -36,6 +36,8 @@ from outliner.repository.segment_queries import (
     fetch_segments_ordered_by_ids,
     get_document_user_id_for_segment,
     get_document_review_context_for_segment,
+    document_has_rejected_segment,
+    get_document_lock_context_for_segment,
     get_segment_by_pk,
     get_segment_plain,
     get_segment_with_rejections,

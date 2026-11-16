@@ -46,6 +46,10 @@ function getSelectionOffsetsInRoot(
   return { start: preStart.toString().length, end: preEnd.toString().length };
 }
 
+/** Stand-ins for editing actions while an approved document is open read-only. */
+const noop = () => {};
+const noopAsync = async () => {};
+
 const OutlinerWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -54,6 +58,7 @@ const OutlinerWorkspace: React.FC = () => {
   const activeSegmentId = searchParams.get('segmentId');
   // Backend integration hook
   const {
+    document: outlinerDocument,
     documentId,
     textContent: currentTextContent,
     segments: backendSegments,
@@ -68,6 +73,12 @@ const OutlinerWorkspace: React.FC = () => {
     resetSegments: resetSegmentsBackend,
     createSegmentsBulk: createSegmentsBulkBackend,
   } = useOutlinerDocument()
+
+  // Approved documents open for reading only (the backend refuses changes too) — unless the
+  // reviewer has sent a segment back, in which case the annotator fixes it as before.
+  const isReadOnly =
+    outlinerDocument?.status === 'approved' &&
+    !outlinerDocument.segments?.some((segment) => segment.status === 'rejected')
 
   // Convert OutlinerSegment[] to TextSegment[]
   const currentSegments: TextSegment[] = useMemo(
@@ -801,9 +812,10 @@ const OutlinerWorkspace: React.FC = () => {
     () => ({
       cursorPosition,
       setCursorPosition,
-      onCursorChange: handleCursorChange,
+      // Read-only: no caret tracking, so the split menu never opens.
+      onCursorChange: isReadOnly ? noop : handleCursorChange,
     }),
-    [cursorPosition, handleCursorChange]
+    [cursorPosition, handleCursorChange, isReadOnly]
   );
 
   const [sidebarTitleDraft, setSidebarTitleDraft] = useState('');
@@ -911,15 +923,16 @@ const OutlinerWorkspace: React.FC = () => {
         sanityFindingsBySegmentId,
         isCheckingSanity: sanityQuery.isFetching,
         sanityCheckFailed: sanityQuery.isError,
+        isReadOnly,
       }}
     >
       <SelectionProvider
         value={{
           bubbleMenuState,
           setBubbleMenuState,
-          onTextSelection: handleTextSelection,
-          onBubbleMenuSelect: handleBubbleMenuSelect,
-         
+          // Read-only: selecting text doesn't offer the title/author bubble.
+          onTextSelection: isReadOnly ? noop : handleTextSelection,
+          onBubbleMenuSelect: isReadOnly ? noop : handleBubbleMenuSelect,
         }}
       >
         <CursorProvider value={cursorContextValue}>
@@ -935,15 +948,16 @@ const OutlinerWorkspace: React.FC = () => {
               onActivate: handleActivateSegment,
               onInput: handleContentEditableInput,
               onKeyDown: handleContentEditableKeyDown,
-              onAttachParent: handleAttachParent,
-              onMergeWithPrevious: handleMergeWithPrevious,
-              onSplitSegment: handleSplitSegment,
-              onAIDetectTextEndings: handleAIDetectTextEndings,
+              // Read-only: every action that changes the outline does nothing.
+              onAttachParent: isReadOnly ? noopAsync : handleAttachParent,
+              onMergeWithPrevious: isReadOnly ? noopAsync : handleMergeWithPrevious,
+              onSplitSegment: isReadOnly ? noopAsync : handleSplitSegment,
+              onAIDetectTextEndings: isReadOnly ? noopAsync : handleAIDetectTextEndings,
               onAITextEndingStop: handleAITextEndingStop,
-              onUndoTextEndingDetection: handleUndoTextEndingDetection,
+              onUndoTextEndingDetection: isReadOnly ? noopAsync : handleUndoTextEndingDetection,
               onLoadNewFile: () => {},
-              onSegmentStatusUpdate: handleSegmentStatusUpdate,
-              onResetSegments: resetSegmentsBackend,
+              onSegmentStatusUpdate: isReadOnly ? noopAsync : handleSegmentStatusUpdate,
+              onResetSegments: isReadOnly ? undefined : resetSegmentsBackend,
               onCheckSanity: handleCheckSanity,
               onNavigateToSegment: handleNavigateToSegment,
             }}
