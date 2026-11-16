@@ -1,6 +1,13 @@
-import { useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { SplitPane, Pane } from 'react-split-pane';
 import { EllipsisVertical, PanelRightClose, PanelRightOpen, Undo } from 'lucide-react';
 import {
   List,
@@ -109,6 +116,31 @@ function SegmentsTab({
   const [statusFilter, setStatusFilter] = useState<SegmentStatusFilter>('all');
   const [imagesPanelVisible, setImagesPanelVisible] = useState(false);
   const hasImages = useVolumeHasImages(selectedDocument?.filename ?? null);
+  const showImagePanel = imagesPanelVisible && hasImages;
+  /** Image panel width in px once the reviewer drags the divider; 30% until then. */
+  const [imagePanelWidth, setImagePanelWidth] = useState<number | null>(null);
+  const imageLayoutRef = useRef<HTMLDivElement>(null);
+  const startImagePanelResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const layout = imageLayoutRef.current;
+    if (!layout) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const onMove = (e: PointerEvent) => {
+      const rect = layout.getBoundingClientRect();
+      // Same limits as before: panel 200px to 50% wide, list at least 280px.
+      const max = Math.min(rect.width / 2, rect.width - 280);
+      setImagePanelWidth(Math.max(200, Math.min(rect.right - e.clientX, max)));
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  }, []);
   const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   /** After a successful Submit, keep the button disabled until this document is left and opened again. */
@@ -206,7 +238,7 @@ function SegmentsTab({
   );
 
   // Heights are remembered per segment, so a split or merge doesn't throw the list off its place.
-  const rowHeight = useSegmentRowHeight(filteredSegmentIds);
+  const rowHeight = useSegmentRowHeight(filteredSegmentIds, () => listRef.current?.element);
 
   const statusCounts = useMemo(() => {
     const counts = { unchecked: 0, checked: 0, approved: 0, rejected: 0 };
@@ -647,31 +679,42 @@ function SegmentsTab({
         </div>
       )}
 
-      {segmentsPanel && !(imagesPanelVisible && hasImages) && segmentsPanel}
-
-      {segmentsPanel && imagesPanelVisible && hasImages && selectedDocument && (
-        <SplitPane
-          direction="horizontal"
-          className="outliner-split-pane min-h-0 flex-1 w-full"
-          dividerSize={8}
-        >
-          <Pane minSize={280}>
-            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-4">
-              {segmentsPanel}
-            </div>
-          </Pane>
-          <Pane defaultSize="30%" minSize={200} maxSize="50%">
-            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white">
-              <VolumeImagePanelCore
-                panelActive={imagesPanelVisible}
-                volumeFilename={
-                  selectedDocument.filename?.trim() ? selectedDocument.filename : null
-                }
-                documentCharIndexForImage={documentCharIndexForImage}
+      {/* The segment list always renders in this same box. Opening or closing the image
+          panel only adds or removes the panel beside it; moving the list to another parent
+          would remount it and throw the reviewer back to segment 1. */}
+      {segmentsPanel && selectedDocument && (
+        <div ref={imageLayoutRef} className="flex min-h-0 w-full flex-1">
+          <div
+            className={`flex min-h-0 min-w-[280px] flex-1 flex-col ${
+              showImagePanel ? 'overflow-hidden p-4' : ''
+            }`}
+          >
+            {segmentsPanel}
+          </div>
+          {showImagePanel && (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize image panel"
+                className="w-2 shrink-0 cursor-col-resize touch-none bg-slate-400 transition-colors hover:bg-slate-500"
+                onPointerDown={startImagePanelResize}
               />
-            </div>
-          </Pane>
-        </SplitPane>
+              <div
+                className="flex h-full min-h-0 min-w-[200px] max-w-[50%] shrink-0 flex-col overflow-hidden bg-white"
+                style={{ width: imagePanelWidth ?? '30%' }}
+              >
+                <VolumeImagePanelCore
+                  panelActive={imagesPanelVisible}
+                  volumeFilename={
+                    selectedDocument.filename?.trim() ? selectedDocument.filename : null
+                  }
+                  documentCharIndexForImage={documentCharIndexForImage}
+                />
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       <Dialog open={isReassignDialogOpen} onOpenChange={handleReassignDialogChange}>

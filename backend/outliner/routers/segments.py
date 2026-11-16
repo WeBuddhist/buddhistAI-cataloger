@@ -29,6 +29,7 @@ from outliner.deps import (
     apply_authenticated_segment_reviewer,
     assert_assigned_document_participant,
     assert_assigned_document_reviewer,
+    assert_document_editable,
     can_user_reject_segment,
     enforce_segment_review_patch_authorization,
     is_user_admin_or_reviewer,
@@ -36,7 +37,9 @@ from outliner.deps import (
 )
 from outliner.repository.document import fetch_document_by_id
 from outliner.repository.segment import (
+    document_has_rejected_segment,
     get_document_review_context_for_segment,
+    get_document_lock_context_for_segment,
     get_document_user_id_for_segment,
     map_segment_ids_to_document_user_ids,
 )
@@ -62,6 +65,16 @@ from .schemas import (
 )
 
 router = APIRouter()
+
+
+def _assert_segment_document_editable(
+    db: Session, segment_id: str, document_reviewer_id: str | None, user: User
+) -> None:
+    """Refuse changes to an approved document's segments (see ``assert_document_editable``)."""
+    status, has_rejected = get_document_lock_context_for_segment(db, segment_id)
+    assert_document_editable(
+        status, document_reviewer_id, user, has_rejected_segment=has_rejected
+    )
 
 
 @router.get("/segments/{segment_id}", response_model=SegmentResponse)
@@ -116,6 +129,7 @@ def update_segment(
     """
     patch = segment_update.model_dump(exclude_unset=True)
     doc_owner, doc_reviewer = get_document_review_context_for_segment(db, segment_id)
+    _assert_segment_document_editable(db, segment_id, doc_reviewer, current_user)
     enforce_segment_review_patch_authorization(
         patch,
         current_user,
@@ -141,6 +155,7 @@ def update_segments_bulk(
     for row, seg_id in zip(segment_updates, updates.segment_ids, strict=True):
         doc_owner = owner_by_segment.get(seg_id)
         _, doc_reviewer = get_document_review_context_for_segment(db, seg_id)
+        _assert_segment_document_editable(db, seg_id, doc_reviewer, current_user)
         enforce_segment_review_patch_authorization(
             row,
             current_user,
@@ -176,11 +191,16 @@ def _assert_can_restructure_segments(
     credited to them), else None.
     """
     doc_owner, doc_reviewer = get_document_review_context_for_segment(db, segment_id)
+    doc_status, has_rejected = get_document_lock_context_for_segment(db, segment_id)
     if doc_owner is None and doc_reviewer is None and document_id:
         doc = fetch_document_by_id(db, document_id)
         if doc:
-            doc_owner, doc_reviewer = doc.user_id, doc.reviewer_id
+            doc_owner, doc_reviewer, doc_status = doc.user_id, doc.reviewer_id, doc.status
+            has_rejected = doc_status == "approved" and document_has_rejected_segment(
+                db, document_id
+            )
     assert_assigned_document_participant(doc_owner, doc_reviewer, user)
+    assert_document_editable(doc_status, doc_reviewer, user, has_rejected_segment=has_rejected)
     if doc_reviewer == user.id and doc_owner != user.id:
         return user.id
     return None
@@ -310,6 +330,7 @@ def update_segment_status(
     """Update segment status (checked/unchecked)"""
     st = (status_update.status or "").strip().lower()
     doc_owner, doc_reviewer = get_document_review_context_for_segment(db, segment_id)
+    _assert_segment_document_editable(db, segment_id, doc_reviewer, current_user)
     self_owned = doc_owner is not None and doc_owner == current_user.id
     if not self_owned:
         assert_assigned_document_participant(

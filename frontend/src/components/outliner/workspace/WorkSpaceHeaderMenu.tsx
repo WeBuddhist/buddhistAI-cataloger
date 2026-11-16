@@ -5,12 +5,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import ExpandAllButton from "../ExpandAllButton";
 import InstructionsDrawer from "../Instructions";
-import { useActions } from "../contexts";
+import { useActions, useDocument } from "../contexts";
 import SkipMenuItem from "./SkipMenuItem";
 
 function WorkSpaceHeaderMenu() {
     const { t } = useTranslation();
     const {onResetSegments,isAllSegmentsExpanded, toggleExpandAllSegments} = useActions();
+    const { isReadOnly } = useDocument();
     const [instructionsOpen, setInstructionsOpen] = useState(false);
     return (
       <>
@@ -25,7 +26,7 @@ function WorkSpaceHeaderMenu() {
               <BookOpen />
               Instructions
             </DropdownMenuItem>
-            <SkipMenuItem />
+            {!isReadOnly && <SkipMenuItem />}
             {onResetSegments && (
               <DropdownMenuItem
                 onClick={onResetSegments}

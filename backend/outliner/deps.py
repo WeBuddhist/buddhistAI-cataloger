@@ -151,6 +151,33 @@ def assert_assigned_document_reviewer(
         )
 
 
+def assert_document_editable(
+    document_status: str | None,
+    document_reviewer_id: str | None,
+    user: User,
+    *,
+    has_rejected_segment: bool = False,
+) -> None:
+    """Approved documents are view-only for the annotator.
+
+    The assigned reviewer and admins may still change them, as they could before the
+    annotator was allowed to open approved documents. If the reviewer has sent a segment
+    back (a rejected segment in an approved document), the annotator may fix it as before.
+    """
+    if (document_status or "").strip().lower() != "approved":
+        return
+    if has_rejected_segment:
+        return
+    if (user.role or "").strip().lower() == "admin":
+        return
+    if document_reviewer_id is not None and document_reviewer_id == user.id:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="This document is approved and is view-only",
+    )
+
+
 def assert_assigned_document_annotator(
     document_owner_id: str | None,
     user: User,

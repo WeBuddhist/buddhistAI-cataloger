@@ -481,7 +481,9 @@
       "showAll": "Show all",
       "all": "All",
       "completed": "Completed",
-      "notCompleted": "Not completed"
+      "notCompleted": "Not completed",
+      "reviewer": "Reviewer",
+      "reviewerChangedOnly": "Changed by reviewer only"
     },
     "unsavedChanges": {
       "title": "Unsaved Changes",
@@ -570,6 +572,8 @@
       "undo": "Undo",
       "hideSidePanel": "Hide side panel (images and table of contents)",
       "showSidePanel": "Show side panel (images and table of contents)",
+      "viewOnlyTitle": "View only.",
+      "viewOnlyHint": "This document was approved by the reviewer and can't be changed. Segments the reviewer split, merged or added are marked.",
       "skipped": "Skipped",
       "skipping": "Skipping...",
       "skip": "SKIP",

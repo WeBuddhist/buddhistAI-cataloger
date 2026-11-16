@@ -63,7 +63,8 @@ function AIDetectionButton() {
           <DropdownMenuItem onClick={() => runDetection('rule')}>
             {t('outliner.workspace.detectorRule')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => runDetection('mmbert')}>
+          {/* Disabled: the Modal endpoint backing mmBERT has been suspended. */}
+          <DropdownMenuItem disabled onClick={() => runDetection('mmbert')}>
             {t('outliner.workspace.detectorMmbert')}
           </DropdownMenuItem>
         </DropdownMenuContent>

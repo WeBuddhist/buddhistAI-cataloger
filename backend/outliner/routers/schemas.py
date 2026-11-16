@@ -434,6 +434,10 @@ class DocumentListResponse(BaseModel):
             "checked or approved (rejection path not finished)."
         ),
     )
+    reviewer_changed_segments: int = Field(
+        0,
+        description="Segments the reviewer split/merged or added during review.",
+    )
     progress_percentage: float
     checked_segments: int  # Segments with status checked or approved
     unchecked_segments: int  # Segments not yet checked or approved

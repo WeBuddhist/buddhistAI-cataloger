@@ -130,12 +130,14 @@ def list_documents(
         agg = counts_by_doc.get(doc.id)
         if agg is None:
             total = checked = unchecked = annotated = rejection_count = 0
+            reviewer_changed = 0
         else:
             total = agg["total_segments"]
             checked = agg["checked_segments"]
             unchecked = agg["unchecked_segments"]
             annotated = agg["annotated_segments"]
             rejection_count = agg["rejection_count"]
+            reviewer_changed = agg["reviewer_changed_segments"]
         rejection_comment_count = rejection_comments_by_doc.get(doc.id, 0)
         rejection_open_segment_count = rejection_open_segments_by_doc.get(doc.id, 0)
         notice = latest_rejection_by_doc.get(doc.id)
@@ -161,6 +163,7 @@ def list_documents(
                 "rejection_count": rejection_count,
                 "rejection_comment_count": rejection_comment_count,
                 "rejection_open_segment_count": rejection_open_segment_count,
+                "reviewer_changed_segments": reviewer_changed,
                 "progress_percentage": (annotated / total) * 100 if total > 0 else 0,
                 "status": doc.status,
                 "created_at": doc.created_at,

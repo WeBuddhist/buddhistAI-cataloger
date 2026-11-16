@@ -24,6 +24,8 @@ interface DocumentContextValue {
   sanityFindingsBySegmentId: Map<string, SanityCheckFinding[]>
   isCheckingSanity: boolean
   sanityCheckFailed: boolean
+  /** Approved document opened by its annotator: shown for reading, nothing can be changed. */
+  isReadOnly: boolean
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)

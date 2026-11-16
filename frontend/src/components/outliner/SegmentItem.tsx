@@ -48,7 +48,7 @@ const SegmentItem: React.FC<SegmentItemProps> = ({
   const { t } = useTranslation()
 
   // Use new contexts
-  const { activeSegmentId, segments, segmentLoadingStates, activeSegmentSearchQuery } = useDocument()
+  const { activeSegmentId, segments, segmentLoadingStates, activeSegmentSearchQuery, isReadOnly } = useDocument()
   const isSegmentSyncing = segmentLoadingStates.get(segment.id) === true
   const { onCursorChange } = useCursor()
   const {
@@ -178,7 +178,8 @@ const SegmentItem: React.FC<SegmentItemProps> = ({
         role="button"
         tabIndex={0}
         className={`mb-4 p-4 rounded-lg border-2 cursor-pointer transition-all relative ${
-          isApproved ? 'opacity-50' : 'opacity-100'
+          // Read-only documents are all approved; keep them readable instead of faded.
+          isApproved && !isReadOnly ? 'opacity-50' : 'opacity-100'
         } ${
           isRejected
             ? 'border-red-400 bg-red-50'
@@ -265,7 +266,7 @@ const SegmentItem: React.FC<SegmentItemProps> = ({
           </div>
         ) : null}
       
-        {activeSegmentId === segment.id && index > 0 && (
+        {activeSegmentId === segment.id && index > 0 && !isReadOnly && (
           <button
             type="button"
             onClick={(e) => {
@@ -433,6 +434,7 @@ const SegmentLabelSelector = ({
 }) => {
   const { t } = useTranslation()
   const { documentId, updateSegment: updateSegmentMutation } = useOutlinerDocument()
+  const { isReadOnly } = useDocument()
 
   const handleLabelChange = useCallback(
     async (value: string) => {
@@ -451,7 +453,7 @@ const SegmentLabelSelector = ({
     <Select
     value={segment.label ?? 'none'}
     onValueChange={handleLabelChange}
-      disabled={!documentId  || segment.status==='checked'}
+      disabled={!documentId || segment.status === 'checked' || isReadOnly}
     >
       <SelectTrigger className="h-8 text-xs flex-1 max-w-[180px] [&_[data-slot=select-value]]:line-clamp-none" id={`segment-label-${segment.id}`}>
         <SelectValue placeholder={t('outliner.segment.noLabelPlaceholder')} />

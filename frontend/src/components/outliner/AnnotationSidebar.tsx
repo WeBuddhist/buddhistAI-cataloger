@@ -47,7 +47,7 @@ const OutlineSegmentRow = memo(function OutlineSegmentRow({
   onNavigate,
 }: OutlineSegmentRowProps) {
   const { t } = useTranslation();
-  const { sanityFindingsBySegmentId, textContent } = useDocument();
+  const { sanityFindingsBySegmentId, textContent, isReadOnly } = useDocument();
   const findings = sanityFindingsBySegmentId.get(seg.id);
   const hasFindings = Boolean(findings && findings.length > 0);
   const hasBlockerFinding = Boolean(findings?.some((finding) => finding.severity === 'blocker'));
@@ -89,7 +89,7 @@ const OutlineSegmentRow = memo(function OutlineSegmentRow({
           <p
             className={`text-sm leading-snug font-monlam ${
               isActive ? 'text-blue-900' : 'text-gray-700'
-            } ${isApproved ? 'opacity-50' : ''}`}
+            } ${isApproved && !isReadOnly ? 'opacity-50' : ''}`}
           >
             {preview}
           </p>
@@ -727,6 +727,7 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
 
   const [labelFilter, setLabelFilter] = useState<LabelFilterValue[]>([]);
   const [completionFilter, setCompletionFilter] = useState<CompletionFilterValue>('all');
+  const [reviewerChangedOnly, setReviewerChangedOnly] = useState(false);
 
   const filteredSegments = useMemo(() => {
     let list = segments;
@@ -741,8 +742,11 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
     } else if (completionFilter === 'not_completed') {
       list = list.filter((seg) => seg.status !== 'checked');
     }
+    if (reviewerChangedOnly) {
+      list = list.filter((seg) => Boolean(seg.corrected_by_reviewer || seg.created_by_id));
+    }
     return list;
-  }, [segments, labelFilter, completionFilter]);
+  }, [segments, labelFilter, completionFilter, reviewerChangedOnly]);
 
   useEffect(() => {
     if (isMetadataDisabled && sidebarActiveTab === 'metadata') {
@@ -812,6 +816,8 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
               onChange={setLabelFilter}
               completionFilter={completionFilter}
               onCompletionFilterChange={setCompletionFilter}
+              reviewerChangedOnly={reviewerChangedOnly}
+              onReviewerChangedOnlyChange={setReviewerChangedOnly}
             />
 
             <div className=" px-2 py-2">
@@ -827,7 +833,8 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
                 <OutlineSegmentRow
                   key={seg.id}
                   seg={seg}
-                  displayIndex={index}
+                  // Real segment number, so filtered rows match the numbers in the workspace.
+                  displayIndex={segmentIndexById.get(seg.id) ?? index}
                   isActive={seg.id === activeSegmentId}
                   onNavigate={handleToClick}
                 />

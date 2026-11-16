@@ -3,7 +3,7 @@
 import asyncio
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from outline_detection.api import detect_breakpoints
 
 from core.database import SessionLocal
@@ -12,7 +12,8 @@ from outliner.controller.outliner import (
     replace_segments_and_toc,
     save_ai_outline_run,
 )
-from outliner.deps import require_outliner_access
+from outliner.deps import assert_document_editable, require_outliner_access
+from outliner.repository.segment import document_has_rejected_segment
 from user.models.user import User
 
 from .helpers import spans_from_toc_indices
@@ -33,11 +34,27 @@ async def ai_outline(
     current_user: User = Depends(require_outliner_access),
 ):
     """Split document text into segments using boundary character indices from outline_detection."""
+    # mmBERT runs on a Modal endpoint that has been suspended; refuse it up front
+    # instead of letting the request hang and fail against Modal.
+    if detector == "mmbert":
+        raise HTTPException(
+            status_code=503,
+            detail="mmBERT detection is currently disabled. Use the rule-based detector.",
+        )
+
     user_id = current_user.id
 
     db = SessionLocal()
     try:
         document = get_document(db, document_id, include_segments=False)
+        # AI outline replaces every segment, so an approved document is locked here too.
+        assert_document_editable(
+            document.status,
+            document.reviewer_id,
+            current_user,
+            has_rejected_segment=document.status == "approved"
+            and document_has_rejected_segment(db, document_id),
+        )
         content = document.content or ""
     finally:
         db.close()

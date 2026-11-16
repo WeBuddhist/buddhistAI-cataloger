@@ -477,7 +477,9 @@
       "showAll": "显示全部",
       "all": "全部",
       "completed": "已完成",
-      "notCompleted": "未完成"
+      "notCompleted": "未完成",
+      "reviewer": "审核员",
+      "reviewerChangedOnly": "仅显示审核员修改的段落"
     },
     "unsavedChanges": {
       "title": "未保存的更改",
@@ -566,6 +568,8 @@
       "undo": "撤销",
       "hideSidePanel": "隐藏侧栏（图像与目录）",
       "showSidePanel": "显示侧栏（图像与目录）",
+      "viewOnlyTitle": "只读。",
+      "viewOnlyHint": "此文档已由审核员批准，无法修改。审核员拆分、合并或添加的段落已标出。",
       "skipped": "已跳过",
       "skipping": "正在跳过...",
       "skip": "跳过",

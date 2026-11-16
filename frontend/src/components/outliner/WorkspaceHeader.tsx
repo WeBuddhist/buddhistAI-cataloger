@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Eye, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { Progress } from '../ui/progress';
 import { useOutlinerDocument } from '@/hooks/useOutlinerDocument';
 import {  useDocument } from './contexts';
@@ -26,10 +26,22 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   tocPanel,
 }) => {
   const { t } = useTranslation();
-  const { rejectedSegmentsCount,checked_percentage,checkedSegmentsCount,segmentsCount  } = useDocument();
+  const { rejectedSegmentsCount,checked_percentage,checkedSegmentsCount,segmentsCount, isReadOnly } = useDocument();
   const { isBusy:isLoadingOrSaving} = useOutlinerDocument();
 
   return (
+    <>
+      {isReadOnly && (
+        <div
+          className="flex shrink-0 items-start gap-2 border-b border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 sm:px-6"
+        >
+          <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>
+            <span className="font-semibold">{t('outliner.workspace.viewOnlyTitle')}</span>{' '}
+            {t('outliner.workspace.viewOnlyHint')}
+          </p>
+        </div>
+      )}
       <div className="bg-white border-b py-2 border-gray-200 px-3 sm:px-6 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
         <div className="flex items-center justify-between gap-3 min-w-max sm:min-w-0">
         <div className="shrink-0">
@@ -55,10 +67,10 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        <AIDetectionButton/>
+        {!isReadOnly && <AIDetectionButton/>}
         <WorkSpaceHeaderMenu/>
         <SanityCheckButton/>
-        <ActionButton/>
+        {!isReadOnly && <ActionButton/>}
           {tocPanel && (
             <Button
               type="button"
@@ -88,6 +100,6 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
         </div>
         </div>
       </div>
-    
+    </>
   );
 };
