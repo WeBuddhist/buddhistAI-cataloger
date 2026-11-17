@@ -8,9 +8,43 @@ import { findMatches, lettersOf, type TextRange } from './textMatch';
 
 export type NoteTarget = 'a' | 'b' | 'both';
 
-export interface PairNote {
+/** What a note is about, from the annotation guidelines: how two copies of one text
+ * differ, or why two texts are different works. Sent to BDRC as these ids. */
+export const NOTE_KINDS = {
+  same: ['content_missing', 'extra_content', 'outlining_issue', 'page_order', 'ocr', 'title'],
+  different: ['totally_different', 'commentary', 'sadhana_instructions'],
+} as const;
+export type NoteKind = (typeof NOTE_KINDS)[keyof typeof NOTE_KINDS][number];
+
+/** A kind that marks a spot (where the text should be split), so a short quote is enough. */
+export const MARKS_A_SPOT: NoteKind = 'outlining_issue';
+
+/** What the annotator checked the note against: the scan, a BDRC search, or nothing. */
+export const NOTE_CHECKS = ['scan', 'bdrc', 'none'] as const;
+export type NoteCheck = (typeof NOTE_CHECKS)[number];
+
+/** A note's kind and what it was checked against; all optional. */
+export interface NoteDetails {
+  kind?: NoteKind;
+  checked?: NoteCheck;
+  /** The scan page looked at, when checked on the scan. */
+  page?: string;
+}
+
+/** `note` without details that are unset, and without a page unless checked on the scan. */
+function tidyDetails<T extends NoteDetails>(note: T): T {
+  const next = { ...note };
+  if (!next.kind) delete next.kind;
+  if (!next.checked) delete next.checked;
+  if (next.checked !== 'scan' || !next.page?.trim()) delete next.page;
+  else next.page = next.page.trim();
+  return next;
+}
+
+export interface PairNote extends NoteDetails {
   id: string;
   target: NoteTarget;
+  /** May be empty when the note has a kind. */
   text: string;
   /** The highlighted passage the note is about, when it is about one. */
   quote?: string;
@@ -37,16 +71,15 @@ export interface VoiceRecording {
   stt: SttRequest[];
 }
 
-export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids'> & {
-  recording?: VoiceRecording;
-};
+export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids'> &
+  NoteDetails & { recording?: VoiceRecording };
 
 /** What an edit changes on a saved note; a new recording is added to its list. */
-export type NoteEdit = Pick<PairNote, 'target' | 'text'> & { recording?: VoiceRecording };
+export type NoteEdit = Pick<PairNote, 'target' | 'text'> & NoteDetails & { recording?: VoiceRecording };
 
 /** The note as stored: the recording itself never goes into it, only its id. */
 export function makeNote(added: NewNote): PairNote {
-  const note: PairNote = { ...added, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+  const note: PairNote = tidyDetails({ ...added, id: crypto.randomUUID(), created_at: new Date().toISOString() });
   delete (note as NewNote).recording;
   if (!note.voice_note_ids?.length) delete note.voice_note_ids;
   return note;
@@ -55,7 +88,15 @@ export function makeNote(added: NewNote): PairNote {
 /** `note` after an edit; `newRecordingId` is the recording stored with this edit, if any. */
 export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: string): PairNote {
   const ids = [...recordingIds(note), ...(newRecordingId ? [newRecordingId] : [])];
-  const next: PairNote = { ...note, target: edit.target, text: edit.text, updated_at: new Date().toISOString() };
+  const next: PairNote = tidyDetails({
+    ...note,
+    target: edit.target,
+    text: edit.text,
+    kind: edit.kind,
+    checked: edit.checked,
+    page: edit.page,
+    updated_at: new Date().toISOString(),
+  });
   delete next.voice_note_id;
   if (ids.length) next.voice_note_ids = ids;
   else delete next.voice_note_ids;

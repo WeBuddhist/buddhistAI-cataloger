@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { AdminPairNote, AdminPairRow } from '../api/review';
-import { PlayRecordings } from '../components/PairNotes';
+import { NoteDetailTags, PlayRecordings } from '../components/PairNotes';
 import { useAdminPairNotes } from '../hooks/useReview';
 import { formatDateTime } from '../utils';
 
@@ -118,7 +118,8 @@ function NoteItem({ note }: Readonly<{ note: AdminPairNote }>) {
           {note.quote && (
             <blockquote className="mb-1 line-clamp-3 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{note.quote}</blockquote>
           )}
-          <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>
+          <NoteDetailTags note={{ kind: note.kind ?? undefined, checked: note.checked ?? undefined, page: note.page ?? undefined }} />
+          {note.text && <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>}
         </div>
         {note.voice_note_ids.length > 0 && <PlayRecordings ids={note.voice_note_ids} />}
       </div>

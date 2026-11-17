@@ -407,7 +407,28 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
           {correct && <span className="ml-1 text-xs font-medium tabular-nums text-gray-500">· {t('dedup.pairView.title', { id: item.item_id })}</span>}
           <span className="ml-1 text-xs text-gray-400" title={item.batch_id}>· {batchName(item.batch_id)}</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Not an answer: a problem with the data, sent along with the answer. So it sits
+              up here, away from Same / Different / Can't answer. */}
+          {/* A link, not a button like the answers: it is not one. The one place to report
+              a data problem, whatever the answer. */}
+          <button
+            type="button"
+            onClick={flagIssue}
+            disabled={save.isPending || locked}
+            title={`${t('dedup.review.flagIssueHelp')} (X)`}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-1 text-sm font-medium text-red-700 underline-offset-4 hover:text-red-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:cursor-default disabled:no-underline disabled:opacity-40"
+          >
+            <Flag className="h-3.5 w-3.5 fill-red-600 text-red-600" />
+            {problems.length > 0 ? (
+              t('dedup.review.flaggedCount', { count: problems.length, n: formatNumber(problems.length) })
+            ) : (
+              <>
+                <span className="sm:hidden">{t('dedup.review.flagIssueShort')}</span>
+                <span className="hidden sm:inline">{t('dedup.review.flagIssue')}</span>
+              </>
+            )}
+          </button>
           <NotesMenu where="page" />
           <CopyPairLink itemId={item.item_id} />
           {index >= 0 && (
@@ -479,9 +500,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
               {problems.map((p, i) => (
                 <span
                   key={`${p}-${i}`}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-800"
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-medium text-red-800"
                 >
-                  <Flag className="h-3 w-3 shrink-0" />
+                  <Flag className="h-3 w-3 shrink-0 fill-red-600 text-red-600" />
                   <span className="truncate">{p}</span>
                 </span>
               ))}
@@ -526,20 +547,12 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
             </Button>
             <Button
               variant="outline"
-              className={`${PTR} ${isChosen('not_sure') ? CHOSEN_NEUTRAL : ''}`}
+              className={`${PTR} col-span-2 sm:col-span-1 ${isChosen('not_sure') ? CHOSEN_NEUTRAL : ''}`}
               onClick={() => setDialog('default')}
               disabled={save.isPending || locked}
               aria-pressed={isChosen('not_sure')}
             >
               {tick('not_sure')} {t('dedup.answer.cantAnswer')} <Kbd>{t('dedup.review.spaceKey')}</Kbd>
-            </Button>
-            <Button
-              variant="outline"
-              className={`${PTR} border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900`}
-              onClick={flagIssue}
-              disabled={save.isPending || locked}
-            >
-              <Flag className="h-4 w-4" /> {t('dedup.review.flagIssue')} <Kbd>X</Kbd>
             </Button>
           </div>
 

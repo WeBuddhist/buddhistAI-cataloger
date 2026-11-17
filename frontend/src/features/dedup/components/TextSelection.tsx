@@ -8,15 +8,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { CrossSelection, Marks } from '../hooks/useCrossSelection';
 import {
   KEEPS_ESCAPE,
+  MARKS_A_SPOT,
   MIN_QUOTE_SYLLABLES,
   noteOnPassage,
   PairNotesContext,
   syllableCount,
   type NewNote,
+  type NoteKind,
   type NoteTarget,
   type PairNote,
 } from '../notes';
-import { NoteForm } from './PairNotes';
+import { NoteDetailTags, NoteForm } from './PairNotes';
 
 /** A short warning over the note form: what is wrong in a few words, and what to do. */
 function Warning({ title, children }: Readonly<{ title: string; children?: ReactNode }>) {
@@ -53,7 +55,8 @@ function ExistingNoteDialog({
             </DialogHeader>
             <div className="rounded-md bg-gray-50 px-3 py-2">
               {note.quote && <blockquote className="mb-1 line-clamp-2 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{note.quote}</blockquote>}
-              <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>
+              <NoteDetailTags note={note} />
+              {note.text && <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>}
             </div>
             <DialogFooter className="gap-2">
               <Button variant="ghost" className="cursor-pointer" onClick={onCancel}>
@@ -108,6 +111,8 @@ export function SelectionBar({
   const [adding, setAdding] = useState<string | null>(null);
   // Open while asking what to do about a note already on the passage.
   const [asking, setAsking] = useState(false);
+  // The kind chosen in the open form: a note marking a spot may quote just a few syllables.
+  const [kind, setKind] = useState<NoteKind | undefined>();
   if (!selected) return null;
   const copy = async (text: string) => {
     try {
@@ -125,14 +130,20 @@ export function SelectionBar({
   const addingTo = adding && existing?.id === adding && pairNotes.onEdit ? existing : undefined;
   const close = () => {
     setAdding(null);
+    setKind(undefined);
     setNoting(false);
   };
-  const startNote = () => (existing ? setAsking(true) : setNoting(true));
-  const answer = (addToExisting: boolean) => {
-    setAsking(false);
-    setAdding(addToExisting && existing ? existing.id : null);
+  const openForm = (addTo: PairNote | null) => {
+    setAdding(addTo?.id ?? null);
+    setKind(addTo?.kind);
     setNoting(true);
   };
+  const startNote = () => (existing ? setAsking(true) : openForm(null));
+  const answer = (addToExisting: boolean) => {
+    setAsking(false);
+    openForm(addToExisting && existing ? existing : null);
+  };
+  const tooShort = syllables < MIN_QUOTE_SYLLABLES && kind !== MARKS_A_SPOT;
   return (
     <div className={`bg-gray-50 px-3 py-2 text-sm sm:px-4 ${className}`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -160,6 +171,7 @@ export function SelectionBar({
             label={t('dedup.fullText.clearSelection')}
             onClick={() => {
               setAdding(null);
+              setKind(undefined);
               clear();
             }}
           >
@@ -170,13 +182,13 @@ export function SelectionBar({
       {noting && onAddNote && (
         <div className="mt-2">
           <blockquote className="mb-2 line-clamp-2 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{selected.text}</blockquote>
-          {syllables < MIN_QUOTE_SYLLABLES && !addingTo && (
+          {tooShort && !addingTo && (
             <Warning title={t('dedup.notes.shortQuoteTitle', { count: syllables })}>{t('dedup.notes.shortQuoteHelp', { n: MIN_QUOTE_SYLLABLES })}</Warning>
           )}
           {existing && !addingTo && (
             <Warning title={t('dedup.notes.alreadyNoted')}>
               {pairNotes.onEdit && (
-                <button type="button" onClick={() => setAdding(existing.id)} className="cursor-pointer font-medium underline underline-offset-2 hover:text-amber-950">
+                <button type="button" onClick={() => openForm(existing)} className="cursor-pointer font-medium underline underline-offset-2 hover:text-amber-950">
                   {t('dedup.notes.addToThatNote')}
                 </button>
               )}
@@ -187,10 +199,13 @@ export function SelectionBar({
               key={addingTo.id}
               target={addingTo.target}
               initialText={addingTo.text}
+              initialDetails={addingTo}
+              onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (edit) => {
                 await pairNotes.onEdit?.(addingTo.id, edit);
                 setAdding(null);
+                setKind(undefined);
                 clear();
                 toast.success(t('dedup.notes.updated'));
               }}
@@ -199,9 +214,11 @@ export function SelectionBar({
             <NoteForm
               target={target}
               choices={choices}
+              onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (note) => {
                 await onAddNote({ ...note, quote: selected.text, range: selected.range });
+                setKind(undefined);
                 clear();
                 toast.success(t('dedup.notes.added'));
               }}

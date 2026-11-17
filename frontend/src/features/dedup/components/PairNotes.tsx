@@ -1,12 +1,29 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Loader2, LocateFixed, Mic, Pause, Pencil, Play, Square, Trash2 } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, LocateFixed, Mic, Pause, Pencil, Play, SearchCheck, Square, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { fetchVoiceNoteUrl, transcribeVoiceNote, type SttRequest } from '../api/review';
 import { toWav, useVoiceRecorder } from '../hooks/useVoiceRecorder';
-import { recordingIds, type NoteEdit, type NoteTarget, type PairNote } from '../notes';
+import {
+  KEEPS_ESCAPE,
+  NOTE_CHECKS,
+  NOTE_KINDS,
+  recordingIds,
+  type NoteDetails,
+  type NoteEdit,
+  type NoteKind,
+  type NoteTarget,
+  type PairNote,
+} from '../notes';
 
 const MAX_LENGTH = 2000;
 
@@ -112,6 +129,7 @@ export function NoteList({
               <NoteForm
                 target={note.target}
                 initialText={note.text}
+                initialDetails={note}
                 onCancel={() => setEditing(null)}
                 onSave={async (edit) => {
                   await onEdit(note.id, edit);
@@ -145,7 +163,8 @@ export function NoteList({
                   {note.quote}
                 </blockquote>
               )}
-              <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>
+              <NoteDetailTags note={note} />
+              {note.text && <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>}
               {note.updated_at && <p className="mt-0.5 text-[11px] text-gray-400">{t('dedup.notes.edited')}</p>}
             </div>
             {ids.length > 0 && <PlayRecordings ids={ids} />}
@@ -245,12 +264,222 @@ function VoiceButton({
   );
 }
 
+/** A note's kind and what it was checked against, as small tags. Nothing when neither is set. */
+export function NoteDetailTags({ note }: Readonly<{ note: NoteDetails }>) {
+  const { t } = useTranslation();
+  if (!note.kind && !note.checked) return null;
+  const group = note.kind ? groupOf(note.kind) : 'same';
+  let checked = note.checked ? t(`dedup.notes.checked.${note.checked}`) : '';
+  if (note.checked === 'scan' && note.page) checked = t('dedup.notes.checked.scanPage', { page: note.page });
+  return (
+    <div className="mb-1 flex flex-wrap gap-1">
+      {note.kind && (
+        <span
+          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${GROUP_STYLE[group].tag}`}
+          title={t(`dedup.notes.kind.groups.${group}`)}
+        >
+          {t(`dedup.notes.kind.options.${note.kind}.label`)}
+        </span>
+      )}
+      {note.checked && (
+        <span className="inline-flex items-center gap-1 rounded bg-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700">
+          <SearchCheck className="h-3 w-3" /> {checked}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const FIELD_LABEL = 'text-xs font-medium text-gray-600';
+
+const KIND_GROUPS = Object.keys(NOTE_KINDS) as (keyof typeof NOTE_KINDS)[];
+
+// "Same, but…" in green and "Different because…" in red, as on the Same / Different buttons.
+const GROUP_STYLE = {
+  same: { text: 'text-green-700', tag: 'bg-green-100 text-green-800', dot: 'bg-green-600', ring: 'border-green-600' },
+  different: { text: 'text-red-700', tag: 'bg-red-100 text-red-800', dot: 'bg-red-600', ring: 'border-red-600' },
+} as const;
+
+type KindGroup = keyof typeof NOTE_KINDS;
+
+const groupOf = (kind: NoteKind): KindGroup =>
+  (NOTE_KINDS.same as readonly NoteKind[]).includes(kind) ? 'same' : 'different';
+
+/** A type's name, with a dot in its group's colour. */
+function KindLabel({ kind, withGroup = false }: Readonly<{ kind: NoteKind; withGroup?: boolean }>) {
+  const { t } = useTranslation();
+  const group = groupOf(kind);
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${GROUP_STYLE[group].dot}`} aria-hidden />
+      <span className="truncate">
+        {withGroup && <span className={`font-medium ${GROUP_STYLE[group].text}`}>{t(`dedup.notes.kind.groups.${group}`)} </span>}
+        {t(`dedup.notes.kind.options.${kind}.label`)}
+      </span>
+    </span>
+  );
+}
+
+/** The note's kind (from the guidelines) and what it was checked against. */
+function DetailFields({ details, onChange }: Readonly<{ details: NoteDetails; onChange: (next: NoteDetails) => void }>) {
+  const { t } = useTranslation();
+  const kindId = useId();
+  const pageId = useId();
+  // The menu's two steps: first the group (null), then a type from it.
+  const [step, setStep] = useState<KindGroup | null>(null);
+  // The menu opens where there is more room: the form often sits low on the screen.
+  const [side, setSide] = useState<'top' | 'bottom'>('bottom');
+  const trigger = useRef<HTMLButtonElement>(null);
+  const keepOpen = (e: Event) => e.preventDefault();
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <label htmlFor={kindId} className={FIELD_LABEL}>
+          {t('dedup.notes.kind.label')}
+        </label>
+        <div className="flex items-center gap-1">
+          <DropdownMenu
+            onOpenChange={(open) => {
+              // Opens on the chosen type's group, so it can be changed in one click.
+              if (!open) return;
+              setStep(details.kind ? groupOf(details.kind) : null);
+              const box = trigger.current?.getBoundingClientRect();
+              if (box) setSide(window.innerHeight - box.bottom >= box.top ? 'bottom' : 'top');
+            }}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                ref={trigger}
+                id={kindId}
+                type="button"
+                className="flex h-9 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-xs hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 sm:w-80"
+              >
+                {details.kind ? (
+                  <KindLabel kind={details.kind} withGroup />
+                ) : (
+                  <span className="truncate text-gray-500">{t('dedup.notes.kind.placeholder')}</span>
+                )}
+                <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+              </button>
+            </DropdownMenuTrigger>
+            {/* Over the full-text window, which leaves Esc to it while it is open. */}
+            <DropdownMenuContent
+              align="start"
+              side={side}
+              collisionPadding={8}
+              className="z-[60] w-[var(--radix-dropdown-menu-trigger-width)] min-w-[min(20rem,calc(100vw-1rem))] max-h-[min(var(--radix-dropdown-menu-content-available-height),26rem)]"
+              {...{ [KEEPS_ESCAPE]: '' }}
+            >
+              {step === null &&
+                KIND_GROUPS.map((g) => (
+                  <DropdownMenuItem key={g} onSelect={(e) => { keepOpen(e); setStep(g); }} className="cursor-pointer items-start py-2.5">
+                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${GROUP_STYLE[g].dot}`} aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className={`block font-medium ${GROUP_STYLE[g].text}`}>{t(`dedup.notes.kind.groups.${g}`)}</span>
+                      <span className="block text-xs text-gray-500">{t(`dedup.notes.kind.groupHelp.${g}`)}</span>
+                    </span>
+                    <ChevronRight className="mt-1 h-4 w-4 text-gray-400" />
+                  </DropdownMenuItem>
+                ))}
+              {step !== null && (
+                <>
+                  <DropdownMenuItem onSelect={(e) => { keepOpen(e); setStep(null); }} className={`cursor-pointer font-semibold ${GROUP_STYLE[step].text}`}>
+                    <ChevronLeft className="h-4 w-4" />
+                    {t(`dedup.notes.kind.groups.${step}`)}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {NOTE_KINDS[step].map((kind) => {
+                    const on = details.kind === kind;
+                    return (
+                      // One type per note: a radio circle shows which.
+                      <DropdownMenuItem
+                        key={kind}
+                        role="menuitemradio"
+                        aria-checked={on}
+                        onSelect={() => onChange({ ...details, kind })}
+                        className="cursor-pointer items-start py-2"
+                      >
+                        <span
+                          aria-hidden
+                          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${on ? GROUP_STYLE[step].ring : 'border-gray-300'}`}
+                        >
+                          {on && <span className={`h-2 w-2 rounded-full ${GROUP_STYLE[step].dot}`} />}
+                        </span>
+                        {/* The meaning shows with each type: touch screens have no hover. */}
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium text-gray-900">{t(`dedup.notes.kind.options.${kind}.label`)}</span>
+                          <span className="block text-xs leading-snug text-gray-500">{t(`dedup.notes.kind.options.${kind}.help`)}</span>
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {details.kind && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...details, kind: undefined })}
+              aria-label={t('dedup.notes.kind.clear')}
+              title={t('dedup.notes.kind.clear')}
+              className={ICON_BUTTON}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {details.kind && <p className="text-xs text-gray-500">{t(`dedup.notes.kind.options.${details.kind}.help`)}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={FIELD_LABEL} id={`${kindId}-checked`}>
+          {t('dedup.notes.checked.label')}
+        </span>
+        <div className="inline-flex rounded-md border border-gray-300 bg-white p-0.5" role="radiogroup" aria-labelledby={`${kindId}-checked`}>
+          {NOTE_CHECKS.map((check) => (
+            <button
+              key={check}
+              type="button"
+              role="radio"
+              aria-checked={details.checked === check}
+              // Clicking the chosen one again leaves it unanswered.
+              onClick={() => onChange({ ...details, checked: details.checked === check ? undefined : check })}
+              className={`cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                details.checked === check ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {t(`dedup.notes.checked.${check}`)}
+            </button>
+          ))}
+        </div>
+        {details.checked === 'scan' && (
+          <span className="inline-flex items-center gap-1.5">
+            <label htmlFor={pageId} className={FIELD_LABEL}>
+              {t('dedup.notes.checked.page')}
+            </label>
+            <input
+              id={pageId}
+              value={details.page ?? ''}
+              onChange={(e) => onChange({ ...details, page: e.target.value })}
+              maxLength={20}
+              placeholder={t('dedup.notes.checked.pagePlaceholder')}
+              className="w-24 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+            />
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The text of a note on a selected passage, typed or spoken. A spoken note keeps its
  * recordings (joined into one) to be stored with the note when it is saved. */
 export function NoteForm({
   target,
   choices = [target],
   initialText = '',
+  initialDetails,
+  onDetailsChange,
   onSave,
   onCancel,
 }: Readonly<{
@@ -261,6 +490,10 @@ export function NoteForm({
   choices?: NoteTarget[];
   /** The saved text, when editing a note. */
   initialText?: string;
+  /** The saved kind and check, when editing a note. */
+  initialDetails?: NoteDetails;
+  /** Told when the kind or check changes (a short quote is fine for some kinds). */
+  onDetailsChange?: (details: NoteDetails) => void;
   /** May return a promise; the form stays open (and Save disabled) until it settles. */
   onSave: (note: NoteEdit) => Promise<void> | void;
   onCancel: () => void;
@@ -269,6 +502,15 @@ export function NoteForm({
   const [chosen, setChosen] = useState<NoteTarget>(target);
   // "Both" may have been chosen before the choices changed.
   const side = choices.includes(chosen) ? chosen : target;
+  const [details, setDetails] = useState<NoteDetails>({
+    kind: initialDetails?.kind,
+    checked: initialDetails?.checked,
+    page: initialDetails?.page,
+  });
+  const changeDetails = (next: NoteDetails) => {
+    setDetails(next);
+    onDetailsChange?.(next);
+  };
   const [text, setText] = useState(initialText);
   const [clips, setClips] = useState<Spoken[]>([]);
   const [busy, setBusy] = useState(false);
@@ -310,7 +552,7 @@ export function NoteForm({
       : undefined;
     setSaving(true);
     try {
-      await onSave({ target: side, text: text.trim(), recording });
+      await onSave({ target: side, text: text.trim(), ...details, recording });
     } finally {
       setSaving(false);
     }
@@ -336,6 +578,7 @@ export function NoteForm({
         ))}
       </div>
       )}
+      <DetailFields details={details} onChange={changeDetails} />
       <Textarea
         ref={box}
         value={text}
@@ -357,7 +600,7 @@ export function NoteForm({
         <Button size="sm" variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
           {t('dedup.common.cancel')}
         </Button>
-        <Button size="sm" className="cursor-pointer" onClick={save} disabled={!text.trim() || busy || saving}>
+        <Button size="sm" className="cursor-pointer" onClick={save} disabled={!(text.trim() || details.kind) || busy || saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {t('dedup.notes.save')}
         </Button>

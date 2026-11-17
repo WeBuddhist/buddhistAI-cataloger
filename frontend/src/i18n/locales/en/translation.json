@@ -1034,14 +1034,14 @@
       "bOnly": "B only",
       "noteRequired": "Note (required)",
       "noteOptional": "Note (optional)",
-      "reportTitle": "Flag an issue",
+      "reportTitle": "Report a problem",
       "reportDescription": "Goes with your answer and is reported for fixing later.",
       "reportDescriptionWithAnswer": "Added to your answer ({{answer}}), which stays as it is. Reported for fixing later.",
       "alsoReport": "Also report a data problem",
       "optional": "(optional)",
       "alreadyReported": "Already reported: {{list}}",
       "dataProblem": "Data problem",
-      "reportButton": "Flag issue"
+      "reportButton": "Report problem"
     },
     "fullText": {
       "dialogLabel": "Full texts",
@@ -1146,7 +1146,11 @@
       "confidenceN": "Confidence {{n}} of 5",
       "correctedInfo": "An admin corrected this pair, so it is locked.",
       "correctedLocked": "An admin corrected this pair, so this answer is locked",
-      "flagIssue": "Flag issue"
+      "flagIssue": "Report a problem",
+      "flagIssueShort": "Report",
+      "flaggedCount_one": "1 problem reported",
+      "flaggedCount_other": "{{n}} problems reported",
+      "flagIssueHelp": "Report a problem with the data (wrong author, bad splitting…). It is not an answer: still choose Same, Different or Can't answer."
     },
     "adjudicationQueue": {
       "title": "To adjudicate",
@@ -1573,7 +1577,67 @@
         "playMany": "Play the {{count}} recordings"
       },
       "edit": "Edit note",
-      "edited": "edited"
+      "edited": "edited",
+      "kind": {
+        "label": "Type of note",
+        "placeholder": "Choose a type (optional)",
+        "clear": "Remove the type",
+        "groups": {
+          "same": "Same, but…",
+          "different": "Different because…"
+        },
+        "groupHelp": {
+          "same": "One text, with a difference worth noting.",
+          "different": "Two different works: say why."
+        },
+        "options": {
+          "content_missing": {
+            "label": "Content missing",
+            "help": "The texts are the same overall, but a page or some content is missing from the other text."
+          },
+          "extra_content": {
+            "label": "Extra content",
+            "help": "The texts are the same overall, but this text has some extra content."
+          },
+          "outlining_issue": {
+            "label": "Outlining issue",
+            "help": "They would be the same if the text were split properly. A few syllables are enough to mark the spot."
+          },
+          "page_order": {
+            "label": "Page order",
+            "help": "The text is the same and complete, but its pages are in a mixed-up order."
+          },
+          "ocr": {
+            "label": "OCR or e-text",
+            "help": "Some text is unreadable because of the OCR or the e-text."
+          },
+          "title": {
+            "label": "Title",
+            "help": "The text is the same, but the title is different."
+          },
+          "totally_different": {
+            "label": "Totally different",
+            "help": "The texts are completely different."
+          },
+          "commentary": {
+            "label": "Different (commentary)",
+            "help": "One is a commentary on the other."
+          },
+          "sadhana_instructions": {
+            "label": "Different (sadhana instructions)",
+            "help": "One is a sadhana with instructions and the other is without."
+          }
+        }
+      },
+      "checked": {
+        "label": "Checked on",
+        "scan": "Scan",
+        "bdrc": "BDRC",
+        "none": "Not checked",
+        "page": "Page",
+        "pagePlaceholder": "e.g. 12",
+        "scanPage": "Scan p. {{page}}"
+      }
     }
   }
 }

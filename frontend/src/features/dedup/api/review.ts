@@ -2,6 +2,7 @@
 // review API in the background, so the UI never calls BDRC directly.
 import { API_URL } from '@/config/api';
 import { fetchWithAccessToken } from '@/lib/fetchWithAccessToken';
+import type { NoteCheck, NoteKind } from '../notes';
 
 const BASE = `${API_URL}/dedup`;
 
@@ -608,7 +609,11 @@ export interface AdminPairNote {
   // null: an old note-box note, about the whole pair.
   target: 'a' | 'b' | 'both' | null;
   quote: string | null;
+  // May be empty when the note has a kind.
   text: string;
+  kind: NoteKind | null;
+  checked: NoteCheck | null;
+  page: string | null;
   voice_note_ids: string[];
   created_at: string | null;
   updated_at: string | null;

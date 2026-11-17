@@ -16,13 +16,17 @@ export default function NotesMenu({ where }: Readonly<{ where: NotesPlace }>) {
 
   useEffect(() => {
     if (!open) return;
+    // A menu opened from inside the panel (a note's type, while editing) is drawn outside
+    // it: its clicks and its Esc are its own.
+    const menuOver = (el: EventTarget | null) =>
+      [...document.querySelectorAll(`[${KEEPS_ESCAPE}]`)].some((m) => m !== box.current && (el == null || m.contains(el as Node)));
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || menuOver(null)) return;
       e.stopPropagation();
       setOpen(false);
     };
     const onPointer = (e: PointerEvent) => {
-      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+      if (box.current && !box.current.contains(e.target as Node) && !menuOver(e.target)) setOpen(false);
     };
     window.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onPointer);
