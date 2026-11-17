@@ -201,7 +201,7 @@ const SegmentItem: React.FC<SegmentItemProps> = ({
        <SegmentLabelSelector
           segment={segment}
         />
-        <ReviewerChangeBadges segment={segment} />
+        <ReviewerChangeBadges segment={segment} showTitleAuthorCorrections />
         </div>
 
         {isRejected && segment.rejection?.reason?.trim() ? (

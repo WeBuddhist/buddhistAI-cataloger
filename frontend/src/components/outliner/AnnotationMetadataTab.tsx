@@ -28,6 +28,7 @@ export function AnnotationMetadataTab() {
     onSave,
     onNotApplicable,
     onResetAnnotations,
+    isDocumentReadOnly,
   } = useAnnotationMetadata();
 
   const { activeSegmentSearchQuery, setActiveSegmentSearchQuery } = useDocument();
@@ -47,6 +48,8 @@ export function AnnotationMetadataTab() {
   documentIdRef.current = documentId;
   const snapshotRef = useRef({ activeSegment, formData });
   snapshotRef.current = { activeSegment, formData };
+  const isDocumentReadOnlyRef = useRef(isDocumentReadOnly);
+  isDocumentReadOnlyRef.current = isDocumentReadOnly;
 
   useEffect(() => {
     if (documentId !== prevDocumentIdRef.current) {
@@ -71,6 +74,8 @@ export function AnnotationMetadataTab() {
     const timeoutId = globalThis.setTimeout(() => {
       const { activeSegment: seg, formData: fd } = snapshotRef.current;
       if (!documentIdRef.current) return;
+      // Read-only documents only show metadata; never fetch AI suggestions for them.
+      if (isDocumentReadOnlyRef.current) return;
       if (seg.label !== 'TEXT' || seg.status === 'checked') return;
       if (!seg.text?.trim()) return;
       const titleEmpty = !seg.title?.trim() && !fd.title?.name?.trim();
@@ -107,6 +112,8 @@ export function AnnotationMetadataTab() {
                         <AuthorField />
           </div>
         ) : null}
+        {/* Read-only documents: no Save / Not applicable / Reset. */}
+        {!isDocumentReadOnly && (
         <div className="shrink-0 flex gap-2 bg-white pt-3 mt-2 border-t border-gray-100">
           {activeSegment.status !== 'checked' ? (
             <>
@@ -146,6 +153,7 @@ export function AnnotationMetadataTab() {
             </Button>
           )}
         </div>
+        )}
       </div>
 
      
