@@ -9,7 +9,7 @@ import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
-import PairNotes from '../components/PairNotes';
+import NotesMenu from '../components/NotesMenu';
 import PreferredCopyDialog, { type PreferredChoice } from '../components/PreferredCopyDialog';
 import CopyPairLink from '../components/CopyPairLink';
 import PairEvidence from '../components/PairEvidence';
@@ -26,7 +26,7 @@ import {
   useSaveAdjudication,
   useSaveDecision,
 } from '../hooks/useReview';
-import { editedNote, makeNote, notesOf, usePairDraft, withNotes, type NewNote, type NoteEdit, type PairNote, type VoiceRecording } from '../notes';
+import { editedNote, KEEPS_ESCAPE, makeNote, notesOf, PairNotesContext, usePairDraft, withNotes, type NewNote, type NoteEdit, type NotesPlace, type PairNote, type VoiceRecording } from '../notes';
 import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
 
 const CONFIDENCE = [1, 2, 3, 4, 5];
@@ -276,6 +276,13 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [storeRecording, saveNotes, savedNotes, draft],
   );
 
+  // A note clicked in the notes list, for the texts it was clicked over to show.
+  const [showing, setShowing] = useState<{ note: PairNote; where: NotesPlace; seq: number } | null>(null);
+  const showNote = useCallback(
+    (note: PairNote, where: NotesPlace) => setShowing((prev) => ({ note, where, seq: (prev?.seq ?? 0) + 1 })),
+    [],
+  );
+
   const removeNote = useCallback(
     (id: string) => {
       if (savedNotes.some((n) => n.id === id)) saveNotes(savedNotes.filter((n) => n.id !== id));
@@ -318,6 +325,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (dialog || fullText || askPreferred || e.metaKey || e.ctrlKey || e.altKey) return;
+      // The notes panel or the "already a note here" question is open.
+      if (document.querySelector(`[${KEEPS_ESCAPE}]`)) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const k = e.key.toLowerCase();
@@ -372,8 +381,19 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   const issues = draft.issues.length > 0 ? draft.issues : (item.issues ?? []);
   const problems = issues.map((i) => issueLabel(i.kind));
   const canWriteNotes = !correct && !locked;
+  // The person's own notes on the pair (never the other annotator's: double review is
+  // blind), behind the notes button here and in the full-text window.
+  const notesContext = {
+    notes,
+    onEdit: canWriteNotes ? editNote : undefined,
+    onRemove: canWriteNotes ? removeNote : undefined,
+    pending: !answered,
+    onShow: showNote,
+    showing,
+  };
 
   return (
+    <PairNotesContext.Provider value={notesContext}>
     <div className={`w-full ${scan ? 'max-w-none' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6`} style={{ paddingBottom: barHeight + 24 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
@@ -388,6 +408,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
           <span className="ml-1 text-xs text-gray-400" title={item.batch_id}>· {batchName(item.batch_id)}</span>
         </Link>
         <div className="flex items-center gap-2">
+          <NotesMenu where="page" />
           <CopyPairLink itemId={item.item_id} />
           {index >= 0 && (
             <span className="mr-1 text-xs tabular-nums text-gray-500">
@@ -413,7 +434,6 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onScanChange={setScan}
         bottomInset={barHeight}
         onAddNote={canWriteNotes ? addNote : undefined}
-        afterTexts={<PairNotes notes={notes} onRemove={canWriteNotes ? removeNote : undefined} onEdit={canWriteNotes ? editNote : undefined} pending={!answered} />}
       >
         {adjItem && <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} />}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
@@ -574,6 +594,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onSubmit={saveDialog}
       />
     </div>
+    </PairNotesContext.Provider>
   );
 }
 

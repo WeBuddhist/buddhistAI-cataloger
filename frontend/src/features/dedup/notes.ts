@@ -2,9 +2,9 @@
 // Cataloger stores it and BDRC receives it with the answer. A pair with no answer yet has
 // nothing to save onto, so its notes and flagged issues wait in this browser as a draft
 // and go with the answer.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReviewIssue, SttRequest } from './api/review';
-import type { TextRange } from './textMatch';
+import { findMatches, lettersOf, type TextRange } from './textMatch';
 
 export type NoteTarget = 'a' | 'b' | 'both';
 
@@ -61,6 +61,58 @@ export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: stri
   else delete next.voice_note_ids;
   return next;
 }
+
+/** Below this many syllables a quote is found in many places, so it cannot say where the
+ * note is (a lone ༔ or །།). */
+export const MIN_QUOTE_SYLLABLES = 8;
+
+/** Syllables of a passage: what lies between tshegs, shads, spaces and the like. */
+export function syllableCount(text: string): number {
+  return text.split(/[\s་-༔_]+/).filter((s) => s.length > 0).length;
+}
+
+/** The note, among `notes`, already on the passage selected in `shown` (one text as shown
+ * on screen): its quote is found there over the selected place, or, when the selection's
+ * place is not known, one quote holds the other. */
+export function noteOnPassage(
+  notes: PairNote[],
+  side: 'a' | 'b',
+  shown: string,
+  selected: { text: string; range?: TextRange },
+): PairNote | undefined {
+  const picked = lettersOf(selected.text).letters;
+  if (!picked) return undefined;
+  return notes.find((n) => {
+    if (!n.quote || (n.target !== side && n.target !== 'both')) return false;
+    const range = selected.range;
+    if (!range) {
+      const quoted = lettersOf(n.quote).letters;
+      return quoted.length > 0 && (quoted.includes(picked) || picked.includes(quoted));
+    }
+    const found = findMatches(shown, n.quote);
+    return found.exact && found.ranges.some((r) => r.start < range.end && range.start < r.end);
+  });
+}
+
+/** Set on a panel or dialog open over the full-text window: the window leaves Esc to it. */
+export const KEEPS_ESCAPE = 'data-keeps-escape';
+
+/** The person's notes on this pair, for the notes button and for checking a new note
+ * against. `onEdit` and `onRemove` are left out where they can only be read; `pending`
+ * when there is no answer yet to save them onto. */
+export const PairNotesContext = createContext<{
+  notes: PairNote[];
+  onEdit?: (id: string, edit: NoteEdit) => Promise<void> | void;
+  onRemove?: (id: string) => void;
+  pending?: boolean;
+  /** Asks the texts on the page, or in the full-text window, to show a note's passage. */
+  onShow?: (note: PairNote, where: NotesPlace) => void;
+  /** The latest such request; `seq` tells a new one from the last. */
+  showing?: { note: PairNote; where: NotesPlace; seq: number } | null;
+}>({ notes: [] });
+
+/** Where texts are shown: on the pair page, or in the full-text window over it. */
+export type NotesPlace = 'page' | 'window';
 
 export function notesOf(payload: Record<string, unknown> | null | undefined): PairNote[] {
   const notes = payload?.notes;

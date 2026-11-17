@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquareText, Mic, Pause, Pencil, Play, Square, Trash2 } from 'lucide-react';
+import { Loader2, LocateFixed, Mic, Pause, Pencil, Play, Square, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -80,20 +80,18 @@ export function PlayRecordings({ ids }: Readonly<{ ids: string[] }>) {
 
 const ICON_BUTTON = 'shrink-0 cursor-pointer rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700';
 
-/** The side choices for a note: its own side and both; a note already on both keeps it. */
-function choicesFor(target: NoteTarget): NoteTarget[] {
-  return target === 'both' ? ['both'] : [target, 'both'];
-}
-
 export function NoteList({
   notes,
   onRemove,
   onEdit,
+  onShow,
 }: Readonly<{
   notes: PairNote[];
   onRemove?: (id: string) => void;
   /** Left out where notes can only be read. Resolves once the edit is stored. */
   onEdit?: (id: string, edit: NoteEdit) => Promise<void> | void;
+  /** Shows the note's passage in the text; its quote is a button then. */
+  onShow?: (note: PairNote) => void;
 }>) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<string | null>(null);
@@ -109,9 +107,10 @@ export function NoteList({
                   {note.quote}
                 </blockquote>
               )}
+              {/* An edit keeps the note on its text: whether the passage is in both texts
+                  is only known while it is selected. */}
               <NoteForm
                 target={note.target}
-                choices={choicesFor(note.target)}
                 initialText={note.text}
                 onCancel={() => setEditing(null)}
                 onSave={async (edit) => {
@@ -128,7 +127,20 @@ export function NoteList({
               {t(`dedup.notes.target.${note.target}`)}
             </span>
             <div className="min-w-0 flex-1">
-              {note.quote && (
+              {note.quote && onShow && (
+                <button
+                  type="button"
+                  onClick={() => onShow(note)}
+                  title={t('dedup.notes.showInText')}
+                  className="mb-1 block w-full cursor-pointer rounded-sm border-l-2 border-amber-300 pl-2 text-left hover:border-amber-500 hover:bg-amber-50"
+                >
+                  <span className="line-clamp-3 font-monlam text-sm text-gray-600">{note.quote}</span>
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                    <LocateFixed className="h-3 w-3" /> {t('dedup.notes.showInText')}
+                  </span>
+                </button>
+              )}
+              {note.quote && !onShow && (
                 <blockquote className="mb-1 line-clamp-3 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">
                   {note.quote}
                 </blockquote>
@@ -237,14 +249,15 @@ function VoiceButton({
  * recordings (joined into one) to be stored with the note when it is saved. */
 export function NoteForm({
   target,
-  choices = choicesFor(target),
+  choices = [target],
   initialText = '',
   onSave,
   onCancel,
 }: Readonly<{
   /** The side the note starts on. */
   target: NoteTarget;
-  /** The sides it may be on: the selected side and both, for a new note. */
+  /** The sides it may be on: for a new note, the selected side, and both when the passage
+   * is in the other text too. Just `target` by default. */
   choices?: NoteTarget[];
   /** The saved text, when editing a note. */
   initialText?: string;
@@ -254,6 +267,8 @@ export function NoteForm({
 }>) {
   const { t } = useTranslation();
   const [chosen, setChosen] = useState<NoteTarget>(target);
+  // "Both" may have been chosen before the choices changed.
+  const side = choices.includes(chosen) ? chosen : target;
   const [text, setText] = useState(initialText);
   const [clips, setClips] = useState<Spoken[]>([]);
   const [busy, setBusy] = useState(false);
@@ -295,7 +310,7 @@ export function NoteForm({
       : undefined;
     setSaving(true);
     try {
-      await onSave({ target: chosen, text: text.trim(), recording });
+      await onSave({ target: side, text: text.trim(), recording });
     } finally {
       setSaving(false);
     }
@@ -310,10 +325,10 @@ export function NoteForm({
             key={key}
             type="button"
             role="radio"
-            aria-checked={chosen === key}
+            aria-checked={side === key}
             onClick={() => setChosen(key)}
             className={`cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-              chosen === key ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
+              side === key ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             {t(`dedup.notes.target.${key}`)}
@@ -348,34 +363,5 @@ export function NoteForm({
         </Button>
       </div>
     </div>
-  );
-}
-
-// The pair's notes, on the answer screens. Notes are added by selecting text.
-export default function PairNotes({
-  notes,
-  onRemove,
-  onEdit,
-  pending = false,
-}: Readonly<{
-  notes: PairNote[];
-  /** Left out where the notes can only be read (a locked pair, an admin looking at one). */
-  onRemove?: (id: string) => void;
-  /** Left out where the notes can only be read. */
-  onEdit?: (id: string, edit: NoteEdit) => Promise<void> | void;
-  /** Nothing to save onto yet: the notes go with the answer. */
-  pending?: boolean;
-}>) {
-  const { t } = useTranslation();
-  if (notes.length === 0) return null;
-  return (
-    <section className="mt-4 rounded-lg border border-gray-200 bg-white px-4 py-3">
-      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <MessageSquareText className="h-4 w-4 text-gray-500" />
-        <h3 className="text-sm font-medium text-gray-700">{t('dedup.notes.title')}</h3>
-        {pending && <span className="text-xs text-gray-500">{t('dedup.notes.savedWithAnswer')}</span>}
-      </div>
-      <NoteList notes={notes} onRemove={onRemove} onEdit={onEdit} />
-    </section>
   );
 }
