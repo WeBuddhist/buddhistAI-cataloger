@@ -51,8 +51,10 @@ export const AuthorField = ({ disabled: disabledFromParent }: AuthorFieldProps =
     onFormFieldUpdate: onUpdate,
     aiSuggestionsControls,
     reviewerSuggestionControls,
+    isDocumentReadOnly,
   } = useAnnotationMetadata();
-  const disabled = segment.status === 'checked' || Boolean(disabledFromParent);
+  const disabled =
+    segment.status === 'checked' || isDocumentReadOnly || Boolean(disabledFromParent);
   const authorSearch = formData?.author?.name || '';
   const setAuthorSearch = (value: string) => {
     onUpdate('author', { name: value, bdrc_id: '' });

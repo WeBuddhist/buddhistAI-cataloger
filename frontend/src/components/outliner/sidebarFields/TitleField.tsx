@@ -27,8 +27,10 @@ export const TitleField = forwardRef<TitleFieldRef, TitleFieldProps>(function Ti
     activeSegment,
     aiSuggestionsControls,
     reviewerSuggestionControls,
+    isDocumentReadOnly,
   } = useAnnotationMetadata();
-  const disabled = activeSegment.status === 'checked' || Boolean(disabledFromParent);
+  const disabled =
+    activeSegment.status === 'checked' || isDocumentReadOnly || Boolean(disabledFromParent);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Allow parent to set/get title value programmatically
@@ -88,7 +90,7 @@ export const TitleField = forwardRef<TitleFieldRef, TitleFieldProps>(function Ti
           >
             {t('outliner.titleField.reconstructedCheckbox')}
           </Label>
-          {activeSegment.status !== 'checked' && (
+          {activeSegment.status !== 'checked' && !isDocumentReadOnly && (
             <AISuggestionsBox
               loading={aiSuggestionsControls.aiLoading}
               onDetect={() => void aiSuggestionsControls.onAIDetect()}

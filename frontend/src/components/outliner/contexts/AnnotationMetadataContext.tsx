@@ -40,6 +40,8 @@ export interface AnnotationMetadataContextValue {
   onSave: () => Promise<void>;
   onNotApplicable: () => Promise<void>;
   onResetAnnotations: () => Promise<void>;
+  /** Approved document open read-only: show the metadata, change nothing. */
+  isDocumentReadOnly: boolean;
 }
 
 const AnnotationMetadataContext = createContext<AnnotationMetadataContextValue | null>(null);

@@ -28,6 +28,7 @@ import {
 } from './contexts/AnnotationMetadataContext';
 import type { AnnotationSidebarTab } from './annotationSidebarTab';
 import { useDocument } from './contexts';
+import { hasAnyReviewerChange } from './reviewerChanges';
 import { sanityFindingsTooltip } from './SanityCheckWarningContent';
 
 export type { Title, Author, FormDataType } from './annotationSidebarFormTypes';
@@ -161,6 +162,7 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
   onSidebarActiveTabChange,
 }, ref) => {
   const { t } = useTranslation();
+  const { isReadOnly: isDocumentReadOnly } = useDocument();
   const { updateSegment: updateSegmentMutation, document } = useOutlinerDocument();
   const activeSegmentId = activeSegment?.id || null;
   const fullDocumentContent = document?.content ?? '';
@@ -722,7 +724,12 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
   );
 
   const hasLabelledSegment = Boolean(activeSegment?.label);
-  const isMetadataDisabled = !activeSegment || !hasLabelledSegment || activeSegment.status === 'approved';
+  // Approved segments keep the tab closed while the document is being worked on; in an approved
+  // document opened read-only, it opens view-only so the reviewer's title/author corrections show.
+  const isMetadataDisabled =
+    !activeSegment ||
+    !hasLabelledSegment ||
+    (activeSegment.status === 'approved' && !isDocumentReadOnly);
   
 
   const [labelFilter, setLabelFilter] = useState<LabelFilterValue[]>([]);
@@ -743,7 +750,7 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
       list = list.filter((seg) => seg.status !== 'checked');
     }
     if (reviewerChangedOnly) {
-      list = list.filter((seg) => Boolean(seg.corrected_by_reviewer || seg.created_by_id));
+      list = list.filter(hasAnyReviewerChange);
     }
     return list;
   }, [segments, labelFilter, completionFilter, reviewerChangedOnly]);
@@ -771,8 +778,10 @@ const AnnotationSidebarInner = forwardRef<AnnotationSidebarRef, AnnotationSideba
       onSave,
       onNotApplicable: handleNotApplicable,
       onResetAnnotations: handleAnnotationsReset,
+      isDocumentReadOnly,
     };
   }, [
+    isDocumentReadOnly,
     activeSegment,
     documentId,
     sidebarActiveTab,
