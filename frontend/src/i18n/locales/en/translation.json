@@ -1563,6 +1563,7 @@
       "count_one": "1 note",
       "count_other": "{{count}} notes",
       "updated": "Note updated.",
+      "passageWidened": "Your note will cover this whole passage: the earlier one and your new selection.",
       "voice": {
         "record": "Record a voice note",
         "stop": "Stop recording",

@@ -13,6 +13,7 @@ import {
   noteOnPassage,
   PairNotesContext,
   syllableCount,
+  widenedPassage,
   type NewNote,
   type NoteKind,
   type NoteTarget,
@@ -144,6 +145,9 @@ export function SelectionBar({
     openForm(addToExisting && existing ? existing : null);
   };
   const tooShort = syllables < MIN_QUOTE_SYLLABLES && kind !== MARKS_A_SPOT;
+  // Adding to a note from a wider selection: its passage grows to cover both.
+  const widened = addingTo ? widenedPassage(addingTo, shown[selected.side], selected) : undefined;
+  const quoteShown = addingTo ? (widened?.quote ?? addingTo.quote ?? selected.text) : selected.text;
   return (
     <div className={`bg-gray-50 px-3 py-2 text-sm sm:px-4 ${className}`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -181,7 +185,8 @@ export function SelectionBar({
       </div>
       {noting && onAddNote && (
         <div className="mt-2">
-          <blockquote className="mb-2 line-clamp-2 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{selected.text}</blockquote>
+          {widened && <p className="mb-1 text-xs text-gray-500">{t('dedup.notes.passageWidened')}</p>}
+          <blockquote className="mb-2 line-clamp-2 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{quoteShown}</blockquote>
           {tooShort && !addingTo && (
             <Warning title={t('dedup.notes.shortQuoteTitle', { count: syllables })}>{t('dedup.notes.shortQuoteHelp', { n: MIN_QUOTE_SYLLABLES })}</Warning>
           )}
@@ -203,7 +208,7 @@ export function SelectionBar({
               onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (edit) => {
-                await pairNotes.onEdit?.(addingTo.id, edit);
+                await pairNotes.onEdit?.(addingTo.id, widened ? { ...edit, ...widened } : edit);
                 setAdding(null);
                 setKind(undefined);
                 clear();

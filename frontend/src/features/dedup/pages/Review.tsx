@@ -429,7 +429,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
               </>
             )}
           </button>
-          <NotesMenu where="page" />
+          {/* Behind the full-text window, which has its own: only one notes panel at a time. */}
+          {!fullText && <NotesMenu where="page" />}
           <CopyPairLink itemId={item.item_id} />
           {index >= 0 && (
             <span className="mr-1 text-xs tabular-nums text-gray-500">

@@ -74,8 +74,11 @@ export interface VoiceRecording {
 export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids'> &
   NoteDetails & { recording?: VoiceRecording };
 
-/** What an edit changes on a saved note; a new recording is added to its list. */
-export type NoteEdit = Pick<PairNote, 'target' | 'text'> & NoteDetails & { recording?: VoiceRecording };
+/** What an edit changes on a saved note; a new recording is added to its list. `quote`
+ * and `range` when adding to the note from a wider selection: its passage grows. */
+export type NoteEdit = Pick<PairNote, 'target' | 'text'> &
+  Partial<Pick<PairNote, 'quote' | 'range'>> &
+  NoteDetails & { recording?: VoiceRecording };
 
 /** The note as stored: the recording itself never goes into it, only its id. */
 export function makeNote(added: NewNote): PairNote {
@@ -95,8 +98,10 @@ export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: stri
     kind: edit.kind,
     checked: edit.checked,
     page: edit.page,
+    ...(edit.quote ? { quote: edit.quote, range: edit.range } : {}),
     updated_at: new Date().toISOString(),
   });
+  if (!next.range) delete next.range;
   delete next.voice_note_id;
   if (ids.length) next.voice_note_ids = ids;
   else delete next.voice_note_ids;
@@ -133,6 +138,23 @@ export function noteOnPassage(
     const found = findMatches(shown, n.quote);
     return found.exact && found.ranges.some((r) => r.start < range.end && range.start < r.end);
   });
+}
+
+/** The passage a note covers once a new selection is added to it: from the earlier of the
+ * two starts to the later of the two ends, as shown in `shown`. Undefined when the note's
+ * passage cannot be placed there, or the selection already lies within it. */
+export function widenedPassage(
+  note: PairNote,
+  shown: string,
+  selected: { text: string; range?: TextRange },
+): { quote: string; range: TextRange } | undefined {
+  const sel = selected.range;
+  if (!note.quote || !sel) return undefined;
+  const found = findMatches(shown, note.quote);
+  const old = found.exact ? found.ranges.find((r) => r.start < sel.end && sel.start < r.end) : undefined;
+  if (!old || (sel.start >= old.start && sel.end <= old.end)) return undefined;
+  const range = { start: Math.min(old.start, sel.start), end: Math.max(old.end, sel.end) };
+  return { quote: shown.slice(range.start, range.end), range };
 }
 
 /** Set on a panel or dialog open over the full-text window: the window leaves Esc to it. */

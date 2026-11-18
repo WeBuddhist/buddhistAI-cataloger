@@ -11,7 +11,13 @@ import { NoteList } from './PairNotes';
 export default function NotesMenu({ where }: Readonly<{ where: NotesPlace }>) {
   const { t } = useTranslation();
   const { notes, onEdit, onRemove, pending, onShow } = useContext(PairNotesContext);
-  const [open, setOpen] = useState(false);
+  const [rawOpen, setOpen] = useState(false);
+  // The button hides with the last note removed, and the panel closes with it: it must not
+  // come back open, on its own, when a note is added later.
+  const open = rawOpen && notes.length > 0;
+  useEffect(() => {
+    if (notes.length === 0) setOpen(false);
+  }, [notes.length]);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
