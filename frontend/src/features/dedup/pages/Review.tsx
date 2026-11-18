@@ -8,6 +8,7 @@ import { saveVoiceNote, type AdjudicationItem, type AdminPair, type DecisionInpu
 import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
+import DifferentReasonDialog from '../components/DifferentReasonDialog';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
 import NotesMenu from '../components/NotesMenu';
 import PreferredCopyDialog, { type PreferredChoice } from '../components/PreferredCopyDialog';
@@ -21,12 +22,31 @@ import {
   useAdjudicationQueue,
   useBatchName,
   useCorrectPair,
+  useGetFullText,
   useItem,
   useMyItems,
   useSaveAdjudication,
   useSaveDecision,
 } from '../hooks/useReview';
-import { editedNote, KEEPS_ESCAPE, makeNote, notesOf, PairNotesContext, usePairDraft, withNotes, type NewNote, type NoteEdit, type NotesPlace, type PairNote, type VoiceRecording } from '../notes';
+import {
+  editedNote,
+  givesReason,
+  KEEPS_ESCAPE,
+  makeNote,
+  notesOf,
+  PairNotesContext,
+  placePassage,
+  usePairDraft,
+  withNotes,
+  type NewNote,
+  type NoteEdit,
+  type NotePlace,
+  type NotesPlace,
+  type NoteTarget,
+  type PairNote,
+  type ShownAt,
+  type VoiceRecording,
+} from '../notes';
 import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
 
 const CONFIDENCE = [1, 2, 3, 4, 5];
@@ -165,6 +185,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   // Stays open from pair to pair, so the scans can be read alongside each one.
   const [scan, setScan] = useState<ScanTag | null>(null);
   const [askPreferred, setAskPreferred] = useState(false);
+  // Open while asking why the texts are different, before saving that answer.
+  const [askReason, setAskReason] = useState(false);
   const advanceTimer = useRef<number | undefined>(undefined);
   // The docked action bar wraps onto several rows on a phone; the page keeps its
   // height free so nothing is hidden behind it.
@@ -186,14 +208,15 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   useEffect(() => () => window.clearTimeout(advanceTimer.current), []);
 
   const submit = useCallback(
-    async (fields: DecisionInput) => {
+    // `withAlso`: notes made along with this answer (the reason for "different").
+    async (fields: DecisionInput, withAlso: PairNote[] = []) => {
       if (!item) return;
       const body: DecisionInput = {
         // What was flagged while the pair had no answer goes with the answer.
         ...(fields.verdict && draft.issues.length > 0 ? { issues: draft.issues } : {}),
         ...fields,
         // Only "same" carries a preferred copy, so a stale one is dropped; notes stay.
-        ...(fields.verdict ? { partner_payload: withNotes(fields.partner_payload, notes) } : {}),
+        ...(fields.verdict ? { partner_payload: withNotes(fields.partner_payload, [...notes, ...withAlso]) } : {}),
         // Confidence only means something alongside a verdict.
         ...(fields.verdict && confidence != null ? { confidence } : {}),
       };
@@ -252,28 +275,60 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [item, t],
   );
 
+  const getFullText = useGetFullText();
+  /** Where a note's passage is in each of the pair's texts, as BDRC's API serves them.
+   * Undefined when it has no passage, or the texts could not be fetched: the note is
+   * saved all the same. */
+  const placeOf = useCallback(
+    async (quote: string | undefined, target: NoteTarget, near: Partial<Record<'a' | 'b', number>>): Promise<NotePlace | undefined> => {
+      if (!quote || !item) return undefined;
+      const ids = { a: item.evidence.a?.mw_id ?? item.subject.a_mw, b: item.evidence.b?.mw_id ?? item.subject.b_mw };
+      const sides = target === 'both' ? (['a', 'b'] as const) : [target];
+      try {
+        const texts = Object.fromEntries(
+          await Promise.all(sides.map(async (side) => [side, ids[side] ? await getFullText(ids[side]) : null] as const)),
+        );
+        return placePassage(quote, target, texts, near);
+      } catch {
+        return undefined;
+      }
+    },
+    [item, getFullText],
+  );
+  const nearOf = (shownAt: ShownAt | undefined) => (shownAt ? { [shownAt.side]: shownAt.range.start } : {});
+
   const addNote = useCallback(
     async (added: NewNote) => {
-      const recordingId = await storeRecording(added.recording);
-      const made = makeNote({ ...added, voice_note_ids: recordingId ? [recordingId] : undefined });
+      const [recordingId, range] = await Promise.all([
+        storeRecording(added.recording),
+        // A note kept from an annotator's answer comes placed already.
+        added.range ?? placeOf(added.quote, added.target, nearOf(added.shownAt)),
+      ]);
+      const made = makeNote({ ...added, range, voice_note_ids: recordingId ? [recordingId] : undefined });
       if (item?.verdict) saveNotes([...savedNotes, made]);
       else draft.addNote(made);
     },
-    [item?.verdict, storeRecording, saveNotes, savedNotes, draft],
+    [item?.verdict, storeRecording, placeOf, saveNotes, savedNotes, draft],
   );
 
   const editNote = useCallback(
     async (id: string, edit: NoteEdit) => {
-      const recordingId = await storeRecording(edit.recording);
-      const saved = savedNotes.find((n) => n.id === id);
-      if (saved) {
-        saveNotes(savedNotes.map((n) => (n.id === id ? editedNote(n, edit, recordingId) : n)));
-        return;
-      }
-      const drafted = draft.notes.find((n) => n.id === id);
-      if (drafted) draft.replaceNote(editedNote(drafted, edit, recordingId));
+      const before = savedNotes.find((n) => n.id === id) ?? draft.notes.find((n) => n.id === id);
+      if (!before) return;
+      // Placed again: the passage may have grown, or the note moved to both texts. Near
+      // where it was, or where the wider selection is.
+      const near = edit.shownAt
+        ? nearOf(edit.shownAt)
+        : Object.fromEntries(Object.entries(before.range ?? {}).map(([side, p]) => [side, p.start]));
+      const [recordingId, range] = await Promise.all([
+        storeRecording(edit.recording),
+        placeOf(edit.quote ?? before.quote, edit.target, near),
+      ]);
+      const next = editedNote(before, { ...edit, range }, recordingId);
+      if (savedNotes.some((n) => n.id === id)) saveNotes(savedNotes.map((n) => (n.id === id ? next : n)));
+      else draft.replaceNote(next);
     },
-    [storeRecording, saveNotes, savedNotes, draft],
+    [storeRecording, placeOf, saveNotes, savedNotes, draft],
   );
 
   // A note clicked in the notes list, for the texts it was clicked over to show.
@@ -297,9 +352,24 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         setAskPreferred(true);
         return;
       }
+      // A "different" answer says why (one of the guidelines' reasons, with a sentence).
+      if (!givesReason(notes)) {
+        setAskReason(true);
+        return;
+      }
       submit({ verdict }).catch(() => {});
     },
-    [submit],
+    [submit, notes],
+  );
+
+  const saveDifferent = useCallback(
+    async (reason: NoteEdit) => {
+      const recordingId = await storeRecording(reason.recording);
+      const note = makeNote({ ...reason, voice_note_ids: recordingId ? [recordingId] : undefined });
+      await submit({ verdict: 'different' }, [note]);
+      setAskReason(false);
+    },
+    [storeRecording, submit],
   );
 
   const saveSame = useCallback(
@@ -324,7 +394,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (dialog || fullText || askPreferred || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (dialog || fullText || askPreferred || askReason || e.metaKey || e.ctrlKey || e.altKey) return;
       // The notes panel or the "already a note here" question is open.
       if (document.querySelector(`[${KEEPS_ESCAPE}]`)) return;
       const tag = (e.target as HTMLElement).tagName;
@@ -343,7 +413,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, fullText, askPreferred, decide, flagIssue, goTo, prevId, nextId, locked]);
+  }, [dialog, fullText, askPreferred, askReason, decide, flagIssue, goTo, prevId, nextId, locked]);
 
   // Someone else's pair (e.g. a link copied from the address bar into a spreadsheet):
   // show the read-only page instead of a work page they cannot use.
@@ -457,7 +527,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         bottomInset={barHeight}
         onAddNote={canWriteNotes ? addNote : undefined}
       >
-        {adjItem && <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} />}
+        {adjItem && (
+          <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} own={notes} onKeep={canWriteNotes ? addNote : undefined} />
+        )}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
       </PairEvidence>
 
@@ -599,6 +671,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         current={item.verdict === 'same' ? preferred : undefined}
         onPick={saveSame}
       />
+
+      <DifferentReasonDialog open={askReason} onSave={saveDifferent} onCancel={() => setAskReason(false)} />
 
       <CantAnswerDialog
         open={dialog != null}

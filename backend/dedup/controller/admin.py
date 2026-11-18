@@ -479,6 +479,7 @@ def _saved_note(d: DedupDecision, n: dict, index: int) -> dict:
         "kind": n.get("kind") or None,
         "checked": n.get("checked") or None,
         "page": n.get("page") or None,
+        "witness_id": n.get("witness_id") or None,
         "voice_note_ids": ids + list(n.get("voice_note_ids") or []),
         "created_at": _when(n.get("created_at")) or d.decided_at,
         "updated_at": _when(n.get("updated_at")),
@@ -496,7 +497,7 @@ def _notes_of(d: DedupDecision) -> list[dict]:
     if d.note and d.note.strip():
         out.append({
             "id": f"decision:{d.id}", "target": None, "quote": None, "text": d.note.strip(),
-            "kind": None, "checked": None, "page": None, "voice_note_ids": [], "created_at": d.decided_at, "updated_at": None,
+            "kind": None, "checked": None, "page": None, "witness_id": None, "voice_note_ids": [], "created_at": d.decided_at, "updated_at": None,
         })
     return out
 
@@ -535,6 +536,7 @@ def pair_notes(db: Session, item_id: int) -> list[AdminPairNoteOut]:
             kind=n["kind"],
             checked=n["checked"],
             page=n["page"],
+            witness_id=n["witness_id"],
             voice_note_ids=n["voice_note_ids"],
             created_at=n["created_at"],
             updated_at=n["updated_at"],

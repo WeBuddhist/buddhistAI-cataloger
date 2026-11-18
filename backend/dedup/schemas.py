@@ -275,6 +275,8 @@ class AdminPairNoteOut(BaseModel):
     # What the note was checked against: scan | bdrc | none; with the scan page.
     checked: Optional[str] = None
     page: Optional[str] = None
+    # The BDRC id found, when checked on BDRC.
+    witness_id: Optional[str] = None
     voice_note_ids: list[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

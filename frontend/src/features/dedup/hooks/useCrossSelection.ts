@@ -9,7 +9,9 @@ import { formatNumber } from '../utils';
 
 export type Tag = 'A' | 'B';
 
-export type Picked = { text: string; range?: TextRange };
+/** `near`: about where in the full text, when only the words are known (selected in the
+ * opening or ending): enough to tell which of several matches it was. */
+export type Picked = { text: string; range?: TextRange; near?: number };
 
 export type Marks = {
   ranges: TextRange[];
@@ -54,7 +56,7 @@ export function noteSelectingSide(e: PointerEvent<HTMLElement>) {
 }
 
 /** What is selected inside `el`, with its place in the element's text. */
-export function selectionIn(el: HTMLElement): Required<Picked> | null {
+export function selectionIn(el: HTMLElement): Required<Pick<Picked, 'text' | 'range'>> | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
@@ -69,7 +71,7 @@ export function selectionIn(el: HTMLElement): Required<Picked> | null {
 
 /** Where a note's passage is in the texts shown: its own text first, then the other one
  * for a note on both. */
-function placeOf(note: PairNote, shown: Record<Tag, string>): (Required<Picked> & { side: Tag }) | null {
+function placeOf(note: PairNote, shown: Record<Tag, string>): (Required<Pick<Picked, 'text' | 'range'>> & { side: Tag }) | null {
   if (!note.quote) return null;
   const sides: Tag[] = note.target === 'b' ? ['B', 'A'] : ['A', 'B'];
   for (const side of note.target === 'both' ? sides : sides.slice(0, 1)) {

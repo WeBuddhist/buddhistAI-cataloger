@@ -963,7 +963,16 @@
       "annotatorN": "Annotator {{n}}",
       "confidenceTitle": "Confidence, 1 to 5",
       "confidence": "confidence {{n}}/5",
-      "agreedCheck": "both gave the same answer. This is a final check: keep their answer or change it. Your answer is final."
+      "agreedCheck": "both gave the same answer. This is a final check: keep their answer or change it. Your answer is final.",
+      "notesBelow_one": "{{count}} note, listed below",
+      "notesBelow_other": "{{count}} notes, listed below",
+      "notesTitle": "Annotators' notes",
+      "notesHelp": "Notes about the same place are grouped. Keep one note per fact in your answer: keep a note, keep a group as one, or leave it out.",
+      "samePlace_one": "Same place",
+      "samePlace_other": "Same place: {{count}} notes",
+      "keep": "Keep",
+      "keepAsOne": "Keep as one",
+      "kept": "Kept"
     },
     "preferred": {
       "title": "Which copy is better?",
@@ -1540,7 +1549,7 @@
       "placeholder": "Write a note…",
       "add": "Add note",
       "remove": "Remove note",
-      "targetLabel": "Which text the note is about",
+      "targetLabel": "Where the highlighted passage is",
       "target": {
         "both": "Both",
         "a": "A",
@@ -1594,11 +1603,11 @@
         "options": {
           "content_missing": {
             "label": "Content missing",
-            "help": "The texts are the same overall, but a page or some content is missing from the other text."
+            "help": "The texts are the same overall, but a page or some content is missing from the other text. Highlight it in the text that has it."
           },
           "extra_content": {
             "label": "Extra content",
-            "help": "The texts are the same overall, but this text has some extra content."
+            "help": "The texts are the same overall, but this text has some extra content. Highlight it in this text."
           },
           "outlining_issue": {
             "label": "Outlining issue",
@@ -1628,7 +1637,8 @@
             "label": "Different (sadhana instructions)",
             "help": "One is a sadhana with instructions and the other is without."
           }
-        }
+        },
+        "placeholderRequired": "Choose the reason"
       },
       "checked": {
         "label": "Checked on",
@@ -1637,8 +1647,20 @@
         "none": "Not checked",
         "page": "Page",
         "pagePlaceholder": "e.g. 12",
-        "scanPage": "Scan p. {{page}}"
-      }
+        "scanPage": "Scan p. {{page}}",
+        "found": "Found",
+        "foundPlaceholder": "e.g. MW22084",
+        "foundHelp": "The BDRC id of the text you found (W… or MW…). You can paste its BDRC library link.",
+        "bdrcFound": "BDRC {{id}}"
+      },
+      "placeholderWhy": "Say why, in a sentence…",
+      "whyRequired": "Add a sentence saying why: the type alone doesn't explain it.",
+      "targetHelp": "The text you highlighted in. For something missing, highlight it in the text that has it."
+    },
+    "differentReason": {
+      "title": "Why are they different?",
+      "help": "Choose the reason and say why in a sentence. It is saved as a note with your answer.",
+      "save": "Save as Different"
     }
   }
 }

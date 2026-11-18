@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Optional
 
+from core.config import DEDUP_SYNC_ENABLED
 from core.database import SessionLocal
 from dedup import client
 from dedup.client import ReviewApiError
@@ -83,8 +84,11 @@ def _worker_loop() -> None:
 
 
 def start_worker() -> None:
-    """Start the worker (called once from app startup)."""
+    """Start the worker (called once from app startup); not with DEDUP_SYNC=off."""
     global _worker_thread
+    if not DEDUP_SYNC_ENABLED:
+        logger.warning("dedup sync to BDRC is off (DEDUP_SYNC=off): answers stay queued here")
+        return
     if _worker_thread is not None and _worker_thread.is_alive():
         return
     _stop_event.clear()

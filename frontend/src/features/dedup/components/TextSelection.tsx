@@ -208,7 +208,8 @@ export function SelectionBar({
               onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (edit) => {
-                await pairNotes.onEdit?.(addingTo.id, widened ? { ...edit, ...widened } : edit);
+                const grown = widened && { quote: widened.quote, shownAt: { side: target, range: widened.range } };
+                await pairNotes.onEdit?.(addingTo.id, grown ? { ...edit, ...grown } : edit);
                 setAdding(null);
                 setKind(undefined);
                 clear();
@@ -222,7 +223,10 @@ export function SelectionBar({
               onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (note) => {
-                await onAddNote({ ...note, quote: selected.text, range: selected.range });
+                // Where it was selected; only about where, when picked in the opening or ending.
+                const at = selected.range ?? (selected.near == null ? undefined : { start: selected.near, end: selected.near });
+                const shownAt = at && { side: target, range: at };
+                await onAddNote({ ...note, quote: selected.text, shownAt });
                 setKind(undefined);
                 clear();
                 toast.success(t('dedup.notes.added'));

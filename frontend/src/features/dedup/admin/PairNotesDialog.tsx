@@ -118,7 +118,7 @@ function NoteItem({ note }: Readonly<{ note: AdminPairNote }>) {
           {note.quote && (
             <blockquote className="mb-1 line-clamp-3 border-l-2 border-amber-300 pl-2 font-monlam text-sm text-gray-600">{note.quote}</blockquote>
           )}
-          <NoteDetailTags note={{ kind: note.kind ?? undefined, checked: note.checked ?? undefined, page: note.page ?? undefined }} />
+          <NoteDetailTags note={{ kind: note.kind ?? undefined, checked: note.checked ?? undefined, page: note.page ?? undefined, witness_id: note.witness_id ?? undefined }} />
           {note.text && <p className="whitespace-pre-wrap break-words text-sm text-gray-900">{note.text}</p>}
         </div>
         {note.voice_note_ids.length > 0 && <PlayRecordings ids={note.voice_note_ids} />}

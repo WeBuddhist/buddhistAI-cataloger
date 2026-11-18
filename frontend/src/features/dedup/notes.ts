@@ -23,33 +23,77 @@ export const MARKS_A_SPOT: NoteKind = 'outlining_issue';
 export const NOTE_CHECKS = ['scan', 'bdrc', 'none'] as const;
 export type NoteCheck = (typeof NOTE_CHECKS)[number];
 
+/** The kinds that say why two texts are different works. */
+export const REASON_KINDS: readonly NoteKind[] = NOTE_KINDS.different;
+
+/** Whether `kind` says why two texts are different works: such a note needs a sentence. */
+export const isReasonKind = (kind: NoteKind | undefined) => kind != null && REASON_KINDS.includes(kind);
+
+/** Whether `notes` say why the texts are different: a reason kind, with a sentence. */
+export const givesReason = (notes: PairNote[]) => notes.some((n) => isReasonKind(n.kind) && n.text.trim());
+
 /** A note's kind and what it was checked against; all optional. */
 export interface NoteDetails {
   kind?: NoteKind;
   checked?: NoteCheck;
   /** The scan page looked at, when checked on the scan. */
   page?: string;
+  /** The BDRC work or instance found (W… / MW… id), when checked on BDRC. */
+  witness_id?: string;
 }
 
-/** `note` without details that are unset, and without a page unless checked on the scan. */
+/** A BDRC id typed or pasted (a library link, `bdr:MW22084`) as the bare id; the text as
+ * typed when no id is in it. */
+export function bdrcId(typed: string): string {
+  const found = /\b(?:bdr:)?(M?W[0-9A-Za-z_-]+)/.exec(typed);
+  return found ? found[1] : typed.trim();
+}
+
+/** `note` without details that are unset, and without a page or id unless checked where
+ * they belong. */
 function tidyDetails<T extends NoteDetails>(note: T): T {
   const next = { ...note };
   if (!next.kind) delete next.kind;
   if (!next.checked) delete next.checked;
   if (next.checked !== 'scan' || !next.page?.trim()) delete next.page;
   else next.page = next.page.trim();
+  if (next.checked !== 'bdrc' || !next.witness_id?.trim()) delete next.witness_id;
+  else next.witness_id = bdrcId(next.witness_id);
   return next;
+}
+
+/** Where a passage is in one text, in the text BDRC's API serves for it (`/texts/{mw_id}`):
+ * offsets in characters (code points), as Python counts them. `etext_source` and
+ * `text_length` say which text that was, so a later change to it can be noticed. */
+export interface SidePlace {
+  start: number;
+  end: number;
+  etext_source: string | null;
+  text_length: number | null;
+}
+
+/** A passage's place in each text it was found in: A's and B's offsets differ. */
+export type NotePlace = Partial<Record<'a' | 'b', SidePlace>>;
+
+/** Where a selection was on screen: which text, and its place in that text as displayed. */
+export interface ShownAt {
+  side: 'a' | 'b';
+  range: TextRange;
 }
 
 export interface PairNote extends NoteDetails {
   id: string;
+  /** The text that holds the quote (both when it is in both). For something missing, that
+   * is the text that has it, not the one that lacks it. */
   target: NoteTarget;
-  /** May be empty when the note has a kind. */
+  /** May be empty when the note has a kind, except a kind giving a reason. */
   text: string;
   /** The highlighted passage the note is about, when it is about one. */
   quote?: string;
-  /** Where the passage sits in that text as displayed. */
-  range?: TextRange;
+  /** Where the passage is in each text it was found in. */
+  range?: NotePlace;
+  /** The annotators' notes an adjudicator took this one from (their ids). */
+  adopted_from?: string[];
   /** The recordings behind a spoken note, oldest first (`dedup_voice_notes`, audio in
    * S3). Editing a note with the mic adds one; earlier ones are kept. */
   voice_note_ids?: string[];
@@ -71,20 +115,26 @@ export interface VoiceRecording {
   stt: SttRequest[];
 }
 
-export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids'> &
-  NoteDetails & { recording?: VoiceRecording };
+/** `shownAt`: where the selection was on screen, to place the passage by; it is not stored.
+ * `range` is filled in from it, and from the texts, when the note is saved. */
+export type NewNote = Pick<PairNote, 'target' | 'text' | 'quote' | 'range' | 'voice_note_ids' | 'adopted_from'> &
+  NoteDetails & { recording?: VoiceRecording; shownAt?: ShownAt };
 
 /** What an edit changes on a saved note; a new recording is added to its list. `quote`
- * and `range` when adding to the note from a wider selection: its passage grows. */
+ * (with `shownAt`) when adding to the note from a wider selection: its passage grows.
+ * `range` is filled in when the edit is saved. */
 export type NoteEdit = Pick<PairNote, 'target' | 'text'> &
   Partial<Pick<PairNote, 'quote' | 'range'>> &
-  NoteDetails & { recording?: VoiceRecording };
+  NoteDetails & { recording?: VoiceRecording; shownAt?: ShownAt };
 
 /** The note as stored: the recording itself never goes into it, only its id. */
 export function makeNote(added: NewNote): PairNote {
   const note: PairNote = tidyDetails({ ...added, id: crypto.randomUUID(), created_at: new Date().toISOString() });
   delete (note as NewNote).recording;
+  delete (note as NewNote).shownAt;
   if (!note.voice_note_ids?.length) delete note.voice_note_ids;
+  if (!note.adopted_from?.length) delete note.adopted_from;
+  if (!note.range || Object.keys(note.range).length === 0) delete note.range;
   return note;
 }
 
@@ -98,10 +148,13 @@ export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: stri
     kind: edit.kind,
     checked: edit.checked,
     page: edit.page,
-    ...(edit.quote ? { quote: edit.quote, range: edit.range } : {}),
+    witness_id: edit.witness_id,
+    ...(edit.quote ? { quote: edit.quote } : {}),
+    // Placed again when the edit was saved; kept as it was when that was not possible.
+    ...(edit.range ? { range: edit.range } : {}),
     updated_at: new Date().toISOString(),
   });
-  if (!next.range) delete next.range;
+  if (!next.range || Object.keys(next.range).length === 0) delete next.range;
   delete next.voice_note_id;
   if (ids.length) next.voice_note_ids = ids;
   else delete next.voice_note_ids;
@@ -157,6 +210,145 @@ export function widenedPassage(
   return { quote: shown.slice(range.start, range.end), range };
 }
 
+/** A text as BDRC's API serves it, to place a note's passage in. */
+export interface ServedText {
+  text_bo: string;
+  etext_source: string | null;
+  text_length: number | null;
+}
+
+/** `offset` (in UTF-16 units, as JavaScript counts) in code points, as Python counts. */
+function codePoints(text: string, offset: number): number {
+  return Array.from(text.slice(0, offset)).length;
+}
+
+/** `found` (the quote's letters, matched in `text`) widened over the punctuation the
+ * quote starts or ends with (a tsheg, a shad), where the text has it too: the place then
+ * holds exactly the quote. */
+function withEdges(text: string, quote: string, found: TextRange): TextRange {
+  const { at } = lettersOf(quote);
+  if (at.length === 0) return found;
+  const lead = quote.slice(0, at[0]);
+  const trail = quote.slice(at.at(-1)! + 1);
+  let { start, end } = found;
+  if (lead && text.slice(start - lead.length, start) === lead) start -= lead.length;
+  if (trail && text.slice(end, end + trail.length) === trail) end += trail.length;
+  return { start, end };
+}
+
+/**
+ * Where `quote` is in each text the note is on, in the texts as served. `near` gives, per
+ * side, about where the passage is (where it was selected, or its earlier place): of
+ * several matches, the nearest is taken. Without it, a passage found more than once is
+ * left unplaced on that side rather than guessed. The texts on screen differ from the
+ * served ones only in blank lines, so a place on screen is close to the served one.
+ */
+export function placePassage(
+  quote: string,
+  target: NoteTarget,
+  texts: Partial<Record<'a' | 'b', ServedText | null>>,
+  near: Partial<Record<'a' | 'b', number>> = {},
+): NotePlace {
+  const place: NotePlace = {};
+  for (const side of target === 'both' ? (['a', 'b'] as const) : [target]) {
+    const served = texts[side];
+    if (!served?.text_bo) continue;
+    const { ranges } = findMatches(served.text_bo, quote);
+    const at = near[side];
+    let found: TextRange | undefined;
+    if (at != null && ranges.length > 0) {
+      found = ranges.reduce((best, r) => (Math.abs(r.start - at) < Math.abs(best.start - at) ? r : best), ranges[0]);
+    } else if (ranges.length === 1) {
+      found = ranges[0];
+    }
+    if (!found) continue;
+    const { start, end } = withEdges(served.text_bo, quote, found);
+    place[side] = {
+      start: codePoints(served.text_bo, start),
+      end: codePoints(served.text_bo, end),
+      etext_source: served.etext_source,
+      text_length: served.text_length,
+    };
+  }
+  return place;
+}
+
+/** Letters in a row that, found in another quote, show the two passages overlap. */
+const OVERLAP_LETTERS = 12;
+
+/** Whether two notes say something about the same place: their passages overlap in a
+ * text they share, or, without passages, they have the same kind. */
+export function samePlace(x: PairNote, y: PairNote): boolean {
+  if (!x.quote || !y.quote) return !x.quote && !y.quote && x.kind != null && x.kind === y.kind;
+  if (x.target !== y.target && x.target !== 'both' && y.target !== 'both') return false;
+  for (const side of ['a', 'b'] as const) {
+    const p = x.range?.[side];
+    const q = y.range?.[side];
+    if (p && q) return p.start < q.end && q.start < p.end;
+  }
+  const lx = lettersOf(x.quote).letters;
+  const ly = lettersOf(y.quote).letters;
+  if (!lx || !ly) return false;
+  if (lx.includes(ly) || ly.includes(lx)) return true;
+  // Passages that run into each other: one's start or end is in the other.
+  const ends = (s: string) => (s.length >= OVERLAP_LETTERS ? [s.slice(0, OVERLAP_LETTERS), s.slice(-OVERLAP_LETTERS)] : []);
+  return ends(ly).some((e) => lx.includes(e)) || ends(lx).some((e) => ly.includes(e));
+}
+
+/** `items` in groups of notes about the same place, in the order first met. */
+export function groupBySamePlace<T extends { note: PairNote }>(items: T[]): T[][] {
+  const groups: T[][] = [];
+  for (const item of items) {
+    const joined = groups.filter((g) => g.some((other) => samePlace(other.note, item.note)));
+    // A note can link two groups that had nothing in common: they become one.
+    const merged = [...joined.flat(), item];
+    for (const g of joined) groups.splice(groups.indexOf(g), 1);
+    groups.push(merged);
+  }
+  // Back in the order the notes came.
+  const order = new Map(items.map((item, i) => [item, i]));
+  return groups.sort((g, h) => Math.min(...g.map((i) => order.get(i)!)) - Math.min(...h.map((i) => order.get(i)!)));
+}
+
+/** One note made from several notes about the same place (an adjudicator keeping them as
+ * one): the widest passage, every text, and the first kind and check given. */
+export function mergedNote(notes: PairNote[]): NewNote {
+  const widest = notes.reduce((w, n) => ((n.quote?.length ?? 0) > (w.quote?.length ?? 0) ? n : w), notes[0]);
+  const targets = new Set(notes.map((n) => n.target));
+  const texts = [...new Set(notes.map((n) => n.text.trim()).filter(Boolean))];
+  const checked = notes.find((n) => n.checked);
+  return {
+    target: targets.size === 1 ? notes[0].target : 'both',
+    text: texts.join('\n'),
+    quote: widest.quote,
+    // Only kept when every note is on the same text: it may need placing in the other too.
+    range: targets.size === 1 ? widest.range : undefined,
+    kind: notes.find((n) => n.kind)?.kind,
+    checked: checked?.checked,
+    page: checked?.page,
+    witness_id: checked?.witness_id,
+    voice_note_ids: notes.flatMap(recordingIds),
+    adopted_from: notes.map((n) => n.id),
+  };
+}
+
+/** A note an adjudicator keeps from an annotator's answer, as theirs. */
+export function keptNote(note: PairNote): NewNote {
+  // Only what the note says: who wrote it and when is the adjudicator's now.
+  return {
+    target: note.target,
+    text: note.text,
+    quote: note.quote,
+    range: note.range,
+    kind: note.kind,
+    checked: note.checked,
+    page: note.page,
+    witness_id: note.witness_id,
+    voice_note_ids: recordingIds(note),
+    adopted_from: [note.id],
+  };
+}
+
 /** Set on a panel or dialog open over the full-text window: the window leaves Esc to it. */
 export const KEEPS_ESCAPE = 'data-keeps-escape';
 
@@ -197,13 +389,22 @@ interface Draft {
 }
 
 const EMPTY: Draft = { notes: [], issues: [] };
+
+/** A draft note from before passages were placed per text kept a place on screen
+ * (`{start, end}`), which BDRC cannot use: it is dropped. */
+function withoutShownPlace(note: PairNote): PairNote {
+  if (!note.range || !('start' in note.range)) return note;
+  const next = { ...note };
+  delete next.range;
+  return next;
+}
 const draftKey = (itemId: number) => `dedup.draft.${itemId}`;
 
 function readDraft(itemId: number | undefined): Draft {
   if (itemId == null) return EMPTY;
   try {
     const saved = JSON.parse(localStorage.getItem(draftKey(itemId)) ?? 'null') as Partial<Draft> | null;
-    return { notes: saved?.notes ?? [], issues: saved?.issues ?? [] };
+    return { notes: (saved?.notes ?? []).map((n) => withoutShownPlace(n)), issues: saved?.issues ?? [] };
   } catch {
     return EMPTY;
   }

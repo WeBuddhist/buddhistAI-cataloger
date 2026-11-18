@@ -51,6 +51,17 @@ export default function WitnessPanel({
   const length = card.text_length ?? 0;
   const unseen = Math.max(0, length - head.length - tail.length);
   const wholeText = () => (full.data ? displayText(full.data.text_bo) : '');
+  /** About where `offset` (in the opening-and-ending box's text) is in the full text: from
+   * the start in the opening, from the end in the ending. */
+  const nearInText = (box: HTMLElement, offset: number): number | undefined => {
+    const all = box.textContent ?? '';
+    const shownHead = displayText(head);
+    const shownTail = displayText(tail);
+    const tailAt = shownTail ? all.lastIndexOf(shownTail) : -1;
+    if (tailAt >= 0 && offset >= tailAt) return Math.max(0, length - (shownTail.length - (offset - tailAt)));
+    const headAt = shownHead ? all.indexOf(shownHead) : -1;
+    return headAt >= 0 && offset >= headAt ? offset - headAt : undefined;
+  };
   // Opening the note form takes the browser's selection away, so the words stay marked here.
   const excerpt = (text: string) => {
     const shown = displayText(text);
@@ -124,7 +135,7 @@ export default function WitnessPanel({
           // Only the words here: this is the opening and ending, not a place in the full text.
           onPointerUp={(e) => {
             const picked = selectionIn(e.currentTarget);
-            onSelect?.(tag, picked && { text: picked.text });
+            onSelect?.(tag, picked && { text: picked.text, near: nearInText(e.currentTarget, picked.range.start) });
             const at = picked ? wholeText().indexOf(picked.text) : -1;
             if (at >= 0) onPointAt?.(at / wholeText().length);
           }}

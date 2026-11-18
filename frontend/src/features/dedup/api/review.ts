@@ -614,6 +614,7 @@ export interface AdminPairNote {
   kind: NoteKind | null;
   checked: NoteCheck | null;
   page: string | null;
+  witness_id: string | null;
   voice_note_ids: string[];
   created_at: string | null;
   updated_at: string | null;

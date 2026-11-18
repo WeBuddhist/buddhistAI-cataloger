@@ -396,8 +396,9 @@ function VolumeView({
   const [shown, setShown] = useState<Record<Tag, string>>({ A: '', B: '' });
   const onShown = useCallback((tag: Tag, text: string) => setShown((s) => ({ ...s, [tag]: text })), []);
   const selection = useCrossSelection(shown, 'window');
-  // A place in a volume means nothing on a note about the pair's texts, so only the words go.
-  const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, range: undefined }));
+  // A place in a volume means nothing on a note about the pair's texts, so only the words
+  // go: the passage is looked for in the pair's texts when the note is saved.
+  const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, shownAt: undefined }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneTabs pane={pane} onPane={setPane} />
@@ -670,7 +671,6 @@ function DiffView({
     selection.select(side, { text, range: { start, end: start + text.replace(/\n/g, '').length } });
   };
   // A place in these rows means nothing on a note about the pair's texts, so only the words go.
-  const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, range: undefined }));
   const punctuationCount = useMemo(
     () => (punctuation === undefined ? 0 : chunks.filter((c) => dtypeOf(c) === punctuation).length),
     [chunks, punctuation],
@@ -776,7 +776,7 @@ function DiffView({
             ),
           )}
       </div>
-      <SelectionBar selection={selection} onAddNote={addNote} className="border-t border-gray-200" />
+      <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
     </div>
   );
 }

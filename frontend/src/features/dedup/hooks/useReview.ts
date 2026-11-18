@@ -229,6 +229,17 @@ export function useSaveAdjudication() {
   });
 }
 
+/** Gets a full text when it is needed once (placing a note's passage): from the cache
+ * when it was already shown, fetched otherwise. */
+export function useGetFullText() {
+  const qc = useQueryClient();
+  return useCallback(
+    (mwId: string) =>
+      qc.fetchQuery({ queryKey: keys.text(mwId), queryFn: ({ signal }) => fetchText(mwId, { signal }), staleTime: Infinity }),
+    [qc],
+  );
+}
+
 /** Only fetched when `enabled`. */
 export function useFullText(mwId: string | undefined, enabled = true) {
   return useQuery({
