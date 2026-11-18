@@ -42,11 +42,16 @@ export interface NoteDetails {
   witness_id?: string;
 }
 
-/** A BDRC id typed or pasted (a library link, `bdr:MW22084`) as the bare id; the text as
- * typed when no id is in it. */
+/** A BDRC id typed or pasted as the bare W… / MW… id: `MW22084`, `bdr:MW22084`, or a
+ * library link, also one opened on an etext, where the work is only in `back=bdr%3AMW…`.
+ * The text as typed when no such id is in it. */
 export function bdrcId(typed: string): string {
-  const found = /\b(?:bdr:)?(M?W[0-9A-Za-z_-]+)/.exec(typed);
-  return found ? found[1] : typed.trim();
+  const found = /(?:^|[^0-9a-z])(?:bdr(?::|%3A))?(m?wa?\d[\w-]*)/i.exec(typed.trim());
+  if (!found) return typed.trim();
+  const id = found[1];
+  // The prefix in capitals (mw22084 → MW22084); the rest as given.
+  const prefix = /^mw/i.test(id) ? 2 : 1;
+  return id.slice(0, prefix).toUpperCase() + id.slice(prefix);
 }
 
 /** `note` without details that are unset, and without a page or id unless checked where
