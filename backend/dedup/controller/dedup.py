@@ -447,7 +447,27 @@ def save_decision(db: Session, user: User, item_id: int, body: DecisionIn) -> It
 
 # --- the answer BDRC gets ----------------------------------------------------------------
 
-def _answer_summary(d: DedupDecision, slot: int) -> dict[str, Any]:
+_NOTE_ROLES = {ROLE_ANNOTATOR: "annotator", ROLE_ADJUDICATOR: "adjudicator", ROLE_ADMIN_CORRECTION: "admin"}
+
+
+def _signed_notes(
+    payload: Optional[dict[str, Any]], d: DedupDecision, slot: Optional[int], names: dict[str, Optional[str]]
+) -> Optional[dict[str, Any]]:
+    """The answer's ``partner_payload`` with who wrote it on every note, so a note still
+    says who wrote it once it is taken out of the answer. A copy: what is saved stays as is."""
+    notes = (payload or {}).get("notes")
+    if not isinstance(notes, list) or not notes:
+        return payload
+    author = {
+        "author_id": d.user_id,
+        "author_name": names.get(d.user_id),
+        "author_role": _NOTE_ROLES.get(d.role),
+        "slot": slot,
+    }
+    return {**payload, "notes": [{**n, **author} if isinstance(n, dict) else n for n in notes]}
+
+
+def _answer_summary(d: DedupDecision, slot: int, names: dict[str, Optional[str]]) -> dict[str, Any]:
     return {
         "slot": slot,
         "annotator_id": d.user_id,
@@ -455,9 +475,22 @@ def _answer_summary(d: DedupDecision, slot: int) -> dict[str, Any]:
         "abstention_reason": d.abstention_reason,
         "confidence": d.confidence,
         "issues": d.issues,
-        "partner_payload": d.partner_payload,
+        "partner_payload": _signed_notes(d.partner_payload, d, slot, names),
         "decided_at": d.decided_at.isoformat() + "Z",
     }
+
+
+def _names(db: Session, user_ids: set[str]) -> dict[str, Optional[str]]:
+    if not user_ids:
+        return {}
+    return {u.id: u.name for u in db.query(User).filter(User.id.in_(user_ids))}
+
+
+def _slot_of(db: Session, d: DedupDecision) -> Optional[int]:
+    """The annotator slot the answer's author holds on the pair; None for others."""
+    if d.role != ROLE_ANNOTATOR:
+        return None
+    return next((a.slot for a in repo.assignments_for_items(db, [d.item_id]) if a.user_id == d.user_id), None)
 
 
 def _union_issues(*lists: Optional[list[dict[str, Any]]]) -> Optional[list[dict[str, Any]]]:
@@ -475,7 +508,15 @@ def bdrc_payload(db: Session, decision: DedupDecision) -> dict[str, Any]:
     On a double-review pair the final answer is the two annotators' shared verdict, the
     adjudicator's, or an admin's correction; ``partner_payload.review`` records how it
     was reached and every answer behind it.
+
+    Every note carries who wrote it (``author_id``, ``author_name``, ``author_role`` and,
+    for an annotator, ``slot``).
     """
+    item = repo.get_item(db, decision.item_id)
+    double = item is not None and item.review_mode == MODE_DOUBLE
+    answers = repo.annotator_answers(db, decision.item_id) if double else {}
+    names = _names(db, {decision.user_id, *(d.user_id for d in answers.values())})
+    slot = _slot_of(db, decision)
     payload = {
         "status": decision.status,
         "verdict": decision.verdict,
@@ -484,14 +525,12 @@ def bdrc_payload(db: Session, decision: DedupDecision) -> dict[str, Any]:
         "issues": decision.issues,
         "annotator_id": decision.user_id,
         "decided_at": decision.decided_at.isoformat() + "Z",
-        "partner_payload": decision.partner_payload,
+        "partner_payload": _signed_notes(decision.partner_payload, decision, slot, names),
     }
-    item = repo.get_item(db, decision.item_id)
-    if item is None or item.review_mode != MODE_DOUBLE:
+    if not double:
         return payload
 
-    answers = repo.annotator_answers(db, decision.item_id)
-    review: dict[str, Any] = {"annotations": [_answer_summary(d, s) for s, d in sorted(answers.items())]}
+    review: dict[str, Any] = {"annotations": [_answer_summary(d, s, names) for s, d in sorted(answers.items())]}
     if decision.role == ROLE_ADMIN_CORRECTION:
         review.update(resolution="admin_corrected", corrected_by=decision.user_id, note=decision.note)
     elif decision.role == ROLE_ADJUDICATOR:

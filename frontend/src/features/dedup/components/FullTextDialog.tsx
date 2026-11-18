@@ -18,10 +18,11 @@ import {
   type Tag,
 } from '../hooks/useCrossSelection';
 import { useVolume, useVolumeList } from '../hooks/useVolumes';
-import type { NewNote } from '../notes';
+import { KEEPS_ESCAPE, type NewNote } from '../notes';
 import type { TextRange } from '../textMatch';
 import { rangeInVolume } from '../textPlace';
 import { displayText, formatNumber } from '../utils';
+import NotesMenu from './NotesMenu';
 import ScanStrip, { type ReadingPlace } from './ScanStrip';
 import { SourceBadge, WitnessMeta } from './SourceBadge';
 import { IconButton, MarkedText, SelectionBar } from './TextSelection';
@@ -132,7 +133,8 @@ export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClo
   useEffect(() => setPlace({ A: null, B: null }), [view]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      // An open notes panel or dialog closes first.
+      if (e.key === 'Escape' && !document.querySelector(`[${KEEPS_ESCAPE}]`)) {
         e.stopPropagation();
         onClose();
       }
@@ -175,13 +177,15 @@ export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClo
           {view === 'side' && (
             <span className="hidden text-xs text-gray-500 sm:inline">{t('dedup.fullText.scrollHint')}</span>
           )}
+          <span className="ml-auto" />
+          <NotesMenu where="window" />
           <button
             type="button"
             role="switch"
             aria-checked={scans}
             onClick={toggleScans}
             title={t('dedup.fullText.scansTitle')}
-            className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Images className="h-4 w-4" /> {t('dedup.fullText.scans')}
             <span className={`relative h-4 w-7 rounded-full transition-colors ${scans ? 'bg-blue-600' : 'bg-gray-300'}`} aria-hidden="true">
@@ -304,7 +308,7 @@ function SideBySide({
   const textB = useFullText(b.mw_id);
   const shownA = useMemo(() => displayText(textA.data?.text_bo ?? ''), [textA.data]);
   const shownB = useMemo(() => displayText(textB.data?.text_bo ?? ''), [textB.data]);
-  const selection = useCrossSelection({ A: shownA, B: shownB });
+  const selection = useCrossSelection({ A: shownA, B: shownB }, 'window');
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneTabs pane={pane} onPane={setPane} />
@@ -391,7 +395,7 @@ function VolumeView({
   const [pane, setPane] = useState<Tag>('A');
   const [shown, setShown] = useState<Record<Tag, string>>({ A: '', B: '' });
   const onShown = useCallback((tag: Tag, text: string) => setShown((s) => ({ ...s, [tag]: text })), []);
-  const selection = useCrossSelection(shown);
+  const selection = useCrossSelection(shown, 'window');
   // A place in a volume means nothing on a note about the pair's texts, so only the words go.
   const addNote = onAddNote && ((note: NewNote) => onAddNote({ ...note, range: undefined }));
   return (
@@ -614,12 +618,16 @@ function DiffView({
   const nums = useMemo(() => numberRows(rows), [rows]);
   const sideA = useMemo(() => sideOfRows(rows, 'a'), [rows]);
   const sideB = useMemo(() => sideOfRows(rows, 'b'), [rows]);
-  const selection = useCrossSelection({ A: sideA.text, B: sideB.text });
+  const selection = useCrossSelection({ A: sideA.text, B: sideB.text }, 'window');
   // Rows are not re-cut around a match: the row holding it is what gets highlighted.
   const matchSide = selection.selected?.side === 'A' ? 'B' : 'A';
   const matchMarks = selection.marksFor(matchSide);
   const match = selection.selected ? matchMarks.ranges[matchMarks.active] : undefined;
-  const activeRow = match ? (matchSide === 'A' ? sideA : sideB).starts.filter((s) => s <= match.start).length - 1 : -1;
+  const rowAt = (side: Tag, at: number) => (side === 'A' ? sideA : sideB).starts.filter((s) => s <= at).length - 1;
+  // A note's passage opened from the notes list: its own row, not the match in the other text.
+  const noted = selection.jumped ? selection.selected?.range : undefined;
+  let activeRow = match ? rowAt(matchSide, match.start) : -1;
+  if (noted && selection.selected) activeRow = rowAt(selection.selected.side, noted.start);
   const rowsRef = useScrollToMark(activeRow);
   // A row is the same place in both copies, so one row gives where the reader is in each.
   const report = useSettled(() => {

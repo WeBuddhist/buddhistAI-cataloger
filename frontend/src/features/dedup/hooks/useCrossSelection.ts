@@ -1,7 +1,9 @@
 // Selecting text, the same on every screen that shows the two copies: the passage is
 // looked for in the other copy, and can get a note.
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { PairNotesContext, type NotesPlace, type PairNote } from '../notes';
 import { canSearch, findMatches, type TextRange } from '../textMatch';
 import { formatNumber } from '../utils';
 
@@ -65,15 +67,62 @@ export function selectionIn(el: HTMLElement): Required<Picked> | null {
   return text.trim() ? { text, range: { start, end: start + text.length } } : null;
 }
 
-export function useCrossSelection(shown: Record<Tag, string>) {
+/** Where a note's passage is in the texts shown: its own text first, then the other one
+ * for a note on both. */
+function placeOf(note: PairNote, shown: Record<Tag, string>): (Required<Picked> & { side: Tag }) | null {
+  if (!note.quote) return null;
+  const sides: Tag[] = note.target === 'b' ? ['B', 'A'] : ['A', 'B'];
+  for (const side of note.target === 'both' ? sides : sides.slice(0, 1)) {
+    const range = shown[side] ? findMatches(shown[side], note.quote).ranges[0] : undefined;
+    if (range) return { side, text: shown[side].slice(range.start, range.end), range };
+  }
+  return null;
+}
+
+/** `where`: which texts these are, so a note's passage is shown where its notes button
+ * was clicked. Left out where notes are not listed. */
+export function useCrossSelection(shown: Record<Tag, string>, where?: NotesPlace) {
   const { t } = useTranslation();
   const own = useId();
   const [selected, setSelected] = useState<(Picked & { side: Tag }) | null>(null);
+  // Set when the selection was made from the notes list: the texts scroll to it then, and
+  // the browser's selection is not put over it (only our highlight shows).
+  const [jumped, setJumped] = useState(false);
   useLayoutEffect(() => {
-    if (selected) reselectMarks(own);
-  }, [selected, own]);
+    if (selected && !jumped) reselectMarks(own);
+  }, [selected, jumped, own]);
+  // Without the browser's selection, Ctrl/Cmd+C copies the shown passage itself, unless
+  // something else has been selected since.
+  const jumpedText = jumped ? selected?.text : undefined;
+  useEffect(() => {
+    if (!jumpedText) return;
+    const onCopy = (e: ClipboardEvent) => {
+      if (window.getSelection()?.toString() || !e.clipboardData) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', jumpedText);
+    };
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [jumpedText]);
   const [matchIndex, setMatchIndex] = useState(0);
   const [noting, setNoting] = useState(false);
+  const { showing } = useContext(PairNotesContext);
+  // Only requests made after these texts were shown: a view opened later does not jump.
+  const handled = useRef(showing?.seq ?? 0);
+  useEffect(() => {
+    if (!showing || showing.seq === handled.current || showing.where !== where) return;
+    handled.current = showing.seq;
+    const place = placeOf(showing.note, shown);
+    if (!place) {
+      toast.error(t('dedup.notes.notFoundHere'));
+      return;
+    }
+    window.getSelection()?.removeAllRanges();
+    setNoting(false);
+    setSelected(place);
+    setMatchIndex(0);
+    setJumped(true);
+  }, [showing, where, shown, t]);
   const searchIn = selected ? otherSide(selected.side) : null;
   const searchText = searchIn ? shown[searchIn] : '';
   const selectedText = selected?.text;
@@ -88,12 +137,14 @@ export function useCrossSelection(shown: Record<Tag, string>) {
       if (noting) return;
       setSelected(picked && { side, ...picked });
       setMatchIndex(0);
+      setJumped(false);
     },
     [noting],
   );
   const clear = useCallback(() => {
     setSelected(null);
     setNoting(false);
+    setJumped(false);
   }, []);
   const step = (by: number) => setMatchIndex((i) => (i + by + found) % found);
 
@@ -102,7 +153,7 @@ export function useCrossSelection(shown: Record<Tag, string>) {
     if (!selected) return NO_MARKS;
     if (selected.side === side) {
       return selected.range
-        ? { ranges: [selected.range], active: 0, follow: false, own }
+        ? { ranges: [selected.range], active: 0, follow: jumped, own }
         : { ...NO_MARKS, quote: selected.text, own };
     }
     return { ranges: matches?.ranges ?? [], active: matchIndex, follow: true };
@@ -118,7 +169,7 @@ export function useCrossSelection(shown: Record<Tag, string>) {
     else status = t('dedup.fullText.closeMatchIn', { tag });
   }
 
-  return { selected, found, select, clear, step, marksFor, status, noting, setNoting };
+  return { selected, found, select, clear, step, marksFor, status, noting, setNoting, shown, jumped };
 }
 
 export type CrossSelection = ReturnType<typeof useCrossSelection>;

@@ -62,7 +62,7 @@ export default function PairEvidence({
   const fullA = useFullText(cardA.mw_id, searching).data?.text_bo;
   const fullB = useFullText(cardB.mw_id, searching).data?.text_bo;
   const shown = useMemo(() => ({ A: displayText(fullA ?? ''), B: displayText(fullB ?? '') }), [fullA, fullB]);
-  const selection = useCrossSelection(shown);
+  const selection = useCrossSelection(shown, 'page');
   const { clear: clearSelection, select } = selection;
   useEffect(() => clearSelection(), [itemId, clearSelection]);
   const onSelect = (side: Tag, picked: Picked | null) => {

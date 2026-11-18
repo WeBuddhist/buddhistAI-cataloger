@@ -268,7 +268,13 @@ class AdminPairNoteOut(BaseModel):
     # a | b | both; None for an old note-box note (about the whole pair).
     target: Optional[str] = None
     quote: Optional[str] = None
+    # May be empty when the note has a kind.
     text: str
+    # From the guidelines' list, e.g. content_missing, commentary.
+    kind: Optional[str] = None
+    # What the note was checked against: scan | bdrc | none; with the scan page.
+    checked: Optional[str] = None
+    page: Optional[str] = None
     voice_note_ids: list[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

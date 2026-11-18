@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,7 +22,8 @@ type IssueOption = { kind: string; needsNote?: boolean };
 
 export type CantAnswerStart = 'default' | 'issue';
 
-// Space = can't answer, which can also carry a data problem; X flags one on its own.
+// Space = can't answer (an answer); X reports a data problem, the one place for it, beside
+// whatever the answer is.
 const ANSWER_GROUPS: { mode: CantAnswerStart; answers: Answer[] }[] = [
   {
     mode: 'default',
@@ -79,8 +79,6 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
   const group = start === 'issue' ? null : (ANSWER_GROUPS.find((g) => g.mode === start) ?? ANSWER_GROUPS[1]);
   const initialAnswer = group?.answers[0].key ?? '';
   const [answerKey, setAnswerKey] = useState(initialAnswer);
-  // In the answer dialogs the data problem is optional and starts collapsed.
-  const [reporting, setReporting] = useState(start === 'issue');
   const [issueKind, setIssueKind] = useState(ISSUES[0].kind);
   const [which, setWhich] = useState<Which>('both');
   const [note, setNote] = useState('');
@@ -89,7 +87,6 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
   useEffect(() => {
     if (open) {
       setAnswerKey(initialAnswer);
-      setReporting(start === 'issue');
       setIssueKind(ISSUES[0].kind);
       setWhich('both');
       setNote('');
@@ -98,6 +95,8 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
 
   const answer = group?.answers.find((a) => a.key === answerKey) ?? group?.answers[0];
   const issue = ISSUES.find((i) => i.kind === issueKind) ?? ISSUES[0];
+  // Reporting a problem: no answer here, only the problem.
+  const reporting = group == null;
   const noteMissing = reporting && Boolean(issue.needsNote) && !note.trim();
 
   const newIssue = (): ReviewIssue => {
@@ -124,23 +123,6 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
 
   const issueForm = (
     <div className="space-y-3">
-      {group && (
-        <label className="block text-sm">
-          <span className="mb-1 block text-gray-600">{t('dedup.cantAnswer.problem')}</span>
-          <select
-            value={issueKind}
-            onChange={(e) => setIssueKind(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-          >
-            {ISSUES.map((i) => (
-              <option key={i.kind} value={i.kind}>
-                {issueLabel(i.kind)}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs text-gray-500">{t(`dedup.cantAnswer.issueHelp.${issue.kind}`)}</span>
-        </label>
-      )}
       <label className="block text-sm">
         <span className="mb-1 block text-gray-600">{t('dedup.cantAnswer.whichText')}</span>
         <select
@@ -177,30 +159,16 @@ export default function CantAnswerDialog({ open, onOpenChange, item, start, onSu
         </DialogHeader>
 
         {group ? (
-          <>
-            <RadioList
-              label={t(`dedup.cantAnswer.group.${group.mode}.title`)}
-              options={group.answers.map((a) => ({
-                value: a.key,
-                label: t(`dedup.cantAnswer.option.${a.key}.label`),
-                help: t(`dedup.cantAnswer.option.${a.key}.help`),
-              }))}
-              value={answerKey}
-              onChange={setAnswerKey}
-            />
-            <div className="rounded-md border border-gray-200">
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                onClick={() => setReporting((r) => !r)}
-                aria-expanded={reporting}
-              >
-                {reporting ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                {t('dedup.cantAnswer.alsoReport')} <span className="text-gray-400">{t('dedup.cantAnswer.optional')}</span>
-              </button>
-              {reporting && <div className="border-t border-gray-200 p-3">{issueForm}</div>}
-            </div>
-          </>
+          <RadioList
+            label={t(`dedup.cantAnswer.group.${group.mode}.title`)}
+            options={group.answers.map((a) => ({
+              value: a.key,
+              label: t(`dedup.cantAnswer.option.${a.key}.label`),
+              help: t(`dedup.cantAnswer.option.${a.key}.help`),
+            }))}
+            value={answerKey}
+            onChange={setAnswerKey}
+          />
         ) : (
           <>
             {hasIssue(item) && (

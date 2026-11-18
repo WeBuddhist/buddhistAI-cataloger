@@ -9,7 +9,7 @@ import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
-import PairNotes from '../components/PairNotes';
+import NotesMenu from '../components/NotesMenu';
 import PreferredCopyDialog, { type PreferredChoice } from '../components/PreferredCopyDialog';
 import CopyPairLink from '../components/CopyPairLink';
 import PairEvidence from '../components/PairEvidence';
@@ -26,7 +26,7 @@ import {
   useSaveAdjudication,
   useSaveDecision,
 } from '../hooks/useReview';
-import { editedNote, makeNote, notesOf, usePairDraft, withNotes, type NewNote, type NoteEdit, type PairNote, type VoiceRecording } from '../notes';
+import { editedNote, KEEPS_ESCAPE, makeNote, notesOf, PairNotesContext, usePairDraft, withNotes, type NewNote, type NoteEdit, type NotesPlace, type PairNote, type VoiceRecording } from '../notes';
 import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
 
 const CONFIDENCE = [1, 2, 3, 4, 5];
@@ -276,6 +276,13 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [storeRecording, saveNotes, savedNotes, draft],
   );
 
+  // A note clicked in the notes list, for the texts it was clicked over to show.
+  const [showing, setShowing] = useState<{ note: PairNote; where: NotesPlace; seq: number } | null>(null);
+  const showNote = useCallback(
+    (note: PairNote, where: NotesPlace) => setShowing((prev) => ({ note, where, seq: (prev?.seq ?? 0) + 1 })),
+    [],
+  );
+
   const removeNote = useCallback(
     (id: string) => {
       if (savedNotes.some((n) => n.id === id)) saveNotes(savedNotes.filter((n) => n.id !== id));
@@ -318,6 +325,8 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (dialog || fullText || askPreferred || e.metaKey || e.ctrlKey || e.altKey) return;
+      // The notes panel or the "already a note here" question is open.
+      if (document.querySelector(`[${KEEPS_ESCAPE}]`)) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const k = e.key.toLowerCase();
@@ -372,8 +381,19 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   const issues = draft.issues.length > 0 ? draft.issues : (item.issues ?? []);
   const problems = issues.map((i) => issueLabel(i.kind));
   const canWriteNotes = !correct && !locked;
+  // The person's own notes on the pair (never the other annotator's: double review is
+  // blind), behind the notes button here and in the full-text window.
+  const notesContext = {
+    notes,
+    onEdit: canWriteNotes ? editNote : undefined,
+    onRemove: canWriteNotes ? removeNote : undefined,
+    pending: !answered,
+    onShow: showNote,
+    showing,
+  };
 
   return (
+    <PairNotesContext.Provider value={notesContext}>
     <div className={`w-full ${scan ? 'max-w-none' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6`} style={{ paddingBottom: barHeight + 24 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
@@ -387,7 +407,30 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
           {correct && <span className="ml-1 text-xs font-medium tabular-nums text-gray-500">· {t('dedup.pairView.title', { id: item.item_id })}</span>}
           <span className="ml-1 text-xs text-gray-400" title={item.batch_id}>· {batchName(item.batch_id)}</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Not an answer: a problem with the data, sent along with the answer. So it sits
+              up here, away from Same / Different / Can't answer. */}
+          {/* A link, not a button like the answers: it is not one. The one place to report
+              a data problem, whatever the answer. */}
+          <button
+            type="button"
+            onClick={flagIssue}
+            disabled={save.isPending || locked}
+            title={`${t('dedup.review.flagIssueHelp')} (X)`}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-1 text-sm font-medium text-red-700 underline-offset-4 hover:text-red-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:cursor-default disabled:no-underline disabled:opacity-40"
+          >
+            <Flag className="h-3.5 w-3.5 fill-red-600 text-red-600" />
+            {problems.length > 0 ? (
+              t('dedup.review.flaggedCount', { count: problems.length, n: formatNumber(problems.length) })
+            ) : (
+              <>
+                <span className="sm:hidden">{t('dedup.review.flagIssueShort')}</span>
+                <span className="hidden sm:inline">{t('dedup.review.flagIssue')}</span>
+              </>
+            )}
+          </button>
+          {/* Behind the full-text window, which has its own: only one notes panel at a time. */}
+          {!fullText && <NotesMenu where="page" />}
           <CopyPairLink itemId={item.item_id} />
           {index >= 0 && (
             <span className="mr-1 text-xs tabular-nums text-gray-500">
@@ -413,7 +456,6 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onScanChange={setScan}
         bottomInset={barHeight}
         onAddNote={canWriteNotes ? addNote : undefined}
-        afterTexts={<PairNotes notes={notes} onRemove={canWriteNotes ? removeNote : undefined} onEdit={canWriteNotes ? editNote : undefined} pending={!answered} />}
       >
         {adjItem && <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} />}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
@@ -459,9 +501,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
               {problems.map((p, i) => (
                 <span
                   key={`${p}-${i}`}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-800"
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-medium text-red-800"
                 >
-                  <Flag className="h-3 w-3 shrink-0" />
+                  <Flag className="h-3 w-3 shrink-0 fill-red-600 text-red-600" />
                   <span className="truncate">{p}</span>
                 </span>
               ))}
@@ -506,20 +548,12 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
             </Button>
             <Button
               variant="outline"
-              className={`${PTR} ${isChosen('not_sure') ? CHOSEN_NEUTRAL : ''}`}
+              className={`${PTR} col-span-2 sm:col-span-1 ${isChosen('not_sure') ? CHOSEN_NEUTRAL : ''}`}
               onClick={() => setDialog('default')}
               disabled={save.isPending || locked}
               aria-pressed={isChosen('not_sure')}
             >
               {tick('not_sure')} {t('dedup.answer.cantAnswer')} <Kbd>{t('dedup.review.spaceKey')}</Kbd>
-            </Button>
-            <Button
-              variant="outline"
-              className={`${PTR} border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900`}
-              onClick={flagIssue}
-              disabled={save.isPending || locked}
-            >
-              <Flag className="h-4 w-4" /> {t('dedup.review.flagIssue')} <Kbd>X</Kbd>
             </Button>
           </div>
 
@@ -574,6 +608,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onSubmit={saveDialog}
       />
     </div>
+    </PairNotesContext.Provider>
   );
 }
 

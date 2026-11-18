@@ -1483,7 +1483,38 @@
         "playMany": "སྒྲ་ཕབ་ {{count}} གཏོང་།"
       },
       "edit": "མཆན་བཟོ་བཅོས།",
-      "edited": "བཟོ་བཅོས་བྱས་ཟིན།"
+      "edited": "བཟོ་བཅོས་བྱས་ཟིན།",
+      "kind": {
+        "options": {
+          "content_missing": {
+            "label": "མ་ཚང་བ།"
+          },
+          "extra_content": {
+            "label": "ལྷག་མ་ཡོད་པ།"
+          },
+          "outlining_issue": {
+            "label": "གཏུབ་ནོར་ཤོར་བ།"
+          },
+          "page_order": {
+            "label": "ཤོག་གྲངས་ཀྱི་གོ་རིམ་འཁྲུགས་པ།"
+          },
+          "ocr": {
+            "label": "དག་ནོར་མང་བ།"
+          },
+          "title": {
+            "label": "མཚན་བྱང་མི་འདྲ་བ།"
+          },
+          "totally_different": {
+            "label": "རྦད་དེ་མི་འདྲ་བ།"
+          },
+          "commentary": {
+            "label": "མི་འདྲ་བ། (འགྲེལ་པ།)"
+          },
+          "sadhana_instructions": {
+            "label": "མི་འདྲ་བ། (སྒྲུབ་ཐབས་ཀྱི་མན་ངག)"
+          }
+        }
+      }
     }
   }
 }
