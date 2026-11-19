@@ -501,9 +501,41 @@ def _union_issues(*lists: Optional[list[dict[str, Any]]]) -> Optional[list[dict[
     return list(seen.values()) or None
 
 
+# partner_payload keys the app writes; any other key there is BDRC's (e.g. ``relabel``).
+_APP_PAYLOAD_KEYS = {"notes", "preferred_mw_id", "review"}
+
+
+def merged_with_bdrc(ours: dict[str, Any], current: dict[str, Any], last_sent: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """``ours`` (the PUT body) with what BDRC added since the app last wrote the pair kept:
+    BDRC replaces ``issues`` and ``partner_payload`` whole, and its own scripts add to them
+    (``undersegmented`` and other flags in ``issues``, ``relabel`` in ``partner_payload``).
+
+    ``current`` is the pair as BDRC holds it now; ``last_sent`` what the app sent before
+    (None if never). An issue there that the app neither sends now nor sent before is
+    BDRC's and stays; one the app sent before and dropped since is removed. In
+    ``partner_payload``, keys the app writes take the app's values (or go, when the app no
+    longer sends them); every other key stays as BDRC has it.
+    """
+    merged = dict(ours)
+
+    ours_issues = list(ours.get("issues") or [])
+    sent_issues = list((last_sent or {}).get("issues") or [])
+    theirs = [i for i in (current.get("issues") or []) if i not in ours_issues and i not in sent_issues]
+    if theirs:
+        merged["issues"] = ours_issues + theirs
+
+    ours_payload = ours.get("partner_payload") or {}
+    app_keys = _APP_PAYLOAD_KEYS | set(ours_payload) | set((last_sent or {}).get("partner_payload") or {})
+    kept = {k: v for k, v in (current.get("partner_payload") or {}).items() if k not in app_keys}
+    if kept:
+        merged["partner_payload"] = {**kept, **ours_payload}
+    return merged
+
+
 def bdrc_payload(db: Session, decision: DedupDecision) -> dict[str, Any]:
     """The PUT body for BDRC. Every writable field is sent, so BDRC ends up holding
-    exactly the final answer (e.g. an old abstention_reason is cleared).
+    exactly the final answer (e.g. an old abstention_reason is cleared); what BDRC itself
+    added to ``issues`` and ``partner_payload`` is kept by ``merged_with_bdrc`` when sending.
 
     On a double-review pair the final answer is the two annotators' shared verdict, the
     adjudicator's, or an admin's correction; ``partner_payload.review`` records how it

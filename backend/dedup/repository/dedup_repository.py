@@ -452,6 +452,22 @@ def claim_next_decision(db: Session) -> Optional[DedupDecision]:
     return decision
 
 
+def last_sent_decision(db: Session, item_id: int, *, before: DedupDecision) -> Optional[DedupDecision]:
+    """The pair's latest decision BDRC received before ``before``: what the app last
+    wrote there, to tell its own values from those BDRC added since."""
+    return db.execute(
+        select(DedupDecision)
+        .where(
+            DedupDecision.item_id == item_id,
+            DedupDecision.id != before.id,
+            DedupDecision.sync_state == SYNC_SUCCEEDED,
+            DedupDecision.synced_at.is_not(None),
+        )
+        .order_by(DedupDecision.synced_at.desc())
+        .limit(1)
+    ).scalars().first()
+
+
 def mark_synced(db: Session, decision_id: str) -> None:
     d = db.get(DedupDecision, decision_id)
     if d is None:
