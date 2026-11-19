@@ -53,6 +53,8 @@ import { toast } from 'sonner';
 import { useUser } from '@/hooks/useUser';
 
 type SegmentStatusFilter = 'all' | 'unchecked' | 'checked' | 'approved' | 'rejected';
+/** Normal per-document split limit (backend review_split_limit.py); a higher one means a long volume. */
+const REVIEWER_SPLIT_LIMIT_DEFAULT = 2;
 
 function AdminDocumentSegmentRow({
   index,
@@ -157,6 +159,15 @@ function SegmentsTab({
   const handledScrollNonce = useRef<number | null>(null);
   const canEditReview =
     !!currentUser?.id && selectedDocument?.reviewer_id === currentUser.id;
+  // Reviewer split limit (admins have none); shown while the document is under review.
+  const splitLimit = selectedDocument?.reviewer_split_limit ?? null;
+  const splitsUsed = selectedDocument?.reviewer_splits_used ?? 0;
+  const showSplitLimit =
+    canEditReview &&
+    currentUser?.role !== 'admin' &&
+    selectedDocument?.status === 'completed' &&
+    splitLimit !== null;
+  const splitLimitReached = showSplitLimit && splitsUsed >= (splitLimit ?? 0);
 
   useEffect(() => {
     setSubmittedThisVisit(false);
@@ -484,6 +495,19 @@ function SegmentsTab({
               <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-700">Annotated: {statusCounts.checked}</span>
               <span className="inline-block px-2 py-1 rounded bg-amber-100 text-amber-700">Annotating: {statusCounts.unchecked}</span>
               <span className="inline-block px-2 py-1 rounded bg-blue-100 text-blue-700">Submits: {selectedDocument.submit_count ?? 0}</span>
+              {showSplitLimit && (
+                <span
+                  className={`inline-block px-2 py-1 rounded font-medium ${
+                    splitLimitReached
+                      ? 'bg-amber-200 text-amber-900 border border-amber-400'
+                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  }`}
+                  title="Segments you can split off in this document before sending it back to the annotator. Starts again after the annotator fixes a rejected segment."
+                >
+                  {splitLimitReached ? 'Split limit reached' : 'Splits'}: {splitsUsed} / {splitLimit}
+                  {splitLimit !== null && splitLimit > REVIEWER_SPLIT_LIMIT_DEFAULT && ' · long volume'}
+                </span>
+              )}
             </div>
        
           </div>

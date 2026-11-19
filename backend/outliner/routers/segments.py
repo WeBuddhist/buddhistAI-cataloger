@@ -35,9 +35,11 @@ from outliner.deps import (
     is_user_admin_or_reviewer,
     require_outliner_access,
 )
+from outliner.controller.review_split_limit import assert_reviewer_can_split
 from outliner.repository.document import fetch_document_by_id
 from outliner.repository.segment import (
     document_has_rejected_segment,
+    get_document_id_for_segment,
     get_document_review_context_for_segment,
     get_document_lock_context_for_segment,
     get_document_user_id_for_segment,
@@ -217,6 +219,13 @@ def split_segment(
     reviewer_id = _assert_can_restructure_segments(
         db, split_request.segment_id, current_user, split_request.document_id
     )
+    if reviewer_id:
+        document_id = (
+            get_document_id_for_segment(db, split_request.segment_id)
+            or split_request.document_id
+        )
+        if document_id:
+            assert_reviewer_can_split(db, document_id, current_user)
     split_segment_ctrl(
         db=db,
         segment_id=split_request.segment_id,

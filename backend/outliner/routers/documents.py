@@ -9,6 +9,7 @@ from core.database import get_db
 from outliner.controller.segment_review import (
     get_segment_review_statuses as get_segment_review_statuses_ctrl,
 )
+from outliner.controller.review_split_limit import reviewer_split_usage
 from outliner.repository.document import fetch_document_by_id, fetch_document_reviewer_id
 from outliner.repository.segment import document_has_rejected_segment
 from outliner.controller.bdrc import check_document_sanity as check_document_sanity_ctrl
@@ -189,10 +190,16 @@ def get_document(
         segments_resp = [
             segment_list_row_to_document_segment(s) for s in document.segment_list
         ]
-        return build_document_response(
+        response = build_document_response(
             document, segments_resp, reviewer_id=reviewer_id
         )
-    return build_document_response(document, [], reviewer_id=reviewer_id)
+    else:
+        response = build_document_response(document, [], reviewer_id=reviewer_id)
+    # The review page shows how many segments the reviewer may still split off.
+    used, limit = reviewer_split_usage(db, document_id)
+    response.reviewer_splits_used = used
+    response.reviewer_split_limit = limit
+    return response
 
 
 @router.get(

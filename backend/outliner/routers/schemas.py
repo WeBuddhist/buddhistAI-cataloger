@@ -332,6 +332,9 @@ class DocumentResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     segments: List[SegmentResponseDocument] = []
+    # Segments the reviewer split off in this review round, and how many are allowed.
+    reviewer_splits_used: Optional[int] = None
+    reviewer_split_limit: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

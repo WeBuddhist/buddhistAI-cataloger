@@ -289,6 +289,49 @@ def document_has_rejected_segment(db: Session, document_id: str) -> bool:
     )
 
 
+def count_reviewer_added_segments_this_round(db: Session, document_id: str) -> int:
+    """Segments a reviewer added (split off) in the document's current review round.
+
+    A round ends when the annotator fixes a rejected segment: only segments added after the
+    newest rejection the annotator has resolved count. With no resolved rejection yet, every
+    reviewer-added segment counts.
+    """
+    round_start = (
+        db.query(func.max(SegmentRejection.created_at))
+        .join(OutlinerSegment, OutlinerSegment.id == SegmentRejection.segment_id)
+        .filter(
+            OutlinerSegment.document_id == document_id,
+            SegmentRejection.resolved.is_(True),
+        )
+        .scalar()
+    )
+    query = db.query(func.count(OutlinerSegment.id)).filter(
+        OutlinerSegment.document_id == document_id,
+        OutlinerSegment.created_by_id.isnot(None),
+    )
+    if round_start is not None:
+        query = query.filter(OutlinerSegment.created_at > round_start)
+    return int(query.scalar() or 0)
+
+
+def get_document_content_length(db: Session, document_id: str) -> int:
+    """Length of the document's text in characters, without loading the text."""
+    return int(
+        db.query(func.length(OutlinerDocument.content))
+        .filter(OutlinerDocument.id == document_id)
+        .scalar()
+        or 0
+    )
+
+
+def get_document_id_for_segment(db: Session, segment_id: str) -> Optional[str]:
+    return (
+        db.query(OutlinerSegment.document_id)
+        .filter(OutlinerSegment.id == segment_id)
+        .scalar()
+    )
+
+
 def get_document_lock_context_for_segment(
     db: Session, segment_id: str
 ) -> Tuple[Optional[str], bool]:
