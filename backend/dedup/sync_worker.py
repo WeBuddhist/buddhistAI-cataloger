@@ -14,7 +14,7 @@ from core.config import DEDUP_SYNC_ENABLED
 from core.database import SessionLocal
 from dedup import client
 from dedup.client import ReviewApiError
-from dedup.controller.dedup import bdrc_payload
+from dedup.controller.dedup import bdrc_payload, merged_with_bdrc
 from dedup.repository import dedup_repository as repo
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,14 @@ def _process_available() -> int:
                 return processed
             processed += 1
             try:
-                client.put_item(decision.item_id, bdrc_payload(db, decision))
+                # BDRC replaces issues and partner_payload whole, and adds its own flags and
+                # markers to them: what it holds now is read first and kept. If it cannot
+                # be read, nothing is sent; the decision is retried.
+                current = client.get_item(decision.item_id)
+                previous = repo.last_sent_decision(db, decision.item_id, before=decision)
+                last_sent = bdrc_payload(db, previous) if previous else None
+                body = merged_with_bdrc(bdrc_payload(db, decision), current, last_sent)
+                client.put_item(decision.item_id, body)
                 repo.mark_synced(db, decision.id)
                 logger.info(
                     "dedup sync ok decision=%s item=%s attempts=%s",
