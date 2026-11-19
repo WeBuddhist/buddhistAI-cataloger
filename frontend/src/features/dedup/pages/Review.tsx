@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Flag, Lock, ShieldCheck } from 'lucide-re
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { saveVoiceNote, type AdjudicationItem, type AdminPair, type DecisionInput, type MyItemsState, type ReviewItem } from '../api/review';
+import { saveVoiceNote, type AdjudicationItem, type AdminPair, type DecisionInput, type FullText, type MyItemsState, type ReviewItem } from '../api/review';
 import AnswerHistory from '../components/AnswerHistory';
 import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
@@ -29,10 +29,11 @@ import {
   useSaveDecision,
 } from '../hooks/useReview';
 import {
+  askBeforeSaving,
   editedNote,
-  givesReason,
   KEEPS_ESCAPE,
   makeNote,
+  mergedNote,
   notesOf,
   PairNotesContext,
   placePassage,
@@ -45,6 +46,7 @@ import {
   type NoteTarget,
   type PairNote,
   type ShownAt,
+  unionPassage,
   type VoiceRecording,
 } from '../notes';
 import { formatNumber, isDecided, issueLabel, verdictLabel } from '../utils';
@@ -185,8 +187,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   // Stays open from pair to pair, so the scans can be read alongside each one.
   const [scan, setScan] = useState<ScanTag | null>(null);
   const [askPreferred, setAskPreferred] = useState(false);
-  // Open while asking why the texts are different, before saving that answer.
-  const [askReason, setAskReason] = useState(false);
+  // Open while asking why, before saving the answer: why the texts are different, or why
+  // the adjudicator's answer goes against both annotators'.
+  const [askReason, setAskReason] = useState<'different' | 'override-same' | 'override-different' | null>(null);
   const advanceTimer = useRef<number | undefined>(undefined);
   // The docked action bar wraps onto several rows on a phone; the page keeps its
   // height free so nothing is hidden behind it.
@@ -279,21 +282,29 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   /** Where a note's passage is in each of the pair's texts, as BDRC's API serves them.
    * Undefined when it has no passage, or the texts could not be fetched: the note is
    * saved all the same. */
-  const placeOf = useCallback(
-    async (quote: string | undefined, target: NoteTarget, near: Partial<Record<'a' | 'b', number>>): Promise<NotePlace | undefined> => {
-      if (!quote || !item) return undefined;
+  /** The pair's texts as BDRC serves them, for the sides of `target`. Throws when they
+   * cannot be fetched. */
+  const servedTexts = useCallback(
+    async (target: NoteTarget): Promise<Partial<Record<'a' | 'b', FullText | null>>> => {
+      if (!item) return {};
       const ids = { a: item.evidence.a?.mw_id ?? item.subject.a_mw, b: item.evidence.b?.mw_id ?? item.subject.b_mw };
       const sides = target === 'both' ? (['a', 'b'] as const) : [target];
+      return Object.fromEntries(
+        await Promise.all(sides.map(async (side) => [side, ids[side] ? await getFullText(ids[side]) : null] as const)),
+      );
+    },
+    [item, getFullText],
+  );
+  const placeOf = useCallback(
+    async (quote: string | undefined, target: NoteTarget, near: Partial<Record<'a' | 'b', number>>): Promise<NotePlace | undefined> => {
+      if (!quote) return undefined;
       try {
-        const texts = Object.fromEntries(
-          await Promise.all(sides.map(async (side) => [side, ids[side] ? await getFullText(ids[side]) : null] as const)),
-        );
-        return placePassage(quote, target, texts, near);
+        return placePassage(quote, target, await servedTexts(target), near);
       } catch {
         return undefined;
       }
     },
-    [item, getFullText],
+    [servedTexts],
   );
   const nearOf = (shownAt: ShownAt | undefined) => (shownAt ? { [shownAt.side]: shownAt.range.start } : {});
 
@@ -309,6 +320,21 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       else draft.addNote(made);
     },
     [item?.verdict, storeRecording, placeOf, saveNotes, savedNotes, draft],
+  );
+
+  // Annotators' notes about one place, kept by the adjudicator as one note: its passage
+  // covers all of theirs. Without the texts, the longest passage stands for them.
+  const keepAsOne = useCallback(
+    async (group: PairNote[]) => {
+      const merged = mergedNote(group);
+      try {
+        const span = unionPassage(group, merged.target, await servedTexts(merged.target));
+        await addNote(span ? { ...merged, ...span } : merged);
+      } catch {
+        await addNote(merged);
+      }
+    },
+    [servedTexts, addNote],
   );
 
   const editNote = useCallback(
@@ -346,30 +372,41 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     [saveNotes, savedNotes, draft],
   );
 
+  // What both annotators answered, when they gave the same answer (adjudication only).
+  const bothSaid = useMemo(() => {
+    const said = adjItem?.annotations.map((a) => a.verdict) ?? [];
+    return said.length === 2 && said[0] === said[1] && (said[0] === 'same' || said[0] === 'different') ? said[0] : null;
+  }, [adjItem]);
   const decide = useCallback(
     (verdict: 'same' | 'different') => {
-      if (verdict === 'same') {
-        setAskPreferred(true);
+      // Why the texts are different, or why the answer goes against both annotators.
+      const ask = askBeforeSaving(verdict, notes, bothSaid);
+      if (ask) {
+        setAskReason(ask);
         return;
       }
-      // A "different" answer says why (one of the guidelines' reasons, with a sentence).
-      if (!givesReason(notes)) {
-        setAskReason(true);
-        return;
-      }
-      submit({ verdict }).catch(() => {});
+      if (verdict === 'same') setAskPreferred(true);
+      else submit({ verdict }).catch(() => {});
     },
-    [submit, notes],
+    [submit, notes, bothSaid],
   );
 
-  const saveDifferent = useCallback(
+  const saveReason = useCallback(
     async (reason: NoteEdit) => {
       const recordingId = await storeRecording(reason.recording);
       const note = makeNote({ ...reason, voice_note_ids: recordingId ? [recordingId] : undefined });
+      if (askReason === 'override-same') {
+        // Kept with the person's notes; the answer is saved once a copy is chosen.
+        if (item?.verdict) saveNotes([...savedNotes, note]);
+        else draft.addNote(note);
+        setAskReason(null);
+        setAskPreferred(true);
+        return;
+      }
       await submit({ verdict: 'different' }, [note]);
-      setAskReason(false);
+      setAskReason(null);
     },
-    [storeRecording, submit],
+    [askReason, storeRecording, submit, item?.verdict, saveNotes, savedNotes, draft],
   );
 
   const saveSame = useCallback(
@@ -528,7 +565,14 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onAddNote={canWriteNotes ? addNote : undefined}
       >
         {adjItem && (
-          <AnnotatorAnswers answers={adjItem.annotations} a={cardA} b={cardB} own={notes} onKeep={canWriteNotes ? addNote : undefined} />
+          <AnnotatorAnswers
+            answers={adjItem.annotations}
+            a={cardA}
+            b={cardB}
+            own={notes}
+            onKeep={canWriteNotes ? addNote : undefined}
+            onKeepAsOne={canWriteNotes ? keepAsOne : undefined}
+          />
         )}
         {correct && adminPair.data && <AnswerHistory history={adminPair.data.history} corrected={adminPair.data.corrected} />}
       </PairEvidence>
@@ -672,7 +716,13 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         onPick={saveSame}
       />
 
-      <DifferentReasonDialog open={askReason} onSave={saveDifferent} onCancel={() => setAskReason(false)} />
+      <DifferentReasonDialog
+        open={askReason != null}
+        mode={askReason === 'different' ? 'different' : 'override'}
+        annotatorsSaid={bothSaid ?? undefined}
+        onSave={saveReason}
+        onCancel={() => setAskReason(null)}
+      />
 
       <CantAnswerDialog
         open={dialog != null}

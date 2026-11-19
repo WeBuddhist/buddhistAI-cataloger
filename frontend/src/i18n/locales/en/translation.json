@@ -1661,6 +1661,11 @@
       "title": "Why are they different?",
       "help": "Choose the reason and say why in a sentence. It is saved as a note with your answer.",
       "save": "Save as Different"
+    },
+    "overrideReason": {
+      "title": "Why do you disagree with both annotators?",
+      "help": "Both annotators answered “{{answer}}”. Say in a sentence why your answer is different. It is saved as a note with your answer.",
+      "save": "Continue"
     }
   }
 }

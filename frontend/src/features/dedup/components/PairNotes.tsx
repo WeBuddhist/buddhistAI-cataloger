@@ -512,6 +512,7 @@ export function NoteForm({
   initialDetails,
   onDetailsChange,
   onlyGroup,
+  requireText = false,
   saveLabel,
   onSave,
   onCancel,
@@ -529,6 +530,8 @@ export function NoteForm({
   onDetailsChange?: (details: NoteDetails) => void;
   /** A type from this group must be chosen (the reason for a "different" answer). */
   onlyGroup?: KindGroup;
+  /** A sentence must be written, whatever the type (explaining an answer). */
+  requireText?: boolean;
   /** In place of "Save note". */
   saveLabel?: string;
   /** May return a promise; the form stays open (and Save disabled) until it settles. */
@@ -585,7 +588,7 @@ export function NoteForm({
   };
 
   // A reason for "different" needs a sentence: the type alone does not say why.
-  const needsSentence = isReasonKind(details.kind);
+  const needsSentence = requireText || isReasonKind(details.kind);
   const canSave = onlyGroup ? Boolean(details.kind) && Boolean(text.trim()) : Boolean(text.trim() || details.kind) && !(needsSentence && !text.trim());
 
   const save = async () => {
@@ -633,7 +636,7 @@ export function NoteForm({
         autoFocus
         className="min-h-[64px] bg-white text-sm"
       />
-      {needsSentence && !text.trim() && <p className="text-xs text-red-700">{t('dedup.notes.whyRequired')}</p>}
+      {isReasonKind(details.kind) && !text.trim() && <p className="text-xs text-red-700">{t('dedup.notes.whyRequired')}</p>}
       <div className="flex items-center justify-end gap-2">
         <VoiceButton
           disabled={text.length >= MAX_LENGTH}
