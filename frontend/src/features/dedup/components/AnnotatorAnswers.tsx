@@ -20,6 +20,7 @@ export default function AnnotatorAnswers({
   b,
   own = [],
   onKeep,
+  onKeepAsOne,
 }: Readonly<{
   answers: AnnotatorAnswer[];
   a: WitnessCard;
@@ -29,6 +30,8 @@ export default function AnnotatorAnswers({
   /** Keeps an annotator's note (or several as one) in the adjudicator's final notes. Left
    * out where notes cannot be written. */
   onKeep?: (note: NewNote) => Promise<void> | void;
+  /** Keeps notes about one place as one note, over all their passages. */
+  onKeepAsOne?: (notes: PairNote[]) => Promise<void> | void;
 }>) {
   const { t } = useTranslation();
   const bothUnsure = answers.length > 0 && answers.every((x) => x.verdict === 'not_sure');
@@ -51,7 +54,7 @@ export default function AnnotatorAnswers({
           <AnswerCard key={ans.label} n={i + 1} answer={ans} a={a} b={b} />
         ))}
       </div>
-      <AnnotatorNotes answers={answers} own={own} onKeep={onKeep} />
+      <AnnotatorNotes answers={answers} own={own} onKeep={onKeep} onKeepAsOne={onKeepAsOne} />
     </section>
   );
 }
@@ -122,21 +125,29 @@ function AnnotatorNotes({
   answers,
   own,
   onKeep,
-}: Readonly<{ answers: AnnotatorAnswer[]; own: PairNote[]; onKeep?: (note: NewNote) => Promise<void> | void }>) {
+  onKeepAsOne,
+}: Readonly<{
+  answers: AnnotatorAnswer[];
+  own: PairNote[];
+  onKeep?: (note: NewNote) => Promise<void> | void;
+  onKeepAsOne?: (notes: PairNote[]) => Promise<void> | void;
+}>) {
   const { t } = useTranslation();
   const [keeping, setKeeping] = useState<string | null>(null);
   const items = answers.flatMap((ans, i) => notesOf(ans.partner_payload).map((note) => ({ note, n: i + 1 })));
   if (items.length === 0) return null;
   const kept = new Set(own.flatMap((n) => n.adopted_from ?? []));
-  const keep = async (key: string, note: NewNote) => {
-    if (!onKeep) return;
+  const busy = async (key: string, work: () => Promise<void> | void) => {
     setKeeping(key);
     try {
-      await onKeep(note);
+      await work();
     } finally {
       setKeeping(null);
     }
   };
+  const keep = (key: string, note: NewNote) => onKeep && busy(key, () => onKeep(note));
+  const keepAsOne = (key: string, notes: PairNote[]) =>
+    busy(key, () => (onKeepAsOne ? onKeepAsOne(notes) : onKeep?.(mergedNote(notes))));
   return (
     <div className="mt-3">
       <h3 className="text-sm font-medium text-indigo-900">{t('dedup.annotatorAnswers.notesTitle')}</h3>
@@ -153,7 +164,7 @@ function AnnotatorNotes({
                     <Layers className="h-3.5 w-3.5" /> {t('dedup.annotatorAnswers.samePlace', { count: group.length })}
                   </span>
                   {onKeep && !allKept && (
-                    <Button size="sm" variant="outline" className="h-7 cursor-pointer text-xs" disabled={keeping != null} onClick={() => void keep(groupKey, mergedNote(group.map((i) => i.note)))}>
+                    <Button size="sm" variant="outline" className="h-7 cursor-pointer text-xs" disabled={keeping != null} onClick={() => void keepAsOne(groupKey, group.map((i) => i.note))}>
                       {keeping === groupKey && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       {t('dedup.annotatorAnswers.keepAsOne')}
                     </Button>

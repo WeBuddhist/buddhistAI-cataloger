@@ -32,6 +32,21 @@ export const isReasonKind = (kind: NoteKind | undefined) => kind != null && REAS
 /** Whether `notes` say why the texts are different: a reason kind, with a sentence. */
 export const givesReason = (notes: PairNote[]) => notes.some((n) => isReasonKind(n.kind) && n.text.trim());
 
+/** What must be asked before saving `verdict`: why the texts are different (a reason note
+ * is missing), why the answer goes against both annotators (`bothSaid`, when they agreed;
+ * the person's own note with a sentence answers it, a note kept from an annotator does
+ * not), or nothing. */
+export function askBeforeSaving(
+  verdict: 'same' | 'different',
+  notes: PairNote[],
+  bothSaid: string | null,
+): 'different' | 'override-same' | 'override-different' | null {
+  if (verdict === 'different' && !givesReason(notes)) return 'different';
+  const explained = notes.some((n) => !n.adopted_from?.length && n.text.trim());
+  if (bothSaid && bothSaid !== verdict && !explained) return verdict === 'same' ? 'override-same' : 'override-different';
+  return null;
+}
+
 /** A note's kind and what it was checked against; all optional. */
 export interface NoteDetails {
   kind?: NoteKind;
@@ -335,6 +350,59 @@ export function mergedNote(notes: PairNote[]): NewNote {
     voice_note_ids: notes.flatMap(recordingIds),
     adopted_from: notes.map((n) => n.id),
   };
+}
+
+/** The span from `seed` over every place that overlaps it, directly or through another
+ * one: a place found far away must not stretch it across the text. */
+function spanOverlapping(places: TextRange[], seed: TextRange): TextRange {
+  let { start, end } = seed;
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const p of places) {
+      const overlaps = p.start <= end && start <= p.end;
+      if (overlaps && (p.start < start || p.end > end)) {
+        start = Math.min(start, p.start);
+        end = Math.max(end, p.end);
+        grew = true;
+      }
+    }
+  }
+  return { start, end };
+}
+
+/**
+ * The passage covering all of `notes`' passages (merged notes about one place): on each
+ * text the merged note is on, from the earliest start to the latest end of theirs, and the
+ * quote taken from that span. A passage is placed by its own `range`, or else looked for
+ * near the longest one. Undefined when none can be placed.
+ */
+export function unionPassage(
+  notes: PairNote[],
+  target: NoteTarget,
+  texts: Partial<Record<'a' | 'b', ServedText | null>>,
+): { quote: string; range: NotePlace } | undefined {
+  const range: NotePlace = {};
+  for (const side of target === 'both' ? (['a', 'b'] as const) : [target]) {
+    const served = texts[side];
+    const on = notes.filter((n) => n.quote && (n.target === side || n.target === 'both'));
+    if (!served?.text_bo || on.length === 0) continue;
+    const longest = on.reduce((w, n) => (n.quote!.length > w.quote!.length ? n : w), on[0]);
+    const anchor = longest.range?.[side] ?? placePassage(longest.quote!, side, { [side]: served })[side];
+    const places = on
+      .map((n) => n.range?.[side] ?? placePassage(n.quote!, side, { [side]: served }, anchor ? { [side]: anchor.start } : {})[side])
+      .filter((p): p is SidePlace => p != null);
+    if (places.length === 0) continue;
+    const { start, end } = spanOverlapping(places, anchor ?? places[0]);
+    range[side] = { start, end, etext_source: served.etext_source, text_length: served.text_length };
+  }
+  let quoteSide: 'a' | 'b' = range.a ? 'a' : 'b';
+  if (target !== 'both') quoteSide = target;
+  const span = range[quoteSide];
+  const text = texts[quoteSide]?.text_bo;
+  if (!span || !text) return undefined;
+  // Offsets are in code points.
+  return { quote: Array.from(text).slice(span.start, span.end).join(''), range };
 }
 
 /** A note an adjudicator keeps from an annotator's answer, as theirs. */
