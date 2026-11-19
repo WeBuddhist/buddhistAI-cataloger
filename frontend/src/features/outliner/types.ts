@@ -113,6 +113,9 @@ export interface Document {
   updated_at: string
   /** Present on admin document detail responses */
   segments?: Segment[]
+  /** Document detail: segments the reviewer split off in this review round, and the cap. */
+  reviewer_splits_used?: number | null
+  reviewer_split_limit?: number | null
 }
 
 /** User attribution on admin/reviewer segment payloads (same shape as rejection reviewer). */

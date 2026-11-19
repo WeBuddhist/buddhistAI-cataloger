@@ -170,6 +170,14 @@ function SegmentRow({
   /** Reviewer may split/merge in the same window as Approve/Reject: submitted document, segment awaiting review. */
   const canRestructure =
     canEditReview && selectedDocument?.status === 'completed' && segment.status === 'checked';
+  /** Reviewers may split off only a few segments per review round; past that they reject. Admins have no limit. */
+  const splitLimit = selectedDocument?.reviewer_split_limit ?? null;
+  const splitsUsed = selectedDocument?.reviewer_splits_used ?? 0;
+  const splitLimitReached =
+    reviewerAccount?.role !== 'admin' && splitLimit !== null && splitsUsed >= splitLimit;
+  const canSplit = canRestructure && !splitLimitReached;
+  /** Tells the reviewer the split limit is used up; they can close it and reject if they choose. */
+  const [splitLimitDialogOpen, setSplitLimitDialogOpen] = useState(false);
   const [textSearchQuery, setTextSearchQuery] = useState('');
   const textBgColorStorageKey = `segment-text-bg-color:${segment.id}`;
   const [textBgColor, setTextBgColor] = useState('#ffffff');
@@ -308,7 +316,15 @@ function SegmentRow({
   const splitMutation = useMutation({
     mutationFn: (splitPosition: number) => splitSegment(segment.id, splitPosition, documentId),
     onSuccess: openSplitOffSegment,
-    onError: (error: Error) => toast.error(`Failed to split segment: ${error.message}`),
+    onError: (error: Error) => {
+      // The server refused for the limit (e.g. this page's count was stale): explain it.
+      if (error.message.includes('Split limit reached')) {
+        queryClient.invalidateQueries({ queryKey: ['outliner-admin-document', documentId] });
+        setSplitLimitDialogOpen(true);
+        return;
+      }
+      toast.error(`Failed to split segment: ${error.message}`);
+    },
   });
   const mergeMutation = useMutation({
     mutationFn: (nextId: string) => mergeSegments([segment.id, nextId]),
@@ -769,9 +785,13 @@ function SegmentRow({
   const canMergeWithNext = canRestructure && nextSegment?.status === 'checked';
 
   const splitAtSelection = () => {
-    if (!selectionBubble) return;
+    if (!selectionBubble || !canRestructure) return;
     const { start } = selectionBubble;
     setSelectionBubble(null);
+    if (splitLimitReached) {
+      setSplitLimitDialogOpen(true);
+      return;
+    }
     if (start <= 0 || start >= segment.text.length) {
       toast.error('Select text inside the segment, not at its very start');
       return;
@@ -822,11 +842,19 @@ function SegmentRow({
                   type="button"
                   onClick={splitAtSelection}
                   disabled={isSaving}
-                  title="Start a new segment at the selected text"
-                  className="flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white shadow-lg cursor-pointer hover:bg-emerald-700 disabled:opacity-60"
+                  title={
+                    splitLimitReached
+                      ? `You have added ${splitsUsed} of ${splitLimit} segments allowed in this document. Reject and send it back to the annotator instead.`
+                      : splitLimit !== null && reviewerAccount?.role !== 'admin'
+                        ? `Start a new segment at the selected text (${splitsUsed} of ${splitLimit} used)`
+                        : 'Start a new segment at the selected text'
+                  }
+                  className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-white shadow-lg cursor-pointer disabled:opacity-60 ${
+                    splitLimitReached ? 'bg-gray-500 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
                   <Scissors className="h-3 w-3 shrink-0" aria-hidden />
-                  Split here
+                  {splitLimitReached ? `Split limit reached (${splitsUsed}/${splitLimit})` : 'Split here'}
                 </button>
               )}
             </div>
@@ -1032,7 +1060,7 @@ function SegmentRow({
                   )
                 }
                 onClearAll={() => setRejectMarks([])}
-                canSplit={canRestructure}
+                canSplit={canSplit}
               />
             )}
           </div>
@@ -1375,6 +1403,23 @@ function SegmentRow({
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setRejectionHistoryOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={splitLimitDialogOpen} onOpenChange={setSplitLimitDialogOpen}>
+        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Split limit reached</DialogTitle>
+            <DialogDescription>
+              You have used all {splitLimit} splits for this document ({splitsUsed} / {splitLimit}).
+              If more segments are missing, reject the segment so the annotator fixes it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" onClick={() => setSplitLimitDialogOpen(false)}>
+              OK
             </Button>
           </DialogFooter>
         </DialogContent>
