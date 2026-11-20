@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2, LocateFixed, Mic, Pause, Pencil, Play, SearchCheck, Square, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, LocateFixed, Mic, Pause, Pencil, Play, SearchCheck, Square, Trash2, TriangleAlert, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -10,13 +10,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { fetchVoiceNoteUrl, transcribeVoiceNote, type SttRequest } from '../api/review';
 import { toWav, useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import {
   isReasonKind,
   KEEPS_ESCAPE,
+  MIN_QUOTE_SYLLABLES,
+  missingPlace,
   NOTE_CHECKS,
+  syllableCount,
   NOTE_KINDS,
   recordingIds,
   type NoteDetails,
@@ -129,6 +133,7 @@ export function NoteList({
                   is only known while it is selected. */}
               <NoteForm
                 target={note.target}
+                quote={note.quote}
                 initialText={note.text}
                 initialDetails={note}
                 onCancel={() => setEditing(null)}
@@ -513,10 +518,14 @@ export function NoteForm({
   onDetailsChange,
   onlyGroup,
   requireText = false,
+  wholePair = false,
+  quote,
   saveLabel,
   onSave,
   onCancel,
 }: Readonly<{
+  /** The passage the note is on, if any: a kind about a place needs one. */
+  quote?: string;
   /** The side the note starts on. */
   target: NoteTarget;
   /** The sides it may be on: for a new note, the selected side, and both when the passage
@@ -526,12 +535,15 @@ export function NoteForm({
   initialText?: string;
   /** The saved kind and check, when editing a note. */
   initialDetails?: NoteDetails;
-  /** Told when the kind or check changes (a short quote is fine for some kinds). */
+  /** Told when the kind or check changes. */
   onDetailsChange?: (details: NoteDetails) => void;
   /** A type from this group must be chosen (the reason for a "different" answer). */
   onlyGroup?: KindGroup;
   /** A sentence must be written, whatever the type (explaining an answer). */
   requireText?: boolean;
+  /** A note explaining an answer, about the whole pair: no passage can be selected for
+   * it, so a kind about a place does not ask for one. */
+  wholePair?: boolean;
   /** In place of "Save note". */
   saveLabel?: string;
   /** May return a promise; the form stays open (and Save disabled) until it settles. */
@@ -589,9 +601,19 @@ export function NoteForm({
 
   // A reason for "different" needs a sentence: the type alone does not say why.
   const needsSentence = requireText || isReasonKind(details.kind);
-  const canSave = onlyGroup ? Boolean(details.kind) && Boolean(text.trim()) : Boolean(text.trim() || details.kind) && !(needsSentence && !text.trim());
+  // A kind about a place needs a passage (no sentence); a short one is asked about first.
+  const placeMissing = wholePair ? null : missingPlace(details.kind, quote);
+  const canSave =
+    (onlyGroup ? Boolean(details.kind) && Boolean(text.trim()) : Boolean(text.trim() || details.kind) && !(needsSentence && !text.trim())) &&
+    placeMissing !== 'none';
+  const [askingShort, setAskingShort] = useState(false);
 
-  const save = async () => {
+  const save = async (anyway = false) => {
+    if (placeMissing === 'short' && !anyway) {
+      setAskingShort(true);
+      return;
+    }
+    setAskingShort(false);
     const recording = clips.length > 0
       ? { audio: toWav(clips.map((c) => c.samples)), stt: clips.map((c) => c.stt) }
       : undefined;
@@ -637,6 +659,26 @@ export function NoteForm({
         className="min-h-[64px] bg-white text-sm"
       />
       {isReasonKind(details.kind) && !text.trim() && <p className="text-xs text-red-700">{t('dedup.notes.whyRequired')}</p>}
+      {placeMissing === 'none' && <p className="text-xs text-red-700">{t('dedup.notes.placeRequired')}</p>}
+      <Dialog open={askingShort} onOpenChange={setAskingShort}>
+        <DialogContent className="sm:max-w-md" {...{ [KEEPS_ESCAPE]: '' }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-left">
+              <TriangleAlert className="h-5 w-5 shrink-0 text-amber-600" />
+              {t('dedup.notes.shortQuoteTitle', { count: syllableCount(quote ?? '') })}
+            </DialogTitle>
+            <DialogDescription className="text-left">{t('dedup.notes.shortPlaceHelp', { n: MIN_QUOTE_SYLLABLES })}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="cursor-pointer" onClick={() => void save(true)}>
+              {t('dedup.notes.saveAnyway')}
+            </Button>
+            <Button className="cursor-pointer" onClick={() => setAskingShort(false)} autoFocus>
+              {t('dedup.notes.selectMore')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex items-center justify-end gap-2">
         <VoiceButton
           disabled={text.length >= MAX_LENGTH}
@@ -649,7 +691,7 @@ export function NoteForm({
         <Button size="sm" variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
           {t('dedup.common.cancel')}
         </Button>
-        <Button size="sm" className="cursor-pointer" onClick={save} disabled={!canSave || busy || saving}>
+        <Button size="sm" className="cursor-pointer" onClick={() => void save()} disabled={!canSave || busy || saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {saveLabel ?? t('dedup.notes.save')}
         </Button>

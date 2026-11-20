@@ -37,6 +37,7 @@ export default function DifferentReasonDialog({
             target="both"
             onlyGroup={mode === 'different' ? 'different' : undefined}
             requireText={mode === 'override'}
+            wholePair
             saveLabel={t(`${key}.save`)}
             onCancel={onCancel}
             onSave={onSave}

@@ -16,8 +16,28 @@ export const NOTE_KINDS = {
 } as const;
 export type NoteKind = (typeof NOTE_KINDS)[keyof typeof NOTE_KINDS][number];
 
-/** A kind that marks a spot (where the text should be split), so a short quote is enough. */
-export const MARKS_A_SPOT: NoteKind = 'outlining_issue';
+/** The kinds that are about a place in the text: such a note needs a passage selected
+ * that points to one place, but no sentence. */
+export const PLACE_KINDS: readonly NoteKind[] = ['content_missing', 'extra_content', 'outlining_issue', 'page_order', 'ocr'];
+
+/** Below this many syllables a quote is found in many places, so it cannot say where the
+ * note is (a lone ༔ or །།). */
+export const MIN_QUOTE_SYLLABLES = 8;
+
+/** Syllables of a passage: what lies between tshegs, shads, spaces and the like. */
+export function syllableCount(text: string): number {
+  return text.split(/[\s་-༔_]+/).filter((s) => s.length > 0).length;
+}
+
+/** What is wrong with the place of a note of `kind` on `quote`: it is about a place but
+ * has no passage (`none`: it cannot be saved), or one too short to point to one place
+ * (`short`: asked about before saving). Null when nothing is. */
+export function missingPlace(kind: NoteKind | undefined, quote: string | undefined): 'none' | 'short' | null {
+  if (kind == null || !PLACE_KINDS.includes(kind)) return null;
+  if (!quote?.trim()) return 'none';
+  if (syllableCount(quote) < MIN_QUOTE_SYLLABLES) return 'short';
+  return null;
+}
 
 /** What the annotator checked the note against: the scan, a BDRC search, or nothing. */
 export const NOTE_CHECKS = ['scan', 'bdrc', 'none'] as const;
@@ -179,15 +199,6 @@ export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: stri
   if (ids.length) next.voice_note_ids = ids;
   else delete next.voice_note_ids;
   return next;
-}
-
-/** Below this many syllables a quote is found in many places, so it cannot say where the
- * note is (a lone ༔ or །།). */
-export const MIN_QUOTE_SYLLABLES = 8;
-
-/** Syllables of a passage: what lies between tshegs, shads, spaces and the like. */
-export function syllableCount(text: string): number {
-  return text.split(/[\s་-༔_]+/).filter((s) => s.length > 0).length;
 }
 
 /** The note, among `notes`, already on the passage selected in `shown` (one text as shown

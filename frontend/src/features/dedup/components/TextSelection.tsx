@@ -8,14 +8,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { CrossSelection, Marks } from '../hooks/useCrossSelection';
 import {
   KEEPS_ESCAPE,
-  MARKS_A_SPOT,
   MIN_QUOTE_SYLLABLES,
   noteOnPassage,
   PairNotesContext,
   syllableCount,
   widenedPassage,
   type NewNote,
-  type NoteKind,
   type NoteTarget,
   type PairNote,
 } from '../notes';
@@ -113,7 +111,6 @@ export function SelectionBar({
   // Open while asking what to do about a note already on the passage.
   const [asking, setAsking] = useState(false);
   // The kind chosen in the open form: a note marking a spot may quote just a few syllables.
-  const [kind, setKind] = useState<NoteKind | undefined>();
   if (!selected) return null;
   const copy = async (text: string) => {
     try {
@@ -131,12 +128,10 @@ export function SelectionBar({
   const addingTo = adding && existing?.id === adding && pairNotes.onEdit ? existing : undefined;
   const close = () => {
     setAdding(null);
-    setKind(undefined);
     setNoting(false);
   };
   const openForm = (addTo: PairNote | null) => {
     setAdding(addTo?.id ?? null);
-    setKind(addTo?.kind);
     setNoting(true);
   };
   const startNote = () => (existing ? setAsking(true) : openForm(null));
@@ -144,7 +139,7 @@ export function SelectionBar({
     setAsking(false);
     openForm(addToExisting && existing ? existing : null);
   };
-  const tooShort = syllables < MIN_QUOTE_SYLLABLES && kind !== MARKS_A_SPOT;
+  const tooShort = syllables < MIN_QUOTE_SYLLABLES;
   // Adding to a note from a wider selection: its passage grows to cover both.
   const widened = addingTo ? widenedPassage(addingTo, shown[selected.side], selected) : undefined;
   const quoteShown = addingTo ? (widened?.quote ?? addingTo.quote ?? selected.text) : selected.text;
@@ -175,7 +170,6 @@ export function SelectionBar({
             label={t('dedup.fullText.clearSelection')}
             onClick={() => {
               setAdding(null);
-              setKind(undefined);
               clear();
             }}
           >
@@ -203,15 +197,14 @@ export function SelectionBar({
             <NoteForm
               key={addingTo.id}
               target={addingTo.target}
+              quote={quoteShown}
               initialText={addingTo.text}
               initialDetails={addingTo}
-              onDetailsChange={(d) => setKind(d.kind)}
               onCancel={close}
               onSave={async (edit) => {
                 const grown = widened && { quote: widened.quote, shownAt: { side: target, range: widened.range } };
                 await pairNotes.onEdit?.(addingTo.id, grown ? { ...edit, ...grown } : edit);
                 setAdding(null);
-                setKind(undefined);
                 clear();
                 toast.success(t('dedup.notes.updated'));
               }}
@@ -220,14 +213,13 @@ export function SelectionBar({
             <NoteForm
               target={target}
               choices={choices}
-              onDetailsChange={(d) => setKind(d.kind)}
+              quote={selected.text}
               onCancel={close}
               onSave={async (note) => {
                 // Where it was selected; only about where, when picked in the opening or ending.
                 const at = selected.range ?? (selected.near == null ? undefined : { start: selected.near, end: selected.near });
                 const shownAt = at && { side: target, range: at };
                 await onAddNote({ ...note, quote: selected.text, shownAt });
-                setKind(undefined);
                 clear();
                 toast.success(t('dedup.notes.added'));
               }}
