@@ -168,25 +168,39 @@ def _has_notes(d: Optional[DedupDecision]) -> bool:
     return bool(d.note and d.note.strip()) or (isinstance(notes, list) and len(notes) > 0)
 
 
-def _gave_answer(d: Optional[DedupDecision]) -> bool:
-    return d is not None and bool(d.verdict) and d.verdict != "not_sure"
+def _final_answers(db: Session, settled: list[DedupAdjudication]) -> dict[int, str]:
+    """``{item_id: verdict}``: the answer the adjudicator who settled each pair gave."""
+    decisions = repo.latest_adjudicator_decisions(db, [a.item_id for a in settled])
+    out: dict[int, str] = {}
+    for a in settled:
+        d = decisions.get(a.item_id)
+        if d is not None and d.user_id == a.user_id and d.verdict:
+            out[a.item_id] = d.verdict
+    return out
+
+
+def _judged(mine: Optional[DedupDecision], final: Optional[str]) -> bool:
+    """The adjudicator gave a final answer (not "can't answer") on a pair this person
+    answered, so their answer was either upheld or overruled."""
+    return mine is not None and bool(mine.verdict) and final is not None and final != "not_sure"
 
 
 def _review_outcomes(
     db: Session,
     all_assignments: list[DedupAssignment],
     settled: list[DedupAdjudication],
-    disputed: set[int],
     pairs_of: dict[str, list[int]],
     in_period,
     filtered: bool,
 ) -> _Outcomes:
     """What became of each person's answers, and the notes they left.
 
-    Upheld: of an annotator's disputed pairs that are settled, how many ended with
-    their answer. Pairs where they chose "can't answer" are left out: there is no
-    answer of theirs to choose. Final answers and notes for adjudicators count their
-    settled pairs.
+    Upheld: of an annotator's pairs an adjudicator settled with an answer, how many
+    ended with their answer. Every settled pair counts: disputes, final checks of pairs
+    both annotators answered alike, and pairs where this person chose "can't answer"
+    (never upheld: the adjudicator found an answer). The rest are overruled. Pairs the
+    adjudicator could not answer either are left out. Final answers and notes for
+    adjudicators count their settled pairs.
     """
     answered = [a for a in all_assignments if a.completed_at and (not filtered or in_period(a.completed_at))]
     mine = repo.latest_decisions(db, {a.item_id for a in answered})
@@ -196,7 +210,6 @@ def _review_outcomes(
 
     final_answers: dict[str, dict[str, int]] = {}
     adjudication_notes: Counter[str] = Counter()
-    settled_verdict: dict[int, str] = {}
     for a in settled:
         d = adj_decisions.get(a.item_id)
         if d is None or d.user_id != a.user_id:
@@ -204,18 +217,19 @@ def _review_outcomes(
         if d.verdict:
             counts = final_answers.setdefault(a.user_id, {})
             counts[d.verdict] = counts.get(d.verdict, 0) + 1
-            settled_verdict[a.item_id] = d.verdict
         adjudication_notes[a.user_id] += _has_notes(d)
 
+    settled_verdict = _final_answers(db, settled)
     upheld: Counter[str] = Counter()
     upheld_of: Counter[str] = Counter()
     for uid, ids in pairs_of.items():
         for item_id in ids:
             d = mine.get((item_id, uid))
-            if item_id not in disputed or item_id not in settled_verdict or not _gave_answer(d):
+            final = settled_verdict.get(item_id)
+            if not _judged(d, final):
                 continue
             upheld_of[uid] += 1
-            upheld[uid] += d.verdict == settled_verdict[item_id]
+            upheld[uid] += d.verdict == final
     return _Outcomes(upheld, upheld_of, notes, final_answers, adjudication_notes)
 
 
@@ -256,7 +270,7 @@ def annotators(
             pairs_of.setdefault(uid, []).append(item_id)
     settled = [a for a in all_adjudications if a.completed_at and (not filtered or in_period(a.completed_at))]
     adjudicated = Counter(a.user_id for a in settled)
-    outcomes = _review_outcomes(db, all_assignments, settled, disputed, pairs_of, in_period, filtered)
+    outcomes = _review_outcomes(db, all_assignments, settled, pairs_of, in_period, filtered)
     answers = repo.answer_counts_by_user(db, since, until)
     changed = Counter(
         uid for (_, uid), whens in repo.answer_changes(db).items() if any(not filtered or in_period(w) for w in whens)
@@ -331,8 +345,15 @@ def annotator_items(
     db: Session, user_id: str, state: str, since: Optional[datetime] = None, until: Optional[datetime] = None
 ) -> list[ItemOut]:
     """With ``since``/``until``, only the pairs this person first answered, or changed
-    their answer on, in that period."""
+    their answer on, in that period.
+
+    ``overruled``: the pairs where the adjudicator's final answer differs from this
+    person's answer, counted as for "upheld" (with a period: answered and settled in it).
+    Each comes with ``final_verdict``.
+    """
     since, until = utc_naive(since), utc_naive(until)
+    if state == "overruled":
+        return _overruled_items(db, user_id, since, until)
     if since is None and until is None:
         return _views_for(db, repo.user_assignments(db, user_id, None, state=state))
 
@@ -347,6 +368,33 @@ def annotator_items(
             if in_period(a.completed_at) or any(in_period(w) for w in changes.get((a.item_id, user_id), []))
         ],
     )
+
+
+def _overruled_items(
+    db: Session, user_id: str, since: Optional[datetime], until: Optional[datetime]
+) -> list[ItemOut]:
+    filtered = since is not None or until is not None
+    in_period = partial(_in_period, since=since, until=until)
+    done = [
+        a for a in repo.user_assignments(db, user_id, None, state="done")
+        if not filtered or in_period(a.completed_at)
+    ]
+    ids = [a.item_id for a in done]
+    settled = [
+        a for a in repo.get_adjudications(db, ids).values()
+        if a.completed_at and (not filtered or in_period(a.completed_at))
+    ]
+    final = _final_answers(db, settled)
+    mine = repo.latest_decisions(db, ids)
+    wrong = []
+    for a in done:
+        d = mine.get((a.item_id, user_id))
+        f = final.get(a.item_id)
+        if _judged(d, f) and d.verdict != f:
+            wrong.append(a)
+    if not wrong:
+        return []
+    return [v.model_copy(update={"final_verdict": final[v.item_id]}) for v in _views_for(db, wrong)]
 
 
 def reassign(db: Session, admin: User, body: ReassignIn) -> ReassignOut:

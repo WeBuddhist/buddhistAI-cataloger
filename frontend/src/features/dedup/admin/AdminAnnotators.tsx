@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import type { Annotator } from '../api/review';
 import { useAnnotators } from '../hooks/useReview';
@@ -125,6 +125,7 @@ function AnnotationList({
   open,
 }: Readonly<{ rows: Annotator[]; filtered: boolean; open: (a: Annotator) => void }>) {
   const { t } = useTranslation();
+  const period = usePeriod();
   return (
     <>
       {/* Phones and tablets */}
@@ -197,7 +198,21 @@ function AnnotationList({
                 <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{formatDuration(a.avg_active_seconds)}</td>
                 <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{agreement(a)}</td>
                 <td className="px-3 py-3 text-right tabular-nums text-gray-600">{a.paired ? formatNumber(a.disputed) : '—'}</td>
-                <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{a.upheld_of ? ratio(a.upheld, a.upheld_of) : '—'}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
+                  {a.upheld_of ? (
+                    // Opens this person's overruled pairs, to see their mistakes.
+                    <Link
+                      to={`/dedup-admin/annotators/${encodeURIComponent(a.user_id)}${withTab(period.search, 'overruled')}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={t('dedup.admin.annotators.seeOverruled', { n: formatNumber(a.upheld_of - a.upheld) })}
+                      className="text-blue-700 hover:underline"
+                    >
+                      {ratio(a.upheld, a.upheld_of)}
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="px-3 py-3 text-right tabular-nums text-gray-600">{a.notes ? formatNumber(a.notes) : '—'}</td>
                 <td className="hidden px-3 py-3 text-xs text-gray-500 xl:table-cell">
                   <LastActive iso={a.last_active} />
@@ -306,6 +321,13 @@ function LastActive({ iso }: Readonly<{ iso: string | null }>) {
 }
 
 /** "8 of 10 (80%)". */
+/** The query string with `tab` set, keeping the chosen period. */
+function withTab(search: string, tab: string): string {
+  const p = new URLSearchParams(search);
+  p.set('tab', tab);
+  return `?${p.toString()}`;
+}
+
 function ratio(n: number, total: number): string {
   return i18n.t('dedup.admin.annotators.agreementValue', {
     n: formatNumber(n),

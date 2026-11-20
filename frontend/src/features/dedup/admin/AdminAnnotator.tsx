@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { MyItemsState, ReviewItem } from '../api/review';
+import type { AnnotatorItemsState, ReviewItem } from '../api/review';
 import { useAdminOverview, useAnnotatorItems, useAnnotators, useReassign } from '../hooks/useReview';
 import { answerLabel, batchNames, formatDateTime, formatNumber, hasIssue, isDecided } from '../utils';
 import { Person } from './AdminAnnotators';
@@ -22,7 +22,9 @@ import PeriodFilter from './PeriodFilter';
 import { usePeriod } from '../hooks/usePeriod';
 import { notesOf } from '../notes';
 
-const TABS: MyItemsState[] = ['all', 'open', 'done'];
+const TABS: AnnotatorItemsState[] = ['all', 'open', 'done', 'overruled'];
+// A period lists the pairs answered in it: only answered pairs, and the overruled among them.
+const PERIOD_TABS: AnnotatorItemsState[] = ['done', 'overruled'];
 
 // Only unfinished items can be moved: an answered item belongs to whoever answered it.
 const isFinished = (it: ReviewItem) => Boolean(it.assignment?.completed_at);
@@ -32,15 +34,30 @@ type Pending = { kind: 'reassign'; to: string } | { kind: 'release' };
 export default function AdminAnnotator() {
   const { t } = useTranslation();
   const { userId = '' } = useParams();
-  const [state, setState] = useState<MyItemsState>('all');
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [target, setTarget] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
 
   const period = usePeriod();
   const annotators = useAnnotators(period.period);
-  // A period lists the pairs answered in it, so the tabs have no meaning then.
-  const items = useAnnotatorItems(userId, period.filtered ? 'done' : state, period.period);
+  // The tab is in the address, so "Upheld" on the Annotators tab can link to the overruled pairs.
+  const [params, setParams] = useSearchParams();
+  const tabs = period.filtered ? PERIOD_TABS : TABS;
+  const asked = params.get('tab') as AnnotatorItemsState | null;
+  const state: AnnotatorItemsState = asked && tabs.includes(asked) ? asked : tabs[0];
+  const setState = (tab: AnnotatorItemsState) =>
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (tab === tabs[0]) p.delete('tab');
+        else p.set('tab', tab);
+        return p;
+      },
+      { replace: true },
+    );
+  const overruled = state === 'overruled';
+  const items = useAnnotatorItems(userId, state, period.period);
   const overview = useAdminOverview();
   const reassign = useReassign();
 
@@ -56,6 +73,20 @@ export default function AdminAnnotator() {
   const [withNotes, setWithNotes] = useState(false);
   const rows = (items.data ?? []).filter((it) => !withNotes || notesOf(it.partner_payload).length > 0);
   const movable = rows.filter((it) => !isFinished(it));
+  // An overruled pair opens on the admin pair page, with every answer on it.
+  const openPair = (id: number) => {
+    void navigate(`/dedup-admin/pairs/${id}`, { state: { ids: rows.map((r) => r.item_id) } });
+  };
+  // Overruled pairs open; elsewhere an unfinished pair is ticked for moving.
+  const onRow = (it: ReviewItem) => {
+    if (overruled) openPair(it.item_id);
+    else if (!isFinished(it)) toggle(it.item_id);
+  };
+  const openable = overruled ? 'cursor-pointer hover:bg-gray-100 active:bg-gray-100' : '';
+  const rowRole = (it: ReviewItem) => {
+    if (overruled) return 'button';
+    return isFinished(it) ? undefined : 'checkbox';
+  };
   const allMovableSelected = movable.length > 0 && movable.every((it) => selected.has(it.item_id));
 
   // Drop selections that are no longer on screen or no longer movable.
@@ -139,7 +170,7 @@ export default function AdminAnnotator() {
 
       <div className={period.filtered ? 'mt-4 mb-3' : 'mt-4'}>
         <PeriodFilter state={period} />
-        {period.filtered && <p className="mt-2 text-xs text-gray-500">{t('dedup.admin.period.annotatorHint')}</p>}
+        {period.filtered && !overruled && <p className="mt-2 text-xs text-gray-500">{t('dedup.admin.period.annotatorHint')}</p>}
       </div>
 
       {(withNotes || (person?.notes ?? 0) > 0) && (
@@ -150,28 +181,32 @@ export default function AdminAnnotator() {
         </label>
       )}
 
-      {!period.filtered && (
-        <div className="mt-5 mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-md bg-gray-100 p-1" role="tablist">
-            {TABS.map((key) => (
-              <button
-                key={key}
-                role="tab"
-                aria-selected={state === key}
-                onClick={() => setState(key)}
-                className={`cursor-pointer rounded px-3 py-1 text-sm font-medium transition-colors ${
-                  state === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {t(`dedup.queue.tab.${key}`)}
-              </button>
-            ))}
-          </div>
-          <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
-            {t('dedup.admin.annotator.tickHint')} <Lock className="h-3.5 w-3.5" /> {t('dedup.admin.annotator.answeredStay')}
-          </p>
+      <div className="mt-5 mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-md bg-gray-100 p-1" role="tablist">
+          {tabs.map((key) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={state === key}
+              onClick={() => setState(key)}
+              className={`cursor-pointer rounded px-3 py-1 text-sm font-medium transition-colors ${
+                state === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <TabLabel tab={key} filtered={period.filtered} overruledCount={person && person.upheld_of - person.upheld} />
+            </button>
+          ))}
         </div>
-      )}
+        {overruled ? (
+          <p className="text-xs text-gray-500">{t('dedup.admin.annotator.overruledHint')}</p>
+        ) : (
+          !period.filtered && (
+            <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+              {t('dedup.admin.annotator.tickHint')} <Lock className="h-3.5 w-3.5" /> {t('dedup.admin.annotator.answeredStay')}
+            </p>
+          )
+        )}
+      </div>
 
       {items.error && (
         <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -189,19 +224,19 @@ export default function AdminAnnotator() {
           return (
             <li key={it.item_id}>
               <div
-                role={finished ? undefined : 'checkbox'}
+                role={rowRole(it)}
                 aria-checked={finished ? undefined : picked}
-                tabIndex={finished ? undefined : 0}
-                onClick={() => !finished && toggle(it.item_id)}
+                tabIndex={rowRole(it) ? 0 : undefined}
+                onClick={() => onRow(it)}
                 onKeyDown={(e) => {
-                  if (!finished && (e.key === ' ' || e.key === 'Enter')) {
+                  if (rowRole(it) && (e.key === ' ' || e.key === 'Enter')) {
                     e.preventDefault();
-                    toggle(it.item_id);
+                    onRow(it);
                   }
                 }}
                 className={`flex gap-3 rounded-lg border p-3 ${
                   finished
-                    ? 'border-gray-200 bg-gray-50'
+                    ? `border-gray-200 bg-gray-50 ${openable}`
                     : `cursor-pointer bg-white ${picked ? 'border-blue-300 bg-blue-50/60' : 'border-gray-200'}`
                 }`}
               >
@@ -217,7 +252,7 @@ export default function AdminAnnotator() {
                     <span className="tabular-nums">
                       {t('dedup.pairView.title', { id: it.item_id })} · {names[it.batch_id] ?? it.batch_id}
                     </span>
-                    <ItemStatus item={it} />
+                    {overruled ? <Overruled item={it} /> : <ItemStatus item={it} />}
                   </div>
                   <div className={`mt-1 break-words font-monlam text-base leading-relaxed ${finished ? 'text-gray-500' : 'text-gray-900'}`}>
                     {it.evidence.a?.title_bo || '—'}
@@ -237,7 +272,9 @@ export default function AdminAnnotator() {
           );
         })}
         {!items.isLoading && rows.length === 0 && (
-          <li className="rounded-lg border border-gray-200 bg-white py-10 text-center text-sm text-gray-500">{t('dedup.adjudicationQueue.empty')}</li>
+          <li className="rounded-lg border border-gray-200 bg-white py-10 text-center text-sm text-gray-500">
+            {t(overruled ? 'dedup.admin.annotator.overruledEmpty' : 'dedup.adjudicationQueue.empty')}
+          </li>
         )}
       </ul>
 
@@ -288,10 +325,10 @@ export default function AdminAnnotator() {
               return (
                 <tr
                   key={it.item_id}
-                  onClick={() => !finished && toggle(it.item_id)}
+                  onClick={() => onRow(it)}
                   className={
                     finished
-                      ? 'bg-gray-50 text-gray-400'
+                      ? `bg-gray-50 text-gray-400 ${openable}`
                       : `cursor-pointer hover:bg-gray-50 ${selected.has(it.item_id) ? 'bg-blue-50/60' : ''}`
                   }
                 >
@@ -337,7 +374,7 @@ export default function AdminAnnotator() {
                     {it.answer_changed_at ? <ChangedOn item={it} short /> : '—'}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    <ItemStatus item={it} />
+                    {overruled ? <Overruled item={it} /> : <ItemStatus item={it} />}
                   </td>
                 </tr>
               );
@@ -345,7 +382,9 @@ export default function AdminAnnotator() {
           </tbody>
         </table>
         {!items.isLoading && rows.length === 0 && (
-          <p className="py-10 text-center text-sm text-gray-500">{t('dedup.adjudicationQueue.empty')}</p>
+          <p className="py-10 text-center text-sm text-gray-500">
+            {t(overruled ? 'dedup.admin.annotator.overruledEmpty' : 'dedup.adjudicationQueue.empty')}
+          </p>
         )}
       </div>
 
@@ -419,6 +458,39 @@ export default function AdminAnnotator() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TabLabel({
+  tab,
+  filtered,
+  overruledCount,
+}: Readonly<{ tab: AnnotatorItemsState; filtered: boolean; overruledCount?: number }>) {
+  const { t } = useTranslation();
+  if (tab !== 'overruled') {
+    return <>{t(filtered ? 'dedup.admin.annotator.answeredInPeriod' : `dedup.queue.tab.${tab}`)}</>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {t('dedup.admin.annotator.overruled')}
+      {overruledCount != null && overruledCount > 0 && (
+        <span className="tabular-nums text-gray-500">{formatNumber(overruledCount)}</span>
+      )}
+    </span>
+  );
+}
+
+/** Their answer, then the adjudicator's final answer it was overruled by. */
+function Overruled({ item }: Readonly<{ item: ReviewItem }>) {
+  const { t } = useTranslation();
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5" title={t('dedup.admin.annotator.overruledRowTitle')}>
+      <ItemStatus item={item} />
+      <ArrowRight className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
+      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${VERDICT_STYLE[item.final_verdict!] ?? 'bg-gray-100 text-gray-700'}`}>
+        {t('dedup.admin.annotator.finalAnswer', { answer: answerLabel(item.final_verdict ?? null) })}
+      </span>
+    </span>
   );
 }
 

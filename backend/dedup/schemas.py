@@ -130,6 +130,9 @@ class ItemOut(BaseModel):
     locked: bool = False
     # An admin corrected the pair's final answer (from the admin pair page).
     corrected: bool = False
+    # The adjudicator's final answer: only in an admin's list of a person's overruled
+    # pairs.
+    final_verdict: Optional[str] = None
 
 
 class AnnotatorAnswerOut(BaseModel):

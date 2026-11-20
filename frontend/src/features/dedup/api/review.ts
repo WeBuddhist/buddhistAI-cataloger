@@ -122,6 +122,8 @@ export interface ReviewItem {
   // answer again is not a change). The first answer's time is assignment.completed_at.
   answer_changed_at: string | null;
   answer_changes: number;
+  // The adjudicator's final answer: only in an admin's list of a person's overruled pairs.
+  final_verdict?: string | null;
 }
 
 // Adjudication: pairs whose two annotators disagreed (or either said "can't answer").
@@ -476,10 +478,14 @@ export function fetchAnnotators(period?: PeriodRange, opts?: { signal?: AbortSig
   return request<Annotator[]>(`/admin/annotators${periodQuery(period)}`, { signal: opts?.signal });
 }
 
+/** An admin's view of one annotator's pairs: the usual tabs, plus the pairs where the
+ * adjudicator's final answer differs from theirs. */
+export type AnnotatorItemsState = MyItemsState | 'overruled';
+
 /** With a period, only the pairs answered in it. */
 export function fetchAnnotatorItems(
   userId: string,
-  state: MyItemsState,
+  state: AnnotatorItemsState,
   period?: PeriodRange,
   opts?: { signal?: AbortSignal },
 ) {

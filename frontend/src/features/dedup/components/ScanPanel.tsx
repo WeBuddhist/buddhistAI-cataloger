@@ -6,6 +6,7 @@ import type { WitnessCard } from '../api/review';
 import { pageImageUrl, pageListImageUrl, scanGroupOf, type ScanPage } from '../api/scans';
 import { useProxyHeaders, useScanImage } from '../hooks/useScanImage';
 import { useScanLocation } from '../hooks/useScanLocation';
+import { bdrcViewerUrl, useScanView, type ScanView } from '../hooks/useScanView';
 import { pageWidth, type ScanRange } from '../scanPlace';
 import { formatNumber } from '../utils';
 
@@ -19,6 +20,47 @@ const FOOTER_PX = 22;
 const GAP_PX = 10;
 // Row padding on each side, plus room for a classic (non-overlay) scrollbar.
 const ROW_INSET_PX = 12 + 12 + 16;
+
+/** Scans | BDRC viewer. */
+export function ScanViewSwitch({ view, onChange }: Readonly<{ view: ScanView; onChange: (v: ScanView) => void }>) {
+  const { t } = useTranslation();
+  return (
+    <div className="inline-flex rounded-md bg-gray-100 p-0.5" role="tablist" aria-label={t('dedup.scans.viewLabel')}>
+      {(['scans', 'bdrc'] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => onChange(v)}
+          className={`cursor-pointer rounded px-2.5 py-0.5 text-xs font-medium ${
+            view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          {t(v === 'scans' ? 'dedup.scans.viewScans' : 'dedup.scans.viewBdrc')}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** BDRC's own viewer for a scan, inside the tool so the time spent in it is counted. */
+export function BdrcViewer({ url }: Readonly<{ url: string }>) {
+  const { t } = useTranslation();
+  return (
+    <iframe
+      key={url}
+      src={url}
+      title={t('dedup.scans.bdrcViewerTitle')}
+      // useActiveTimer counts time while this frame has focus (our page cannot see the
+      // mouse or keys inside it).
+      data-counts-active-time=""
+      allow="fullscreen"
+      referrerPolicy="no-referrer"
+      className="h-full w-full border-0 bg-white"
+    />
+  );
+}
 
 // The scanned pages of A or B next to the texts, read side by side with them. Every page
 // keeps its own shape (a volume often opens with portrait covers before the long pecha
@@ -58,6 +100,10 @@ export default function ScanPanel({
   const [boxWidth, setBoxWidth] = useState(0);
   const [current, setCurrent] = useState(0);
   const [jump, setJump] = useState('');
+  const [view, chooseView] = useScanView();
+  // The same page "Open on BDRC" opens: the whole volume, to look through as on BDRC.
+  const bdrcUrl = bdrcViewerUrl(imageGroup);
+  const ownControls = view === 'scans';
   // Once the reader has moved the scans, finding the page late must not pull them away.
   const moved = useRef(false);
 
@@ -138,6 +184,7 @@ export default function ScanPanel({
 
   let body;
   if (!imageGroup) body = <Note>{t('dedup.witness.noScan')}</Note>;
+  else if (view === 'bdrc' && bdrcUrl) body = <BdrcViewer url={bdrcUrl} />;
   else if (listQuery.isLoading) body = <Note><Loader2 className="h-5 w-5 animate-spin" /></Note>;
   else if (listQuery.error)
     body = (
@@ -192,7 +239,8 @@ export default function ScanPanel({
             );
           })}
         </div>
-        {pages.length > 0 && (
+        {imageGroup && <ScanViewSwitch view={view} onChange={chooseView} />}
+        {ownControls && pages.length > 0 && (
           <form
             className="flex items-center gap-1 text-xs tabular-nums text-gray-500"
             onSubmit={(e) => {
@@ -214,8 +262,10 @@ export default function ScanPanel({
             / {formatNumber(pages.length)}
           </form>
         )}
-        {finding && pages.length > 0 && <span className="text-xs text-gray-500">{t('dedup.scans.locating')}</span>}
-        {startIndex != null && (
+        {ownControls && finding && pages.length > 0 && (
+          <span className="text-xs text-gray-500">{t('dedup.scans.locating')}</span>
+        )}
+        {ownControls && startIndex != null && (
           <button
             type="button"
             onClick={() => {
@@ -228,16 +278,17 @@ export default function ScanPanel({
             <Crosshair className="h-3.5 w-3.5" /> {t('dedup.scans.textStart')}
           </button>
         )}
-        {!finding && startIndex == null && pages.length > 0 && (
+        {ownControls && !finding && startIndex == null && pages.length > 0 && (
           <span className="text-xs text-gray-500">{t('dedup.scans.notLocated')}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {imageGroup && (
+          {bdrcUrl && (
             <a
               // The image group, not `image_url`: BDRC's link drops the end of some ids.
-              href={`https://library.bdrc.io/view/bdr:${imageGroup}`}
+              href={bdrcUrl}
               target="_blank"
               rel="noreferrer"
+              title={t('dedup.scans.openInBdrcTitle')}
               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-800"
             >
               {t('dedup.scans.openInBdrc')} <ExternalLink className="h-3.5 w-3.5" />

@@ -278,12 +278,13 @@ def admin_annotators(
 @admin_router.get("/annotators/{user_id}/items", response_model=list[ItemOut])
 def admin_annotator_items(
     user_id: str,
-    state: Literal["open", "done", "all"] = "all",
+    state: Literal["open", "done", "all", "overruled"] = "all",
     since: datetime | None = None,
     until: datetime | None = None,
     db: Session = Depends(get_db),
 ):
-    """One annotator's items; with ``since``/``until``, only those answered in that period."""
+    """One annotator's items; with ``since``/``until``, only those answered in that period.
+    ``overruled``: those where the adjudicator's final answer differs from theirs."""
     return admin_ctrl.annotator_items(db, user_id, state, since, until)
 
 
