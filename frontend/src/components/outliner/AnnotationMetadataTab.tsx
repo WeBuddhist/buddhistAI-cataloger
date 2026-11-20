@@ -41,9 +41,11 @@ export function AnnotationMetadataTab() {
   const isTextSegment = activeSegment.label === 'TEXT';
 
   const wasMetadataTabSelectedRef = useRef(false);
+  /** Segment the auto-run last handled on this tab visit (null after leaving the tab). */
+  const autoDetectedSegmentIdRef = useRef<string | null>(null);
   const prevDocumentIdRef = useRef(documentId);
-  const onAIDetectRef = useRef(aiSuggestionsControls.onAIDetect);
-  onAIDetectRef.current = aiSuggestionsControls.onAIDetect;
+  const onAIDetectRef = useRef(aiSuggestionsControls.onAIAutoDetect);
+  onAIDetectRef.current = aiSuggestionsControls.onAIAutoDetect;
   const documentIdRef = useRef(documentId);
   documentIdRef.current = documentId;
   const snapshotRef = useRef({ activeSegment, formData });
@@ -61,34 +63,52 @@ export function AnnotationMetadataTab() {
   useEffect(() => {
     if (!isMetadataTabSelected) {
       wasMetadataTabSelectedRef.current = false;
+      autoDetectedSegmentIdRef.current = null;
       return;
     }
 
+    // Run on entering the Metadata tab, and again whenever another segment is opened on it.
     const justEnteredMetadataTab = !wasMetadataTabSelectedRef.current;
-    if (!justEnteredMetadataTab) {
+    if (!justEnteredMetadataTab && autoDetectedSegmentIdRef.current === activeSegment.id) {
       return;
     }
-
+    // Right after switching segments the form still holds the previous segment's values for a
+    // moment (the sidebar refills it in its own effect), so judge by the saved segment only.
+    const trustForm = justEnteredMetadataTab;
+    const previous = {
+      entered: wasMetadataTabSelectedRef.current,
+      segmentId: autoDetectedSegmentIdRef.current,
+    };
     wasMetadataTabSelectedRef.current = true;
+    autoDetectedSegmentIdRef.current = activeSegment.id;
 
+    let fired = false;
     const timeoutId = globalThis.setTimeout(() => {
+      fired = true;
       const { activeSegment: seg, formData: fd } = snapshotRef.current;
       if (!documentIdRef.current) return;
       // Read-only documents only show metadata; never fetch AI suggestions for them.
       if (isDocumentReadOnlyRef.current) return;
       if (seg.label !== 'TEXT' || seg.status === 'checked') return;
       if (!seg.text?.trim()) return;
-      const titleEmpty = !seg.title?.trim() && !fd.title?.name?.trim();
-      const authorEmpty = !seg.author?.trim() && !fd.author?.name?.trim();
-      if (!titleEmpty || !authorEmpty) return;
+      const titleEmpty = !seg.title?.trim() && !(trustForm && fd.title?.name?.trim());
+      const authorEmpty = !seg.author?.trim() && !(trustForm && fd.author?.name?.trim());
+      // One call asks for both. Also run when only one is missing: after a split the lower
+      // segment already has an auto-filled title but no author. Asks at most once per segment
+      // (see useAISuggestions); reopening it shows the remembered answer.
+      if (!titleEmpty && !authorEmpty) return;
       void onAIDetectRef.current();
     }, 0);
 
     return () => {
       globalThis.clearTimeout(timeoutId);
-      wasMetadataTabSelectedRef.current = false;
+      // Cancelled before it ran (e.g. React re-running effects): let the next run try again.
+      if (!fired) {
+        wasMetadataTabSelectedRef.current = previous.entered;
+        autoDetectedSegmentIdRef.current = previous.segmentId;
+      }
     };
-  }, [isMetadataTabSelected, documentId]);
+  }, [isMetadataTabSelected, documentId, activeSegment.id]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full border-l-[3px] border-r-blue-500/85 pl-4 pr-2 py-3 shadow-[inset_4px_0_12px_-4px_rgba(59,130,246,0.12)]">

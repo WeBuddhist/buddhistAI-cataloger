@@ -2,7 +2,7 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import get_db
@@ -35,7 +35,13 @@ from outliner.deps import (
     is_user_admin_or_reviewer,
     require_outliner_access,
 )
+from outliner.controller.merge_restore import (
+    find_restore_record,
+    reset_to_annotator,
+    undo_last_merge,
+)
 from outliner.controller.review_split_limit import assert_reviewer_can_split
+from outliner.repository import outliner_repository as outliner_repo
 from outliner.repository.document import fetch_document_by_id
 from outliner.repository.segment import (
     document_has_rejected_segment,
@@ -219,7 +225,14 @@ def split_segment(
     reviewer_id = _assert_can_restructure_segments(
         db, split_request.segment_id, current_user, split_request.document_id
     )
+    # Putting back a segment the reviewer merged away is not a new segment: no limit applies.
+    restored = False
     if reviewer_id:
+        segment = outliner_repo.get_segment_by_pk(db, split_request.segment_id)
+        restored = bool(
+            segment and find_restore_record(segment, split_request.split_position)
+        )
+    if reviewer_id and not restored:
         document_id = (
             get_document_id_for_segment(db, split_request.segment_id)
             or split_request.document_id
@@ -234,7 +247,19 @@ def split_segment(
         reviewer_id=reviewer_id,
     )
 
-    return {"message": "segment split", "id": segment_id}
+    return {"message": "segment split", "id": segment_id, "restored": restored}
+
+
+@router.post("/segments/{segment_id}/undo-merge")
+def undo_merge(
+    segment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_outliner_access),
+):
+    """Put back the segment the reviewer's latest merge removed, with its original credit."""
+    _assert_can_restructure_segments(db, segment_id, current_user)
+    restored = undo_last_merge(db, segment_id)
+    return {"message": "merge undone", "id": segment_id, "restored_segment_id": restored.id}
 
 
 @router.post("/segments/merge", response_model=SegmentResponse)
@@ -257,6 +282,25 @@ def merge_segments(
         db,
         document_content=document_plain_content(db, first_segment.document_id),
     )
+
+
+@router.post("/documents/{document_id}/reset-to-annotator")
+def reset_document_to_annotator(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_outliner_access),
+):
+    """Reviewer: put the outline back exactly as the annotator sent it this review round."""
+    doc = fetch_document_by_id(db, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    assert_assigned_document_participant(doc.user_id, doc.reviewer_id, current_user)
+    has_rejected = doc.status == "approved" and document_has_rejected_segment(db, document_id)
+    assert_document_editable(doc.status, doc.reviewer_id, current_user, has_rejected_segment=has_rejected)
+    if doc.reviewer_id != current_user.id or doc.user_id == current_user.id:
+        raise HTTPException(status_code=403, detail="Only the document's reviewer can do this")
+    result = reset_to_annotator(db, document_id)
+    return {"message": "outline reset to the annotator's", **result}
 
 
 @router.delete("/segments/{segment_id}", status_code=204)

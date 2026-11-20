@@ -199,6 +199,7 @@ def segment_list_for_document(db: Session, document_id: str) -> List[dict]:
             OutlinerSegment.updated_at,
             OutlinerSegment.created_by_id,
             OutlinerSegment.corrected_by_reviewer,
+            OutlinerSegment.merge_history,
         )
         .filter(OutlinerSegment.document_id == document_id)
         .order_by(OutlinerSegment.segment_index)
@@ -208,6 +209,13 @@ def segment_list_for_document(db: Session, document_id: str) -> List[dict]:
     def _segment_to_dict(segment):
         d = segment._asdict()
         d["label"] = segment.label.name if segment.label else None
+        # Where a merged-away segment can be put back (same rule as merge_restore.history_of).
+        history = d.pop("merge_history", None) or []
+        d["merge_restore_positions"] = sorted(
+            r["position"]
+            for r in history
+            if segment.span_start < r.get("position", -1) < segment.span_end
+        ) or None
         return d
 
     segment_list = [_segment_to_dict(segment) for segment in segments]
@@ -289,14 +297,13 @@ def document_has_rejected_segment(db: Session, document_id: str) -> bool:
     )
 
 
-def count_reviewer_added_segments_this_round(db: Session, document_id: str) -> int:
-    """Segments a reviewer added (split off) in the document's current review round.
+def review_round_start(db: Session, document_id: str):
+    """When the document's current review round began, or None for the first round.
 
-    A round ends when the annotator fixes a rejected segment: only segments added after the
-    newest rejection the annotator has resolved count. With no resolved rejection yet, every
-    reviewer-added segment counts.
+    A round ends when the annotator fixes a rejected segment: the newest rejection the
+    annotator has resolved marks the start of the next one.
     """
-    round_start = (
+    return (
         db.query(func.max(SegmentRejection.created_at))
         .join(OutlinerSegment, OutlinerSegment.id == SegmentRejection.segment_id)
         .filter(
@@ -305,6 +312,12 @@ def count_reviewer_added_segments_this_round(db: Session, document_id: str) -> i
         )
         .scalar()
     )
+
+
+def count_reviewer_added_segments_this_round(db: Session, document_id: str) -> int:
+    """Segments a reviewer added (split off) in the document's current review round
+    (see ``review_round_start``). With no resolved rejection yet, every one counts."""
+    round_start = review_round_start(db, document_id)
     query = db.query(func.count(OutlinerSegment.id)).filter(
         OutlinerSegment.document_id == document_id,
         OutlinerSegment.created_by_id.isnot(None),

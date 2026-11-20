@@ -646,7 +646,8 @@
       "failed": "AI outline failed: {{message}}"
     },
     "aiSuggestions": {
-      "failed": "Failed to generate AI suggestions: {{message}}"
+      "failed": "Failed to generate AI suggestions: {{message}}",
+      "noAuthorFound": "AI found no author named in this text"
     },
     "aiDetect": {
       "stop": "Stop AI suggestion",
@@ -667,7 +668,33 @@
       "added": "Added by reviewer",
       "addedHint": "The reviewer added this segment during review",
       "corrected": "Corrected by reviewer",
-      "correctedHint": "The reviewer split or merged this segment during review"
+      "correctedHint": "This segment's start or end differs from what the annotator sent"
+    },
+    "restoreOutline": {
+      "restoreSplit": "Restore annotator's split",
+      "restoreSplitHint": "The annotator's segment started here before the merge: splitting puts it back with their credit",
+      "restoreConfirm": "Restore the annotator's segment? It is put back exactly where the annotator had it, with their credit.",
+      "restoredToast": "Annotator's segment restored",
+      "restoredToastHint": "It goes back to the annotator's credit and doesn't use one of your splits.",
+      "undoMerge": "Undo merge",
+      "undoMergeHint": "Put back the annotator's segment this merge removed",
+      "undoMergeConfirm": "Undo the merge? The annotator's segment is put back as it was.",
+      "undoMergeToast": "Merge undone — the annotator's segment is back",
+      "undoMergeToastHint": "It keeps the annotator's credit and doesn't use one of your splits.",
+      "undoMergeFailed": "Failed to undo merge: {{error}}",
+      "reset": "Reset to annotator's segments",
+      "resetHint": "Put the segments back exactly as the annotator sent them",
+      "resetTitle": "Reset to annotator's segments?",
+      "resetIntro": "All segments go back exactly as the annotator sent them:",
+      "resetPoint1": "Segments you merged away come back.",
+      "resetPoint2": "Segments you split off are removed, along with any title or author you gave them.",
+      "resetPoint3": "Your approve/reject decisions and title suggestions on the annotator's segments stay.",
+      "resetPoint4": "Your split count goes back to 0.",
+      "resetConfirm": "Reset",
+      "resetting": "Resetting…",
+      "resetToast": "Segments reset to the annotator's",
+      "resetToastHint": "The outline is back exactly as the annotator sent it.",
+      "resetFailed": "Failed to reset: {{error}}"
     },
     "images": {
       "pageTitle": "Page {{n}}",

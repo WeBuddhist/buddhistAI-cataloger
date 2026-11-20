@@ -15,6 +15,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // No ThemeProvider: "system" follows the OS, so on a dark-mode Mac sonner gave the
+      // description its near-white dark-theme colour on our light toast. Pin it.
+      toastOptions={{ classNames: { description: "!text-gray-600" } }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

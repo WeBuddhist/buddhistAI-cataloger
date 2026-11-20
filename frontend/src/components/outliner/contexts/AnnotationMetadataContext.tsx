@@ -7,6 +7,8 @@ export interface AISuggestionsControls {
   aiSuggestions: AISuggestions | null;
   aiLoading: boolean;
   onAIDetect: () => Promise<void>;
+  /** Automatic run: asks once per segment; later visits show the remembered answer. */
+  onAIAutoDetect: () => Promise<void>;
   onAIStop: () => void;
   /** Apply detected text to the title or author field (sets spans for save). */
   onApplyAISuggestion: (field: 'title' | 'author', value: string) => void;

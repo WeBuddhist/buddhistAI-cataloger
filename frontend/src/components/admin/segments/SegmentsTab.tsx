@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EllipsisVertical, PanelRightClose, PanelRightOpen, Undo } from 'lucide-react';
+import { EllipsisVertical, PanelRightClose, PanelRightOpen, RotateCcw, Undo } from 'lucide-react';
 import {
   List,
   useListRef,
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import {
   approveOutlinerDocument,
   assignDocumentReviewer,
+  resetDocumentToAnnotator,
   resetSegments,
   updateDocumentAssignee,
   updateDocumentStatus,
@@ -44,6 +45,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -168,6 +170,12 @@ function SegmentsTab({
     selectedDocument?.status === 'completed' &&
     splitLimit !== null;
   const splitLimitReached = showSplitLimit && splitsUsed >= (splitLimit ?? 0);
+  // "Reset to annotator's segments": while reviewing, once the reviewer has split or merged.
+  const [resetToAnnotatorOpen, setResetToAnnotatorOpen] = useState(false);
+  const reviewerChangedOutline =
+    splitsUsed > 0 || segments.some((s) => (s.merge_restore_positions?.length ?? 0) > 0);
+  const showResetToAnnotator =
+    canEditReview && selectedDocument?.status === 'completed' && reviewerChangedOutline;
 
   useEffect(() => {
     setSubmittedThisVisit(false);
@@ -299,6 +307,19 @@ function SegmentsTab({
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to approve document');
     },
+  });
+
+  const resetToAnnotatorMutation = useMutation({
+    mutationFn: () => resetDocumentToAnnotator(documentId!),
+    onSuccess: async () => {
+      setResetToAnnotatorOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['outliner-admin-document', documentId] });
+      toast.info(t('outliner.restoreOutline.resetToast'), {
+        description: t('outliner.restoreOutline.resetToastHint'),
+      });
+    },
+    onError: (error: Error) =>
+      toast.error(t('outliner.restoreOutline.resetFailed', { error: error.message })),
   });
 
   const handleApproveAll = () => {
@@ -580,6 +601,20 @@ function SegmentsTab({
                   )}
                 </Button>
               )}
+              {showResetToAnnotator && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 cursor-pointer hover:bg-amber-50 hover:border-amber-400"
+                  onClick={() => setResetToAnnotatorOpen(true)}
+                  disabled={resetToAnnotatorMutation.isPending}
+                  title={t('outliner.restoreOutline.resetHint')}
+                >
+                  <RotateCcw className="h-4 w-4" aria-hidden />
+                  {t('outliner.restoreOutline.reset')}
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -740,6 +775,38 @@ function SegmentsTab({
           )}
         </div>
       )}
+
+      <Dialog open={resetToAnnotatorOpen} onOpenChange={setResetToAnnotatorOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('outliner.restoreOutline.resetTitle')}</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>{t('outliner.restoreOutline.resetIntro')}</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {(['resetPoint1', 'resetPoint2', 'resetPoint3', 'resetPoint4'] as const).map((key) => (
+                    <li key={key}>{t(`outliner.restoreOutline.${key}`)}</li>
+                  ))}
+                </ul>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetToAnnotatorOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={() => resetToAnnotatorMutation.mutate()}
+              disabled={resetToAnnotatorMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {resetToAnnotatorMutation.isPending
+                ? t('outliner.restoreOutline.resetting')
+                : t('outliner.restoreOutline.resetConfirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isReassignDialogOpen} onOpenChange={handleReassignDialogChange}>
         <DialogContent className="sm:max-w-lg">

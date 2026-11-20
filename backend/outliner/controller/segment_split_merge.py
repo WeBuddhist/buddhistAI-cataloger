@@ -8,6 +8,14 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal
+from outliner.controller.merge_restore import (
+    find_restore_record,
+    history_of,
+    merge_history_for,
+    refresh_reviewer_marks,
+    restore_segment,
+    split_history,
+)
 from outliner.models.outliner import OutlinerSegment, SegmentLabels
 from outliner.repository import outliner_repository as outliner_repo
 from outliner.utils.segment_title_author_auto import apply_split_auto_title_author_parallel
@@ -55,7 +63,9 @@ def split_segment(
     """Split a segment at a given position.
 
     ``reviewer_id`` is set when the document's assigned reviewer splits during review: the new
-    segment is credited to them and the annotator's segment is marked as corrected.
+    segment is credited to them and the annotator's segment is marked as corrected -- unless
+    the split puts back a segment the reviewer merged away (see ``merge_restore``), which
+    restores it exactly, with its original credit and no mark.
     """
     segment = outliner_repo.get_segment_by_pk(db, segment_id)
     document = get_document_with_cache(db, document_id)
@@ -97,8 +107,14 @@ def split_segment(
     if split_position <= 0 or split_position >= len(body):
         raise HTTPException(status_code=400, detail="Invalid split position")
 
+    if reviewer_id:
+        record = find_restore_record(segment, split_position)
+        if record is not None:
+            return [segment, restore_segment(db, segment, record)]
+
     old_span_start = segment.span_start
     old_span_end = segment.span_end
+    merged_away = history_of(segment)  # read before the span changes
     new_first_span_end = old_span_start + split_position
 
     if new_first_span_end < old_span_start or new_first_span_end > old_span_end:
@@ -119,7 +135,6 @@ def split_segment(
     # inheriting `rejected` would show it flagged red with nothing explaining why.
     new_status = 'unchecked' if segment.status == 'rejected' else (segment.status or 'unchecked')
     if reviewer_id:
-        _mark_corrected_by_reviewer(segment, reviewer_id)
         # A reviewer's new segment goes through review like a submitted one; inheriting
         # `approved` would skip the reviewer's own approval and leave reviewed_by_id empty.
         if new_status == 'approved':
@@ -140,11 +155,15 @@ def split_segment(
         created_by_id=reviewer_id,
     )
 
+    split_history(merged_away, segment, new_segment, new_first_span_end)
+
     outliner_repo.execute_bump_segment_indices_after(
         db, segment.document_id, segment.segment_index
     )
 
     outliner_repo.add_segment(db, new_segment)
+    if reviewer_id:
+        refresh_reviewer_marks(db, segment.document_id, [segment, new_segment])
     segment.update_annotation_status()
     new_segment.update_annotation_status()
     outliner_repo.commit_session(db)
@@ -157,13 +176,6 @@ def split_segment(
     return [segment, new_segment]
 
 
-def _mark_corrected_by_reviewer(segment: OutlinerSegment, reviewer_id: str) -> None:
-    """Flag an annotator's segment the reviewer restructured. The reviewer's own segments are
-    already credited to them, so reshaping those is not a correction of the annotator."""
-    if segment.created_by_id != reviewer_id:
-        segment.corrected_by_reviewer = True
-
-
 def merge_segments(
     db: Session,
     segment_ids: List[str],
@@ -172,7 +184,8 @@ def merge_segments(
     """Merge multiple segments into one.
 
     ``reviewer_id`` is set when the document's assigned reviewer merges during review: the
-    surviving segment is marked as corrected (see ``split_segment``).
+    surviving segment remembers what was removed, so the merge can be undone, and is marked as
+    corrected while it differs from the annotator's outline (see ``refresh_reviewer_marks``).
     """
     if len(segment_ids) < 2:
         raise HTTPException(status_code=400, detail="At least 2 segments required for merge")
@@ -193,6 +206,9 @@ def merge_segments(
     merged_parent_id = segments[0].parent_segment_id
 
     first_segment = segments[0]
+    first_segment.merge_history = merge_history_for(
+        segments, reviewer_id, merged_title, merged_author
+    )
     first_segment.text = ""
     first_segment.span_end = segments[-1].span_end
     first_segment.title = merged_title
@@ -200,14 +216,14 @@ def merge_segments(
     first_segment.title_bdrc_id = merged_title_bdrc_id
     first_segment.author_bdrc_id = merged_author_bdrc_id
     first_segment.parent_segment_id = merged_parent_id
-    if reviewer_id:
-        _mark_corrected_by_reviewer(first_segment, reviewer_id)
     first_segment.update_annotation_status()
 
     segments_to_delete_ids = [seg.id for seg in segments[1:]]
 
     for seg in segments[1:]:
         outliner_repo.delete_orm_entity(db, seg)
+    if reviewer_id:
+        refresh_reviewer_marks(db, document_id, [first_segment])
 
     following_segments = outliner_repo.fetch_following_segments_excluding_ids(
         db, document_id, first_segment.segment_index, segments_to_delete_ids
