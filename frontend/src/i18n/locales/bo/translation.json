@@ -642,7 +642,8 @@
       "failed": "AI སྒྲིག་བཀོད་ཕམ།: {{message}}"
     },
     "aiSuggestions": {
-      "failed": "AI འོས་སྦྱོར་བཟོ་མ་ཐུབ།: {{message}}"
+      "failed": "AI འོས་སྦྱོར་བཟོ་མ་ཐུབ།: {{message}}",
+      "noAuthorFound": "ཡི་གེ་འདིའི་ནང་རྩོམ་པ་པོའི་མིང་ AI ཡིས་རྙེད་མ་བྱུང་།"
     },
     "aiDetect": {
       "stop": "AI འོས་སྦྱོར་མཚམས་འཇོག",

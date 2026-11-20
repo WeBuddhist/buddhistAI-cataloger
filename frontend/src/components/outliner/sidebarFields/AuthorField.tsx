@@ -90,6 +90,13 @@ export const AuthorField = ({ disabled: disabledFromParent }: AuthorFieldProps =
     !aiSuggestionsControls.aiLoading &&
     authorSuggestion.length > 0 &&
     authorSuggestion !== authorSearch.trim();
+  // The AI answered but found no author: say so, so it doesn't look like the tool skipped it.
+  const showNoAuthorFound =
+    !disabled &&
+    ai != null &&
+    !aiSuggestionsControls.aiLoading &&
+    authorSuggestion.length === 0 &&
+    !authorSearch.trim();
 
   const rawReviewerAuthor = reviewerSuggestionControls.reviewerAuthor;
   const hasReviewerAuthorSuggestion =
@@ -134,6 +141,9 @@ export const AuthorField = ({ disabled: disabledFromParent }: AuthorFieldProps =
             {authorSuggestion}
           </button>
         </div>
+      ) : null}
+      {showNoAuthorFound ? (
+        <p className="mt-1.5 text-xs italic text-gray-500">{t('outliner.aiSuggestions.noAuthorFound')}</p>
       ) : null}
       {showReviewerAuthorSuggestion && reviewerSuggestionControls.readOnly ? (
         <div className="mt-2 flex flex-col gap-1 min-w-0">

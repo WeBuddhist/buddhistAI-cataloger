@@ -642,7 +642,8 @@
       "failed": "AI 大纲失败：{{message}}"
     },
     "aiSuggestions": {
-      "failed": "生成 AI 建议失败：{{message}}"
+      "failed": "生成 AI 建议失败：{{message}}",
+      "noAuthorFound": "AI 未在此文本中找到作者名"
     },
     "aiDetect": {
       "stop": "停止 AI 建议",

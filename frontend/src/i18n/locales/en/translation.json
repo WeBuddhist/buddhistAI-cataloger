@@ -646,7 +646,8 @@
       "failed": "AI outline failed: {{message}}"
     },
     "aiSuggestions": {
-      "failed": "Failed to generate AI suggestions: {{message}}"
+      "failed": "Failed to generate AI suggestions: {{message}}",
+      "noAuthorFound": "AI found no author named in this text"
     },
     "aiDetect": {
       "stop": "Stop AI suggestion",
