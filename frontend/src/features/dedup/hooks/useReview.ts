@@ -11,12 +11,14 @@ import {
   fetchAdminPairNotes,
   fetchAdminPairs,
   fetchAnnotatorItems,
+  fetchAnnotatorStats,
   fetchAnnotators,
   fetchBatches,
   fetchDiff,
   fetchText,
   fetchItem,
   fetchMyItems,
+  fetchMyStats,
   fetchPair,
   fetchSettings,
   reassignAdjudications,
@@ -47,6 +49,7 @@ const keys = {
   myItemsRoot: [...reviewQueryKeyRoot, 'my-items'] as const,
   myItems: (state: MyItemsState, batchId?: string) =>
     [...reviewQueryKeyRoot, 'my-items', state, batchId ?? 'all-batches'] as const,
+  myStats: (period: PeriodRange) => [...reviewQueryKeyRoot, 'my-stats', period.since ?? '', period.until ?? ''] as const,
   item: (itemId: number) => [...reviewQueryKeyRoot, 'item', itemId] as const,
   pair: (itemId: number) => [...reviewQueryKeyRoot, 'pair', itemId] as const,
   adjudicationRoot: [...reviewQueryKeyRoot, 'adjudication'] as const,
@@ -63,7 +66,10 @@ const keys = {
     [...reviewQueryKeyRoot, 'admin', 'annotators', period.since ?? '', period.until ?? ''] as const,
   annotatorItems: (userId: string, state: AnnotatorItemsState, period: PeriodRange) =>
     [...reviewQueryKeyRoot, 'admin', 'items', userId, state, period.since ?? '', period.until ?? ''] as const,
-  adminAdjudications: (state: MyItemsState) => [...reviewQueryKeyRoot, 'admin', 'adjudications', state] as const,
+  adminAdjudications: (state: MyItemsState, adjudicatorId = '', period: PeriodRange = {}) =>
+    [...reviewQueryKeyRoot, 'admin', 'adjudications', state, adjudicatorId, period.since ?? '', period.until ?? ''] as const,
+  annotatorStats: (userId: string, period: PeriodRange) =>
+    [...reviewQueryKeyRoot, 'admin', 'stats', userId, period.since ?? '', period.until ?? ''] as const,
   adminPair: (itemId: number) => [...reviewQueryKeyRoot, 'admin', 'pair', itemId] as const,
   adminPairs: (filters: PairFilters) => [...reviewQueryKeyRoot, 'admin', 'pairs', filters] as const,
   adminPairNotes: (itemId: number) => [...reviewQueryKeyRoot, 'admin', 'pair-notes', itemId] as const,
@@ -296,6 +302,16 @@ export function useAdminOverview(period: PeriodRange = {}) {
   });
 }
 
+/** The pairs I answered in the period, for my stats page. */
+export function useMyStats(period: PeriodRange = {}) {
+  return useQuery({
+    queryKey: keys.myStats(period),
+    queryFn: ({ signal }) => fetchMyStats(period, { signal }),
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useAnnotators(period: PeriodRange = {}) {
   return useQuery({
     queryKey: keys.annotators(period),
@@ -325,11 +341,23 @@ export function useReassign() {
   });
 }
 
-export function useAdminAdjudications(state: MyItemsState) {
+/** `adjudicatorId`: one adjudicator's pairs; a period keeps those settled in it. */
+export function useAdminAdjudications(state: MyItemsState, adjudicatorId?: string, period: PeriodRange = {}) {
   return useQuery({
-    queryKey: keys.adminAdjudications(state),
-    queryFn: ({ signal }) => fetchAdminAdjudications(state, { signal }),
+    queryKey: keys.adminAdjudications(state, adjudicatorId, period),
+    queryFn: ({ signal }) => fetchAdminAdjudications(state, { signal, adjudicatorId, period }),
     staleTime: 0,
+  });
+}
+
+/** One annotator's answered pairs with agreement and time, for the chart on their page. */
+export function useAnnotatorStats(userId: string, period: PeriodRange = {}, enabled = true) {
+  return useQuery({
+    queryKey: keys.annotatorStats(userId, period),
+    queryFn: ({ signal }) => fetchAnnotatorStats(userId, period, { signal }),
+    enabled,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
   });
 }
 

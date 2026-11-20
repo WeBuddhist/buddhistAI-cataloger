@@ -33,6 +33,66 @@ export function formatNumber(n: number): string {
   return i18n.language?.startsWith('bo') ? s.replace(/\d/g, (d) => TIBETAN_DIGITS[Number(d)]) : s;
 }
 
+/** "77%", in Tibetan digits when the app is in Tibetan. */
+export function formatPercent(fraction: number): string {
+  return `${formatNumber(Math.round(fraction * 100))}%`;
+}
+
+const TIBETAN_MONTHS = ['དང་པོ', 'གཉིས་པ', 'གསུམ་པ', 'བཞི་པ', 'ལྔ་པ', 'དྲུག་པ', 'བདུན་པ', 'བརྒྱད་པ', 'དགུ་པ', 'བཅུ་པ', 'བཅུ་གཅིག་པ', 'བཅུ་གཉིས་པ'];
+const TIBETAN_WEEKDAYS = ['ཉི་མ', 'ཟླ་བ', 'མིག་དམར', 'ལྷག་པ', 'ཕུར་བུ', 'པ་སངས', 'སྤེན་པ'];
+
+/**
+ * A date in the app's language, not the browser's:
+ * - `weekdayLong`: "Saturday, 21 November" / "གཟའ་སྤེན་པ། ཟླ་བ་བཅུ་གཅིག་པའི་ཚེས་༢༡"
+ * - `dayMonth`: "21 Nov" / "ཟླ་༡༡ ཚེས་༢༡"
+ * - `dayMonthYear`: "21 Nov 2026" / "༢༠༢༦ ཟླ་༡༡ ཚེས་༢༡"
+ * - `weekdayDay`: "Sat 21" / "སྤེན་པ། ༢༡"
+ * - `monthYear`: "Nov 2026" / "ཟླ་༡༡ ༢༠༢༦"
+ * - `monthYearLong`: "November 2026" / "ཟླ་བ་བཅུ་གཅིག་པ། ༢༠༢༦"
+ * - `hour`: "9 AM" / "ཆུ་ཚོད་༩"; `time`: "9:00 AM" / "ཆུ་ཚོད་༩:༠༠"
+ */
+export type DateStyle = 'weekdayLong' | 'dayMonth' | 'dayMonthYear' | 'weekdayDay' | 'monthYear' | 'monthYearLong' | 'hour' | 'time';
+
+export function formatDate(d: Date, style: DateStyle): string {
+  if (!i18n.language?.startsWith('bo')) {
+    const options: Record<DateStyle, Intl.DateTimeFormatOptions> = {
+      weekdayLong: { weekday: 'long', day: 'numeric', month: 'long' },
+      dayMonth: { day: 'numeric', month: 'short' },
+      dayMonthYear: { day: 'numeric', month: 'short', year: 'numeric' },
+      weekdayDay: { weekday: 'short', day: 'numeric' },
+      monthYear: { month: 'short', year: 'numeric' },
+      monthYearLong: { month: 'long', year: 'numeric' },
+      hour: { hour: 'numeric' },
+      time: { hour: 'numeric', minute: '2-digit' },
+    };
+    return style === 'hour' || style === 'time'
+      ? d.toLocaleTimeString(undefined, options[style])
+      : d.toLocaleDateString(undefined, options[style]);
+  }
+  const n = (x: number) => String(x).replace(/\d/g, (c) => TIBETAN_DIGITS[Number(c)]);
+  const day = n(d.getDate());
+  const month = d.getMonth();
+  const year = n(d.getFullYear());
+  switch (style) {
+    case 'weekdayLong':
+      return `གཟའ་${TIBETAN_WEEKDAYS[d.getDay()]}། ཟླ་བ་${TIBETAN_MONTHS[month]}འི་ཚེས་${day}`;
+    case 'dayMonth':
+      return `ཟླ་${n(month + 1)} ཚེས་${day}`;
+    case 'dayMonthYear':
+      return `${year} ཟླ་${n(month + 1)} ཚེས་${day}`;
+    case 'weekdayDay':
+      return `${TIBETAN_WEEKDAYS[d.getDay()]}། ${day}`;
+    case 'monthYear':
+      return `ཟླ་${n(month + 1)} ${year}`;
+    case 'monthYearLong':
+      return `ཟླ་བ་${TIBETAN_MONTHS[month]}། ${year}`;
+    case 'hour':
+      return `ཆུ་ཚོད་${n(d.getHours())}`;
+    case 'time':
+      return `ཆུ་ཚོད་${n(d.getHours())}:${n(d.getMinutes()).padStart(2, '༠')}`;
+  }
+}
+
 /** "First batch" … "Tenth batch", then "Batch 11". */
 export function ordinalBatch(n: number): string {
   return n >= 1 && n <= 10 ? t(`dedup.batch.ordinal${n}`) : t('dedup.batch.numbered', { n });
@@ -151,6 +211,11 @@ export function formatDuration(seconds: number | null | undefined): string {
   const m = Math.floor(s / 60);
   if (m < 60) return t('dedup.duration.minutes', { m, s: s % 60 });
   return t('dedup.duration.hours', { h: Math.floor(m / 60), m: m % 60 });
+}
+
+/** A time from the server, which sends naive UTC. */
+export function parseUtc(iso: string): Date {
+  return new Date(/Z$|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
 }
 
 export function formatDateTime(iso: string | null | undefined): string {

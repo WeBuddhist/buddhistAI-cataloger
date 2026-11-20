@@ -31,12 +31,14 @@ const OutlineDashboardLazy = lazy(() => import('@/features/outliner').then((m) =
 // const DedupDashboardLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.Dashboard })));
 const DedupQueueLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.Queue })));
 const DedupReviewLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.Review })));
+const DedupMyStatsLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.MyStats })));
 const DedupAdjudicationQueueLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdjudicationQueue })));
 const DedupPairViewLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.PairView })));
 const DedupAdminLayoutLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.DedupAdminLayout })));
 const DedupAdminOverviewLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminOverview })));
 const DedupAdminAnnotatorsLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminAnnotators })));
 const DedupAdminAnnotatorLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminAnnotator })));
+const DedupAdminAdjudicatorLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminAdjudicator })));
 const DedupAdminAdjudicationsLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminAdjudications })));
 const DedupAdminUsersLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminUsers })));
 const DedupAdminPairListLazy = lazy(() => import('@/features/dedup').then((m) => ({ default: m.AdminPairList })));
@@ -175,6 +177,11 @@ function App() {
               <DedupQueueLazy />
             </ProtectedRoute>
           } />
+          <Route path="/dedup/my-stats" element={
+            <ProtectedRoute>
+              <DedupMyStatsLazy />
+            </ProtectedRoute>
+          } />
           <Route path="/dedup/item/:itemId" element={
             <ProtectedRoute>
               <DedupReviewLazy />
@@ -260,6 +267,13 @@ function App() {
             <ProtectedRoute>
               <DedupAdminLayoutLazy bare>
                 <DedupReviewLazy mode="correct" />
+              </DedupAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
+          <Route path="/dedup-admin/adjudicators/:userId" element={
+            <ProtectedRoute>
+              <DedupAdminLayoutLazy>
+                <DedupAdminAdjudicatorLazy />
               </DedupAdminLayoutLazy>
             </ProtectedRoute>
           } />

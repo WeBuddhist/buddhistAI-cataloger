@@ -878,6 +878,23 @@ def all_adjudications(db: Session) -> list[DedupAdjudication]:
     return list(db.execute(select(DedupAdjudication).order_by(DedupAdjudication.created_at)).scalars().all())
 
 
+def latest_adjudicator_answers(db: Session, item_ids: Iterable[int]) -> dict[int, Any]:
+    """``{item_id: row}``: the current adjudicator answer per item, as just ``user_id``,
+    ``verdict`` and ``decided_at``: lists need no notes, which can be large."""
+    ids = list(item_ids)
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(DedupDecision.item_id, DedupDecision.user_id, DedupDecision.verdict, DedupDecision.decided_at)
+        .where(DedupDecision.item_id.in_(ids), DedupDecision.role == ROLE_ADJUDICATOR)
+        .order_by(DedupDecision.item_id, *_NEWEST_FIRST)
+    ).all()
+    out: dict[int, Any] = {}
+    for r in rows:
+        out.setdefault(r.item_id, r)
+    return out
+
+
 def latest_adjudicator_decisions(db: Session, item_ids: Iterable[int]) -> dict[int, DedupDecision]:
     """``{item_id: decision}``: the current adjudicator answer per item."""
     ids = list(item_ids)

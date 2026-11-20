@@ -216,6 +216,22 @@ export function fetchMyItems(state: MyItemsState, batchId?: string, opts?: { sig
   return request<ReviewItem[]>(`${batchPath(batchId)}/my-items?state=${state}`, { signal: opts?.signal });
 }
 
+/** A pair I answered, for my stats: when, and whether the other annotator agreed.
+ * `waiting`: they have not answered yet; `single`: the pair has no second annotator. */
+export interface MyAnsweredPair {
+  answered_at: string;
+  status: 'agreed' | 'disagreed' | 'waiting' | 'single';
+  /** Their own answer (same, different, not_sure, …). */
+  verdict?: string | null;
+  /** Time spent on the pair: only in the admin view of a person. */
+  seconds?: number | null;
+}
+
+/** The pairs I answered, in the period (by when I answered). */
+export function fetchMyStats(period?: PeriodRange, opts?: { signal?: AbortSignal }) {
+  return request<MyAnsweredPair[]>(`/my-stats${periodQuery(period)}`, { signal: opts?.signal });
+}
+
 export function fetchItem(itemId: number, opts?: { signal?: AbortSignal }) {
   return request<ReviewItem>(`/items/${itemId}`, { signal: opts?.signal });
 }
@@ -450,6 +466,10 @@ export interface AdminAdjudication {
   resolution: string | null;
   verdict: string | null;
   annotations: AnnotatorAnswer[];
+  /** The adjudicator's time on the pair; only when listing one adjudicator's pairs. */
+  seconds?: number | null;
+  /** Set when an admin later changed the adjudicator's final answer: the admin's answer. */
+  corrected_verdict?: string | null;
 }
 
 export interface ReassignResult {
@@ -525,8 +545,22 @@ export function updateSettings(reviewMode: ReviewMode) {
   });
 }
 
-export function fetchAdminAdjudications(state: MyItemsState, opts?: { signal?: AbortSignal }) {
-  return request<AdminAdjudication[]>(`/admin/adjudications?state=${state}`, { signal: opts?.signal });
+/** `adjudicatorId`: one adjudicator's pairs, with their time on each. A period keeps the
+ * pairs settled in it. */
+export function fetchAdminAdjudications(
+  state: MyItemsState,
+  opts?: { signal?: AbortSignal; adjudicatorId?: string; period?: PeriodRange },
+) {
+  const params = new URLSearchParams({ state });
+  if (opts?.adjudicatorId) params.set('adjudicator_id', opts.adjudicatorId);
+  return request<AdminAdjudication[]>(`/admin/adjudications${periodQuery(opts?.period, params)}`, { signal: opts?.signal });
+}
+
+/** What an annotator sees on their stats page, with the time spent on each pair. */
+export function fetchAnnotatorStats(userId: string, period?: PeriodRange, opts?: { signal?: AbortSignal }) {
+  return request<MyAnsweredPair[]>(`/admin/annotators/${encodeURIComponent(userId)}/stats${periodQuery(period)}`, {
+    signal: opts?.signal,
+  });
 }
 
 /** `toUserId` null puts the pairs back in the queue for any adjudicator. */

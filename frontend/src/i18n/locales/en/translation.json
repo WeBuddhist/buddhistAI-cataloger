@@ -1128,6 +1128,80 @@
       "unchangedLines_other": "{{n}} unchanged lines",
       "show": "Show"
     },
+    "bars": {
+      "show": "Show",
+      "pairs": "Pairs",
+      "time": "Time",
+      "empty": "No pairs in this period.",
+      "pairsCount_one": "{{n}} pair",
+      "pairsCount_other": "{{n}} pairs",
+      "timeSpent": "Time: {{time}}",
+      "done": {
+        "hour": "Pairs done each hour",
+        "day": "Pairs done each day",
+        "week": "Pairs done each week (Monday to Sunday)",
+        "month": "Pairs done each month"
+      },
+      "settled": {
+        "hour": "Pairs settled each hour",
+        "day": "Pairs settled each day",
+        "week": "Pairs settled each week (Monday to Sunday)",
+        "month": "Pairs settled each month"
+      },
+      "timeWorked": {
+        "hour": "Time worked each hour",
+        "day": "Time worked each day",
+        "week": "Time worked each week (Monday to Sunday)",
+        "month": "Time worked each month"
+      },
+      "minutesShort": "{{n}}m",
+      "hoursShort": "{{n}}h"
+    },
+    "summary": {
+      "when": {
+        "all": "In total",
+        "today": "Today",
+        "7d": "In the last 7 days",
+        "30d": "In the last 30 days",
+        "custom": "From {{from}} to {{to}}"
+      },
+      "you": {
+        "answered_one": "{{when}}, you answered {{n}} pair.",
+        "answered_other": "{{when}}, you answered {{n}} pairs.",
+        "agreed": "The other annotator gave the same answer as you on {{n}} of the {{total}} pairs you both answered.",
+        "busiest": "Your busiest day was {{day}}, with {{n}} pairs."
+      },
+      "they": {
+        "answered_one": "{{when}}, {{name}} answered {{n}} pair.",
+        "answered_other": "{{when}}, {{name}} answered {{n}} pairs.",
+        "agreed": "The other annotator gave the same answer as {{name}} on {{n}} of the {{total}} pairs they both answered.",
+        "busiest": "Busiest day: {{day}}, with {{n}} pairs."
+      }
+    },
+    "myStats": {
+      "title": "My stats",
+      "back": "Back to my work",
+      "subtitle": "The pairs you answered, and how often the other annotator gave the same answer.",
+      "loadFailed": "Could not load your stats: {{error}}",
+      "done": "Pairs done",
+      "waitingCount": "{{n}} waiting for the other annotator",
+      "agreement": "Agreement",
+      "agreedOf": "Same answer on {{n}} of {{total}} pairs both of you answered",
+      "noneCompared": "No pair answered by both of you yet",
+      "status": {
+        "agreed": "Same answer",
+        "disagreed": "Different answer",
+        "waiting": "Waiting for the other annotator",
+        "single": "Single review"
+      },
+      "howCounted": "A pair counts on the day you answered it. Agreement only counts pairs both annotators have answered; \"Can't answer\" from either of you counts as a different answer.",
+      "kind": {
+        "label": "Kind of review",
+        "double": "Double review",
+        "single": "Single review"
+      },
+      "doneSingle": "pairs done (single review)"
+    },
     "queue": {
       "noneLeft": "No items left to review right now",
       "assigned_one": "{{n}} new item assigned to you",
@@ -1473,6 +1547,34 @@
         "confirmUnassignHelp": "They leave {{from}}'s list. The next annotator who clicks “Assign me work” gets them. The pair's other annotator keeps their place.",
         "move": "Move"
       },
+      "adjudicator": {
+        "settledCount": "{{n}} settled",
+        "progressCount": "{{n}} in progress",
+        "perPair": "{{time}} per pair",
+        "periodHint": "Settled shows the pairs settled in this period. In progress shows what is open now.",
+        "tab": {
+          "progress": "In progress",
+          "settled": "Settled",
+          "all": "All",
+          "corrected": "Corrected by admin"
+        },
+        "rowHint": "Click a pair to open it.",
+        "when": "When",
+        "time": "Time",
+        "settledOn": "Settled {{when}}",
+        "takenOn": "Taken {{when}}",
+        "empty": {
+          "progress": "Nothing in progress.",
+          "settled": "No pairs settled in this period.",
+          "all": "No pairs yet.",
+          "corrected": "No final answer of theirs has been changed by an admin."
+        },
+        "answers": "Final answers",
+        "answersTip": "The final answers this adjudicator gave on the pairs they settled (in the chosen period).",
+        "correctedHint": "Pairs this adjudicator settled where an admin later changed the final answer.",
+        "correctedTitle": "An admin later changed this final answer",
+        "adminAnswer": "Admin: {{answer}}"
+      },
       "adjudications": {
         "handed_one": "{{n}} pair handed to {{name}}",
         "handed_other": "{{n}} pairs handed to {{name}}",
@@ -1571,7 +1673,8 @@
         "empty": "No pairs match.",
         "range": "{{from}}–{{to}} of {{total}} pairs",
         "back": "All pairs"
-      }
+      },
+      "showStats": "Show stats"
     },
     "volume": {
       "tab": "Full volume",

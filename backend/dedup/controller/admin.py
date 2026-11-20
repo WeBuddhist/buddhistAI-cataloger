@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -22,8 +22,10 @@ from dedup.models.dedup import (
     ADMIN_CORRECTED,
     MODE_SINGLE,
     ROLE_ADMIN_CORRECTION,
+    ROLE_ANNOTATOR,
     SETTING_REVIEW_MODE,
     SYNC_PENDING,
+    DedupActiveTime,
     DedupAdjudication,
     DedupAssignment,
     DedupDecision,
@@ -44,6 +46,7 @@ from dedup.schemas import (
     DecisionHistoryOut,
     DoubleReviewCounts,
     ItemOut,
+    MyAnsweredPair,
     ReassignIn,
     ReassignOut,
     SettingsIn,
@@ -341,6 +344,78 @@ def annotators(
     return out
 
 
+def _seconds_of(db: Session, user_id: str) -> dict[int, int]:
+    """``{item_id: seconds}``: this person's active time per pair."""
+    rows = db.execute(
+        select(DedupActiveTime.item_id, DedupActiveTime.seconds).where(DedupActiveTime.user_id == user_id)
+    ).all()
+    return {item_id: seconds for item_id, seconds in rows}
+
+
+def my_answered_pairs(
+    db: Session,
+    user_id: str,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    with_time: bool = False,
+) -> list[MyAnsweredPair]:
+    """The pairs this person answered (in the period, by when they answered), each with
+    whether the other annotator agreed. Counted as on the admin Annotators page: "done"
+    there is every pair here, and agreement is ``agreed`` of ``agreed`` + ``disagreed``.
+    Nothing about the other annotator or the adjudicator is given out. ``with_time``
+    (admins): the time spent on each pair too.
+
+    Reads only this person's pairs (and the answers and adjudications on them), not the
+    whole table, so it stays quick however much work there is."""
+    since, until = utc_naive(since), utc_naive(until)
+    q = select(DedupAssignment).where(DedupAssignment.user_id == user_id, DedupAssignment.completed_at.isnot(None))
+    if since is not None:
+        q = q.where(DedupAssignment.completed_at >= since)
+    if until is not None:
+        q = q.where(DedupAssignment.completed_at < until)
+    mine = list(db.execute(q).scalars())
+    if not mine:
+        return []
+    ids = [a.item_id for a in mine]
+    double = set(
+        db.execute(select(DedupItem.item_id).where(DedupItem.item_id.in_(ids), DedupItem.review_mode != MODE_SINGLE)).scalars()
+    )
+    # Every annotator's current answer on these pairs: a double-review pair both have
+    # answered is compared (as ``repo.answered_pairs`` does for everyone). Only the answer,
+    # not the notes, which can be large.
+    answers: dict[tuple[int, str], Any] = {}
+    for d in db.execute(
+        select(DedupDecision.item_id, DedupDecision.user_id, DedupDecision.verdict)
+        .where(DedupDecision.item_id.in_(ids), DedupDecision.role == ROLE_ANNOTATOR)
+        .order_by(DedupDecision.item_id, DedupDecision.decided_at.desc(), DedupDecision.created_at.desc())
+    ).all():
+        answers.setdefault((d.item_id, d.user_id), d)
+    answered_by: dict[int, set[str]] = {}
+    for item_id, uid in answers:
+        answered_by.setdefault(item_id, set()).add(uid)
+    both = {i for i in ids if i in double and len(answered_by.get(i, ())) == 2 and user_id in answered_by[i]}
+    # Disputed as on the admin page: in adjudication because the answers differ (or one
+    # could not answer); a final check of matching answers is not.
+    in_adjudication = set(db.execute(select(DedupAdjudication.item_id).where(DedupAdjudication.item_id.in_(list(both)))).scalars())
+    disputed = repo.disputed_item_ids(db, in_adjudication)
+
+    def status(item_id: int) -> str:
+        if item_id in both:
+            return "disagreed" if item_id in disputed else "agreed"
+        return "waiting" if item_id in double else "single"
+
+    seconds = _seconds_of(db, user_id) if with_time else {}
+    return [
+        MyAnsweredPair(
+            answered_at=a.completed_at,
+            status=status(a.item_id),
+            verdict=answers[(a.item_id, user_id)].verdict if (a.item_id, user_id) in answers else None,
+            seconds=seconds.get(a.item_id, 0) if with_time else None,
+        )
+        for a in mine
+    ]
+
+
 def annotator_items(
     db: Session, user_id: str, state: str, since: Optional[datetime] = None, until: Optional[datetime] = None
 ) -> list[ItemOut]:
@@ -417,17 +492,32 @@ def reassign(db: Session, admin: User, body: ReassignIn) -> ReassignOut:
 
 # --- adjudication ------------------------------------------------------------------
 
-def adjudications(db: Session, state: str = "all") -> list[AdminAdjudicationOut]:
-    """Every disputed pair, with both answers and who gave them."""
+def adjudications(
+    db: Session,
+    state: str = "all",
+    adjudicator_id: Optional[str] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+) -> list[AdminAdjudicationOut]:
+    """Every disputed pair, with both answers and who gave them. ``adjudicator_id``: only
+    the pairs that person holds or settled, with their time on each. ``since``/``until``
+    (until excluded): only pairs settled in that period."""
+    since, until = utc_naive(since), utc_naive(until)
     rows = repo.all_adjudications(db)
+    if adjudicator_id is not None:
+        rows = [a for a in rows if a.user_id == adjudicator_id]
     if state == "open":
         rows = [a for a in rows if a.completed_at is None]
     elif state == "done":
         rows = [a for a in rows if a.completed_at is not None]
+    if since is not None or until is not None:
+        rows = [a for a in rows if _in_period(a.completed_at, since, until)]
+    seconds = _seconds_of(db, adjudicator_id) if adjudicator_id is not None else {}
     ids = [a.item_id for a in rows]
     items = repo.get_items(db, ids)
     answers = repo.annotator_answers_for(db, ids)
-    finals = repo.latest_adjudicator_decisions(db, ids)
+    finals = repo.latest_adjudicator_answers(db, ids)
+    corrected = _corrections(db, rows, finals)
     names = {
         u.id: u.name or u.email
         for u in db.execute(select(User).where(User.id.in_({a.user_id for a in rows if a.user_id}))).scalars()
@@ -446,10 +536,40 @@ def adjudications(db: Session, state: str = "all") -> list[AdminAdjudicationOut]
             resolution=a.resolution,
             verdict=finals[a.item_id].verdict if a.item_id in finals else None,
             annotations=annotations(a.item_id, answers[a.item_id]),
+            seconds=seconds.get(a.item_id, 0) if adjudicator_id is not None else None,
+            corrected_verdict=corrected.get(a.item_id),
         )
         for a in rows
         if a.item_id in items
     ]
+
+
+def _corrections(db: Session, rows: list[DedupAdjudication], finals: dict) -> dict[int, str]:
+    """``{item_id: verdict}``: pairs an adjudicator settled whose final answer an admin
+    later changed, with the admin's answer. A pair an admin answered before the
+    adjudicator did, or re-saved with the same answer, is not a correction of theirs."""
+    settled = {a.item_id: a for a in rows if a.completed_at and a.user_id}
+    if not settled:
+        return {}
+    latest: dict = {}
+    for d in db.execute(
+        select(DedupDecision.item_id, DedupDecision.verdict, DedupDecision.decided_at)
+        .where(DedupDecision.item_id.in_(list(settled)), DedupDecision.role == ROLE_ADMIN_CORRECTION)
+        .order_by(DedupDecision.item_id, DedupDecision.decided_at.desc(), DedupDecision.created_at.desc())
+    ).all():
+        latest.setdefault(d.item_id, d)
+    out: dict[int, str] = {}
+    for item_id, fix in latest.items():
+        mine = finals.get(item_id)
+        if (
+            mine is not None
+            and mine.user_id == settled[item_id].user_id
+            and fix.decided_at >= mine.decided_at
+            and fix.verdict
+            and fix.verdict != mine.verdict
+        ):
+            out[item_id] = fix.verdict
+    return out
 
 
 def reassign_adjudications(db: Session, admin: User, body: AdjudicationReassignIn) -> ReassignOut:

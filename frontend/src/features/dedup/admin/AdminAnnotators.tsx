@@ -113,7 +113,10 @@ export default function AdminAnnotators() {
         (view === 'annotation' ? (
           <AnnotationList rows={rows} filtered={period.filtered} open={open} />
         ) : (
-          <AdjudicationList rows={rows} />
+          <AdjudicationList
+            rows={rows}
+            open={(a) => navigate(`/dedup-admin/adjudicators/${encodeURIComponent(a.user_id)}${period.search}`)}
+          />
         ))}
     </div>
   );
@@ -229,15 +232,22 @@ function AnnotationList({
   );
 }
 
-// The person's page lists annotation pairs, so adjudication rows do not open it.
-function AdjudicationList({ rows }: Readonly<{ rows: Annotator[] }>) {
+// A row opens the adjudicator's page: their pairs in progress and settled.
+function AdjudicationList({ rows, open }: Readonly<{ rows: Annotator[]; open: (a: Annotator) => void }>) {
   const { t } = useTranslation();
   return (
     <>
       {/* Phones and tablets */}
       <ul className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:hidden">
         {rows.map((a) => (
-          <li key={a.user_id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <li
+            key={a.user_id}
+            role="button"
+            tabIndex={0}
+            onClick={() => open(a)}
+            onKeyDown={(e) => e.key === 'Enter' && open(a)}
+            className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm active:bg-gray-50"
+          >
             <Person a={a} />
             <div className="mt-3">
               <FinalAnswers a={a} />
@@ -268,12 +278,13 @@ function AdjudicationList({ rows }: Readonly<{ rows: Annotator[] }>) {
               <Th label={t('dedup.admin.annotators.col.perAdjudication')} tip={t('dedup.admin.annotators.col.perAdjudicationTip')} right />
               <Th label={t('dedup.admin.annotators.col.totalTime')} tip={t('dedup.admin.annotators.col.totalTimeTip')} right />
               <Th label={t('dedup.admin.annotators.col.notes')} tip={t('dedup.admin.annotators.col.adjudicationNotesTip')} right />
-              <th className="rounded-tr-lg px-3 py-3 font-medium">{t('dedup.admin.annotators.col.lastActive')}</th>
+              <th className="px-3 py-3 font-medium">{t('dedup.admin.annotators.col.lastActive')}</th>
+              <th className="w-8 rounded-tr-lg px-3 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map((a) => (
-              <tr key={a.user_id}>
+              <tr key={a.user_id} onClick={() => open(a)} className="cursor-pointer hover:bg-gray-50">
                 <td className="px-4 py-3">
                   <Person a={a} />
                 </td>
@@ -286,6 +297,9 @@ function AdjudicationList({ rows }: Readonly<{ rows: Annotator[] }>) {
                 <td className="px-3 py-3 text-right tabular-nums text-gray-600">{a.adjudication_notes ? formatNumber(a.adjudication_notes) : '—'}</td>
                 <td className="px-3 py-3 text-xs text-gray-500">
                   <LastActive iso={a.last_active} />
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <ArrowRight className="ml-auto h-4 w-4 text-blue-700" aria-label={t('dedup.admin.annotators.open', { name: a.name || a.email })} />
                 </td>
               </tr>
             ))}

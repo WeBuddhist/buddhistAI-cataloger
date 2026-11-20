@@ -13,7 +13,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { AnnotatorItemsState, ReviewItem } from '../api/review';
-import { useAdminOverview, useAnnotatorItems, useAnnotators, useReassign } from '../hooks/useReview';
+import { useAdminOverview, useAnnotatorItems, useAnnotators, useAnnotatorStats, useReassign } from '../hooks/useReview';
+import { ReviewStats } from '../components/AgreementStats';
+import { useShowStats } from '../hooks/useShowStats';
+import ShowStatsToggle from './ShowStatsToggle';
 import { answerLabel, batchNames, formatDateTime, formatNumber, hasIssue, isDecided } from '../utils';
 import { Person } from './AdminAnnotators';
 import AnswerCounts from './AnswerCounts';
@@ -58,6 +61,9 @@ export default function AdminAnnotator() {
     );
   const overruled = state === 'overruled';
   const items = useAnnotatorItems(userId, state, period.period);
+  const [showStats, setShowStats] = useShowStats();
+  // Only loaded while shown.
+  const stats = useAnnotatorStats(userId, period.period, showStats);
   const overview = useAdminOverview();
   const reassign = useReassign();
 
@@ -169,9 +175,19 @@ export default function AdminAnnotator() {
       )}
 
       <div className={period.filtered ? 'mt-4 mb-3' : 'mt-4'}>
-        <PeriodFilter state={period} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <PeriodFilter state={period} />
+          <ShowStatsToggle on={showStats} onChange={setShowStats} />
+        </div>
         {period.filtered && !overruled && <p className="mt-2 text-xs text-gray-500">{t('dedup.admin.period.annotatorHint')}</p>}
       </div>
+
+      {/* What this person sees on their own stats page, with time added; behind the switch. */}
+      {showStats && stats.data && (
+        <div className={`mt-4 ${stats.isFetching ? 'opacity-70' : ''}`}>
+          <ReviewStats pairs={stats.data} period={period} name={person?.name || person?.email || undefined} withTime />
+        </div>
+      )}
 
       {(withNotes || (person?.notes ?? 0) > 0) && (
         <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">

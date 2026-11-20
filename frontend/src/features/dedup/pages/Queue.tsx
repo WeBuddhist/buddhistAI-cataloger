@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Eye, Flag, Gavel, Lock, Settings } from 'lucide-react';
+import { ArrowRight, BarChart3, Eye, Flag, Gavel, Lock, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUser } from '@/hooks/useUser';
 import { toast } from 'sonner';
@@ -104,6 +104,11 @@ export default function Queue() {
           </p>
         </div>
         <div className="flex w-full gap-2 sm:w-auto">
+        <Button asChild variant="outline" className="cursor-pointer">
+          <Link to="/dedup/my-stats">
+            <BarChart3 className="h-4 w-4" /> {t('dedup.myStats.title')}
+          </Link>
+        </Button>
         {isAdmin && (
           <Button asChild variant="outline" className="cursor-pointer">
             <Link to="/dedup/adjudicate">

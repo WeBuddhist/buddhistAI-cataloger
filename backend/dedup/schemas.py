@@ -354,6 +354,19 @@ class AdminOverviewOut(BaseModel):
 
 
 
+class MyAnsweredPair(BaseModel):
+    """One pair an annotator answered, for their own stats: when, and whether the other
+    annotator's answer matched. ``waiting``: the other has not answered yet; ``single``:
+    the pair has no second annotator."""
+
+    answered_at: datetime
+    status: Literal["agreed", "disagreed", "waiting", "single"]
+    # This person's own answer (same, different, not_sure, …).
+    verdict: Optional[str] = None
+    # Time spent on the pair; only in the admin view of a person.
+    seconds: Optional[int] = None
+
+
 class AnnotatorOut(WorkCounts):
     user_id: str
     name: Optional[str] = None
@@ -434,6 +447,10 @@ class AdminAdjudicationOut(BaseModel):
     resolution: Optional[str] = None
     verdict: Optional[str] = None
     annotations: list[AnnotatorAnswerOut] = Field(default_factory=list)
+    # The adjudicator's time on the pair, when one holds it.
+    seconds: Optional[int] = None
+    # Set when an admin later changed the adjudicator's final answer: the admin's answer.
+    corrected_verdict: Optional[str] = None
 
 
 class ReassignOut(BaseModel):

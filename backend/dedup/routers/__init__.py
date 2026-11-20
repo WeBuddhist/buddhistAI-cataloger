@@ -40,6 +40,7 @@ from dedup.schemas import (
     CorrectionIn,
     DecisionIn,
     ItemOut,
+    MyAnsweredPair,
     PairOut,
     PairSourcesOut,
     ReassignIn,
@@ -84,6 +85,18 @@ def my_items_all(
 ):
     """Items assigned to me, across all batches."""
     return ctrl.my_items(db, user, None, state)
+
+
+@annotator_router.get("/my-stats", response_model=list[MyAnsweredPair])
+def my_stats(
+    since: datetime | None = None,
+    until: datetime | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_dedup_access),
+):
+    """The pairs I answered (``since``/``until``, until excluded, by when I answered),
+    each with whether the other annotator agreed: for my own stats page."""
+    return admin_ctrl.my_answered_pairs(db, user.id, since, until)
 
 
 @annotator_router.post("/batches/{batch_id}/claim", response_model=ClaimOut)
@@ -288,6 +301,17 @@ def admin_annotator_items(
     return admin_ctrl.annotator_items(db, user_id, state, since, until)
 
 
+@admin_router.get("/annotators/{user_id}/stats", response_model=list[MyAnsweredPair])
+def admin_annotator_stats(
+    user_id: str,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    db: Session = Depends(get_db),
+):
+    """What the person sees on their own stats page, plus the time spent on each pair."""
+    return admin_ctrl.my_answered_pairs(db, user_id, since, until, with_time=True)
+
+
 @admin_router.post("/reassign", response_model=ReassignOut)
 def admin_reassign(
     body: ReassignIn,
@@ -302,10 +326,15 @@ def admin_reassign(
 @admin_router.get("/adjudications", response_model=list[AdminAdjudicationOut])
 def admin_adjudications(
     state: Literal["open", "done", "all"] = "all",
+    adjudicator_id: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     db: Session = Depends(get_db),
 ):
-    """Every disputed pair, with both answers, who gave them, and who is settling it."""
-    return admin_ctrl.adjudications(db, state)
+    """Every disputed pair, with both answers, who gave them, and who is settling it.
+    ``adjudicator_id``: one adjudicator's pairs, with their time on each;
+    ``since``/``until`` (until excluded): only pairs settled in that period."""
+    return admin_ctrl.adjudications(db, state, adjudicator_id, since, until)
 
 
 @admin_router.post("/adjudications/reassign", response_model=ReassignOut)
