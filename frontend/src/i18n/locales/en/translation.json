@@ -1696,6 +1696,10 @@
       },
       "placeholderWhy": "Say why, in a sentence…",
       "whyRequired": "Add a sentence saying why: the type alone doesn't explain it.",
+      "placeRequired": "This type needs a place in the text: select the passage, then add the note there.",
+      "shortPlaceHelp": "A passage this short can match several places in the text, so BDRC may not know where the note is. Select at least {{n}} syllables, or save it as it is.",
+      "saveAnyway": "Save anyway",
+      "selectMore": "Select more",
       "targetHelp": "The text you highlighted in. For something missing, highlight it in the text that has it."
     },
     "differentReason": {
