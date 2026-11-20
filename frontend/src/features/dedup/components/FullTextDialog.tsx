@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsUpDown, Columns2, Images, Rows2, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, ChevronsUpDown, Columns2, ExternalLink, Images, Rows2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import i18n from '@/i18n/config';
 import type { DiffGranularity, WitnessCard } from '../api/review';
+import { scanGroupOf } from '../api/scans';
 import { volumeOfText, volumesInOrder } from '../api/volumes';
 import { buildDiffRows, dtypeOf, foldRows, typeCode, withoutNewlines, type DiffRow, type Piece } from '../diffRows';
-import { useFullText, useTextDiff } from '../hooks/useReview';
+import { useFullText, useScanList, useTextDiff } from '../hooks/useReview';
 import {
   ONE_SIDE_SELECTION,
   noteSelectingSide,
@@ -17,12 +18,14 @@ import {
   type Picked,
   type Tag,
 } from '../hooks/useCrossSelection';
+import { bdrcViewerUrl } from '../hooks/useScanView';
 import { useVolume, useVolumeList } from '../hooks/useVolumes';
 import { KEEPS_ESCAPE, type NewNote } from '../notes';
 import type { TextRange } from '../textMatch';
 import { rangeInVolume } from '../textPlace';
 import { displayText, formatNumber } from '../utils';
 import NotesMenu from './NotesMenu';
+import { BdrcViewer, ScanViewSwitch } from './ScanPanel';
 import ScanStrip, { type ReadingPlace } from './ScanStrip';
 import { SourceBadge, WitnessMeta } from './SourceBadge';
 import { IconButton, MarkedText, SelectionBar } from './TextSelection';
@@ -49,6 +52,13 @@ const SCAN_HEIGHT_KEY = 'dedup.fullText.scanHeight';
 const SCAN_HEIGHT = 300;
 const MIN_SCAN_HEIGHT = 140;
 const MIN_TEXT_HEIGHT = 160;
+const BDRC_KEY = 'dedup.fullText.bdrc';
+const BDRC_TAG_KEY = 'dedup.fullText.bdrcTag';
+const BDRC_WIDTH_KEY = 'dedup.fullText.bdrcWidth';
+/** Share of the sheet BDRC's viewer takes at first, and the least either side keeps. */
+const BDRC_SHARE = 0.5;
+const MIN_BDRC_WIDTH = 360;
+const MIN_TEXTS_WIDTH = 360;
 
 function stored(key: string): string | null {
   try {
@@ -124,9 +134,49 @@ type OnPlace = (place: Partial<ReadingPlace>) => void;
 export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
   const { t } = useTranslation();
   const [scans, setScans] = useState(() => stored(SCANS_KEY) === '1');
+  // Pecha pages (wide and short) fit the strip under the texts. Book pages (tall) would
+  // be tiny there, so they go in a column next to the texts, at full height. If either
+  // text has book pages, both do, so the scans do not jump around when switching A/B.
+  const bookA = useBookPages(scans ? a : null);
+  const bookB = useBookPages(scans ? b : null);
+  const book = bookA === true || bookB === true;
+  const shapeKnown = book || (bookA !== null && bookB !== null);
+  const scansBelow = scans && shapeKnown && !book;
+  const scansBeside = scans && shapeKnown && book;
+  // With both the scans and BDRC's viewer in the column, which one shows.
+  const [besidePick, setBesidePick] = useState<'scans' | 'bdrc'>('scans');
   const toggleScans = () => {
     setScans(!scans);
     store(SCANS_KEY, scans ? '0' : '1');
+    if (!scans) setBesidePick('scans');
+  };
+  // BDRC's viewer next to the texts, as annotators used to do with two windows, but in
+  // the tool so the time is counted. Opening it hides the pecha strip under the texts, to
+  // give the texts the full height; it can be turned back on. Book scans share its column.
+  const [bdrc, setBdrc] = useState(() => stored(BDRC_KEY) === '1');
+  const toggleBdrc = () => {
+    const next = !bdrc;
+    setBdrc(next);
+    store(BDRC_KEY, next ? '1' : '0');
+    if (next) setBesidePick('bdrc');
+    if (next && scansBelow) {
+      setScans(false);
+      store(SCANS_KEY, '0');
+    }
+  };
+  const beside = bdrc || scansBeside;
+  let besideShows: 'scans' | 'bdrc' = bdrc ? 'bdrc' : 'scans';
+  if (bdrc && scansBeside) besideShows = besidePick;
+  const [bdrcTag, setBdrcTag] = useState<Tag>(() => (stored(BDRC_TAG_KEY) === 'B' ? 'B' : 'A'));
+  const chooseBdrcTag = useCallback((tag: Tag) => {
+    setBdrcTag(tag);
+    store(BDRC_TAG_KEY, tag);
+  }, []);
+  // A click in text A or B shows that text's volume, when it has a scan.
+  const followClick = (e: React.PointerEvent) => {
+    if (!bdrc) return;
+    const side = (e.target as Element).closest<HTMLElement>('[data-side]')?.dataset.side;
+    if ((side === 'A' || side === 'B') && side !== bdrcTag && scanGroupOf(side === 'A' ? a : b)) chooseBdrcTag(side);
   };
   const [place, setPlace] = useState<ReadingPlace>({ A: null, B: null });
   const onPlace = useCallback<OnPlace>((p) => setPlace((prev) => ({ ...prev, ...p })), []);
@@ -179,29 +229,216 @@ export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClo
           )}
           <span className="ml-auto" />
           <NotesMenu where="window" />
-          <button
-            type="button"
-            role="switch"
-            aria-checked={scans}
-            onClick={toggleScans}
-            title={t('dedup.fullText.scansTitle')}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
+          <Toggle on={bdrc} onClick={toggleBdrc} title={t('dedup.fullText.bdrcTitle')}>
+            <BookOpen className="h-4 w-4" /> {t('dedup.scans.viewBdrc')}
+          </Toggle>
+          <Toggle on={scans} onClick={toggleScans} title={t('dedup.fullText.scansTitle')}>
             <Images className="h-4 w-4" /> {t('dedup.fullText.scans')}
-            <span className={`relative h-4 w-7 rounded-full transition-colors ${scans ? 'bg-blue-600' : 'bg-gray-300'}`} aria-hidden="true">
-              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${scans ? 'left-3.5' : 'left-0.5'}`} />
-            </span>
-          </button>
+          </Toggle>
           <Button variant="outline" size="sm" className="cursor-pointer" onClick={onClose}>
             <X className="h-4 w-4" /> {t('dedup.common.close')} <kbd className="ml-1 hidden rounded border px-1 font-mono text-[10px] opacity-60 sm:inline">Esc</kbd>
           </Button>
         </div>
 
-        <WithScans show={scans} itemId={itemId} cards={{ A: a, B: b }} place={place}>
-          {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
-          {view === 'diff' && <DiffView a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
-          {view === 'volume' && <VolumeView a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
-        </WithScans>
+        <WithBeside
+          show={beside}
+          switchTo={bdrc && scansBeside ? setBesidePick : undefined}
+          shows={besideShows}
+          panel={
+            besideShows === 'bdrc' ? (
+              <BdrcPanel cards={{ A: a, B: b }} tag={bdrcTag} onTag={chooseBdrcTag} />
+            ) : (
+              <ScanStrip itemId={itemId} cards={{ A: a, B: b }} place={place} />
+            )
+          }
+        >
+          <WithScans show={scansBelow} itemId={itemId} cards={{ A: a, B: b }} place={place} onPointerDown={followClick}>
+            {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+            {view === 'diff' && (
+              <DiffView
+                a={a}
+                b={b}
+                beside={beside}
+                below={scansBelow}
+                onAddNote={onAddNote}
+                onPlace={scans ? onPlace : undefined}
+              />
+            )}
+            {view === 'volume' && <VolumeView a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+          </WithScans>
+        </WithBeside>
+      </div>
+    </div>
+  );
+}
+
+/** An on/off switch in the dialog's top bar. */
+function Toggle({ on, onClick, title, children }: Readonly<{ on: boolean; onClick: () => void; title: string; children: React.ReactNode }>) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      title={title}
+      className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
+    >
+      {children}
+      <span className={`relative h-4 w-7 rounded-full transition-colors ${on ? 'bg-blue-600' : 'bg-gray-300'}`} aria-hidden="true">
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${on ? 'left-3.5' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Whether a text's scans are book pages (taller than wide) rather than pecha. Null while
+ * the page list loads; false without scans, or when the list cannot be read.
+ */
+function useBookPages(card: WitnessCard | null): boolean | null {
+  const group = card ? scanGroupOf(card) : null;
+  const list = useScanList(group);
+  if (!group) return false;
+  const pages = list.data?.pages;
+  if (!pages) return list.isError ? false : null;
+  return pages.filter((p) => p.height > p.width).length > pages.length / 2;
+}
+
+// The texts on the left, a column on the right at full height (BDRC's viewer, book-shaped
+// scans, or both with a switch), with a line between them to drag.
+function WithBeside({
+  show,
+  shows,
+  switchTo,
+  panel,
+  children,
+}: Readonly<{
+  show: boolean;
+  shows: 'scans' | 'bdrc';
+  /** Set when both are on: the switch between them. */
+  switchTo?: (v: 'scans' | 'bdrc') => void;
+  panel: React.ReactNode;
+  children: React.ReactNode;
+}>) {
+  const { t } = useTranslation();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [total, setTotal] = useState(0);
+  const [width, setWidth] = useState<number | null>(() => Number(stored(BDRC_WIDTH_KEY)) || null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setTotal(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const fit = (w: number) => Math.round(Math.max(MIN_BDRC_WIDTH, Math.min(w, total - MIN_TEXTS_WIDTH)));
+  const resize = (w: number | null) => {
+    setWidth(w == null ? null : fit(w));
+    store(BDRC_WIDTH_KEY, w == null ? '' : String(fit(w)));
+  };
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    // Keeps the drag going over BDRC's viewer, which would otherwise take the pointer.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const right = boxRef.current?.getBoundingClientRect().right ?? 0;
+    const move = (ev: PointerEvent) => setWidth(fit(right - ev.clientX));
+    const up = (ev: PointerEvent) => {
+      resize(right - ev.clientX);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const shownWidth = total ? fit(width ?? total * BDRC_SHARE) : undefined;
+  return (
+    <div ref={boxRef} className="flex min-h-0 flex-1">
+      {children}
+      {show && (
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('dedup.fullText.bdrcResize')}
+            title={t('dedup.fullText.bdrcResize')}
+            tabIndex={0}
+            onPointerDown={drag}
+            onDoubleClick={() => resize(null)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') resize((shownWidth ?? 0) + 24);
+              if (e.key === 'ArrowRight') resize((shownWidth ?? 0) - 24);
+            }}
+            className="group flex w-2 shrink-0 cursor-col-resize touch-none items-center justify-center border-l border-gray-300 bg-gray-50 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+          >
+            <span className="h-10 w-0.5 rounded-full bg-gray-300 group-hover:bg-blue-400" />
+          </div>
+          <section
+            className="flex min-h-0 shrink-0 flex-col"
+            style={{ width: shownWidth ?? '50%' }}
+            aria-label={t(shows === 'bdrc' ? 'dedup.scans.viewBdrc' : 'dedup.fullText.scans')}
+          >
+            {switchTo && (
+              <div className="flex justify-center border-b border-gray-200 bg-gray-50 px-3 py-1.5">
+                <ScanViewSwitch view={shows} onChange={switchTo} />
+              </div>
+            )}
+            <div className="min-h-0 flex-1">{panel}</div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** BDRC's viewer for text A or B, the same page "Open on BDRC" opens (the whole volume). */
+function BdrcPanel({ cards, tag, onTag }: Readonly<{ cards: Record<Tag, WitnessCard>; tag: Tag; onTag: (tag: Tag) => void }>) {
+  const { t } = useTranslation();
+  // The chosen text, or the other one when only it has a scan.
+  const has = { A: Boolean(scanGroupOf(cards.A)), B: Boolean(scanGroupOf(cards.B)) };
+  const other: Tag = tag === 'A' ? 'B' : 'A';
+  const shown: Tag = has[tag] || !has[other] ? tag : other;
+  const url = bdrcViewerUrl(scanGroupOf(cards[shown]));
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex items-center gap-2 border-b border-gray-200 px-3 py-1.5">
+        <div className="inline-flex rounded-md bg-gray-100 p-0.5" role="tablist">
+          {(['A', 'B'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={shown === k}
+              disabled={!has[k]}
+              onClick={() => onTag(k)}
+              title={has[k] ? undefined : t('dedup.witness.noScan')}
+              className={`cursor-pointer rounded px-2.5 py-0.5 text-sm font-medium disabled:cursor-not-allowed disabled:text-gray-300 ${
+                shown === k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {t('dedup.fullText.textTab', { tag: k })}
+            </button>
+          ))}
+        </div>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            title={t('dedup.scans.openInBdrcTitle')}
+            className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:text-blue-800"
+          >
+            {t('dedup.scans.openInBdrc')} <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </header>
+      <div className="min-h-0 flex-1">
+        {url ? (
+          <BdrcViewer url={url} />
+        ) : (
+          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-500">
+            {t('dedup.witness.noScan')}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -213,8 +450,16 @@ function WithScans({
   itemId,
   cards,
   place,
+  onPointerDown,
   children,
-}: Readonly<{ show: boolean; itemId?: number; cards: Record<Tag, WitnessCard>; place: ReadingPlace; children: React.ReactNode }>) {
+}: Readonly<{
+  show: boolean;
+  itemId?: number;
+  cards: Record<Tag, WitnessCard>;
+  place: ReadingPlace;
+  onPointerDown?: (e: React.PointerEvent) => void;
+  children: React.ReactNode;
+}>) {
   const { t } = useTranslation();
   const boxRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(() => Number(stored(SCAN_HEIGHT_KEY)) || SCAN_HEIGHT);
@@ -234,6 +479,8 @@ function WithScans({
   };
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    // Keeps the drag going over the BDRC viewer, which would otherwise take the pointer.
+    e.currentTarget.setPointerCapture(e.pointerId);
     const bottom = boxRef.current?.getBoundingClientRect().bottom ?? 0;
     const move = (ev: PointerEvent) => setHeight(fit(bottom - ev.clientY));
     const up = (ev: PointerEvent) => {
@@ -245,7 +492,7 @@ function WithScans({
     window.addEventListener('pointerup', up);
   };
   return (
-    <div ref={boxRef} className="flex min-h-0 flex-1 flex-col">
+    <div ref={boxRef} onPointerDownCapture={onPointerDown} className="flex min-h-0 min-w-0 flex-1 flex-col">
       {children}
       {show && (
         <>
@@ -593,15 +840,48 @@ function firstRowInView(box: HTMLElement): number | null {
 function DiffView({
   a,
   b,
+  beside = false,
+  below = false,
   onAddNote,
   onPlace,
-}: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void; onPlace?: OnPlace }>) {
+}: Readonly<{
+  a: WitnessCard;
+  b: WitnessCard;
+  /** A column next to the texts (BDRC's viewer, book scans) takes half the sheet: one
+   * column of text reads better than two narrow ones. */
+  beside?: boolean;
+  /** The pecha scans under the texts are on. */
+  below?: boolean;
+  onAddNote?: (note: NewNote) => Promise<void> | void;
+  onPlace?: OnPlace;
+}>) {
   const { t } = useTranslation();
   const [granularity, setGranularity] = useState<DiffGranularity>('syllable');
   // Two columns are too narrow on a phone.
   const [layout, setLayout] = useState<DiffLayout>(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'unified' : 'split',
   );
+  // Unified while a column is open next to the texts with nothing under them, and back to
+  // the layout before once it closes. With the pecha scans under the texts as well, or
+  // once the reviewer picks a layout themselves, the layout is left as it is.
+  const layoutBefore = useRef<DiffLayout | null>(null);
+  useEffect(() => {
+    if (beside && !below) {
+      setLayout((l) => {
+        layoutBefore.current ??= l;
+        return 'unified';
+      });
+    } else if (beside) {
+      layoutBefore.current = null;
+    } else if (layoutBefore.current) {
+      setLayout(layoutBefore.current);
+      layoutBefore.current = null;
+    }
+  }, [beside, below]);
+  const chooseLayout = (l: DiffLayout) => {
+    layoutBefore.current = null;
+    setLayout(l);
+  };
   const diff = useTextDiff(a.mw_id, b.mw_id, granularity);
   // Line breaks are page layout, not text: dropped except in the line-by-line view.
   const chunks = useMemo(() => {
@@ -694,7 +974,7 @@ function DiffView({
               key={key}
               role="radio"
               aria-checked={layout === key}
-              onClick={() => setLayout(key)}
+              onClick={() => chooseLayout(key)}
               title={t(key === 'split' ? 'dedup.diff.splitTitle' : 'dedup.diff.unifiedTitle')}
               className={`inline-flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors ${
                 layout === key ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'

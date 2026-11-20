@@ -8,6 +8,21 @@ import { addActiveTime } from '../api/review';
 // A pair that was already answered when the visit began only gets the visit's time if
 // the visit ends with a new answer (`commit`); rereading it and leaving adds nothing.
 const IDLE_AFTER_MS = 2.5 * 60 * 1000;
+// Inside an embedded page (BDRC's viewer) the browser hides the mouse and keys from us, so
+// while the pointer is over it or it has focus, time counts for this long after the last
+// sign of work we can see (the pointer going into it, a click into it, anything on our
+// own page).
+const EMBED_IDLE_AFTER_MS = 10 * 60 * 1000;
+
+/** A frame marked `data-counts-active-time` (the BDRC viewer). */
+function isCountedFrame(el: EventTarget | Element | null): boolean {
+  return el instanceof HTMLIFrameElement && el.dataset.countsActiveTime !== undefined;
+}
+
+/** Focus is inside a counted frame. */
+function inCountedFrame(): boolean {
+  return isCountedFrame(document.activeElement);
+}
 const TICK_MS = 1000;
 const FLUSH_EVERY_MS = 60 * 1000;
 const ACTIVITY = ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart'] as const;
@@ -54,12 +69,38 @@ export function useActiveTimer(itemId: number | undefined, enabled: boolean, alr
       lastActivity.current = Date.now();
     };
     ACTIVITY.forEach((e) => window.addEventListener(e, onActivity, { capture: true, passive: true }));
+    // Clicking into the BDRC viewer blurs our window; focus has moved to the frame by the
+    // next task.
+    let blurCheck: number | undefined;
+    const onBlur = () => {
+      window.clearTimeout(blurCheck);
+      blurCheck = window.setTimeout(() => {
+        if (inCountedFrame()) onActivity();
+      }, 0);
+    };
+    window.addEventListener('blur', onBlur);
+    // Our page sees the pointer go into the frame (an event on the frame itself), then
+    // nothing until it comes back out onto our page. Reading or wheel-scrolling there
+    // without clicking is work too.
+    let overFrame = false;
+    const onOver = (e: MouseEvent) => {
+      overFrame = isCountedFrame(e.target);
+      if (overFrame) onActivity();
+    };
+    // Leaving the window: from the frame itself our page does not hear it, so this only
+    // clears it when the pointer leaves from our own page.
+    const onOut = (e: MouseEvent) => {
+      if (e.relatedTarget == null && !isCountedFrame(e.target)) overFrame = false;
+    };
+    window.addEventListener('mouseover', onOver, { capture: true, passive: true });
+    window.addEventListener('mouseout', onOut, { capture: true, passive: true });
 
     const tick = window.setInterval(() => {
+      const idleAfter = overFrame || inCountedFrame() ? EMBED_IDLE_AFTER_MS : IDLE_AFTER_MS;
       const inUse =
         document.visibilityState === 'visible' &&
         document.hasFocus() &&
-        Date.now() - lastActivity.current < IDLE_AFTER_MS;
+        Date.now() - lastActivity.current < idleAfter;
       if (inUse) counted.current += TICK_MS;
     }, TICK_MS);
     const periodic = window.setInterval(() => flush(), FLUSH_EVERY_MS);
@@ -73,6 +114,10 @@ export function useActiveTimer(itemId: number | undefined, enabled: boolean, alr
 
     return () => {
       ACTIVITY.forEach((e) => window.removeEventListener(e, onActivity, { capture: true }));
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('mouseover', onOver, { capture: true });
+      window.removeEventListener('mouseout', onOut, { capture: true });
+      window.clearTimeout(blurCheck);
       window.clearInterval(tick);
       window.clearInterval(periodic);
       document.removeEventListener('visibilitychange', onHide);

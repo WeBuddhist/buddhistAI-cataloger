@@ -29,6 +29,7 @@ import {
   type CorrectionInput,
   type DecisionInput,
   type DiffGranularity,
+  type AnnotatorItemsState,
   type MyItemsState,
   type PairFilters,
   type PeriodRange,
@@ -60,7 +61,7 @@ const keys = {
     [...reviewQueryKeyRoot, 'admin', 'overview', period.since ?? '', period.until ?? ''] as const,
   annotators: (period: PeriodRange) =>
     [...reviewQueryKeyRoot, 'admin', 'annotators', period.since ?? '', period.until ?? ''] as const,
-  annotatorItems: (userId: string, state: MyItemsState, period: PeriodRange) =>
+  annotatorItems: (userId: string, state: AnnotatorItemsState, period: PeriodRange) =>
     [...reviewQueryKeyRoot, 'admin', 'items', userId, state, period.since ?? '', period.until ?? ''] as const,
   adminAdjudications: (state: MyItemsState) => [...reviewQueryKeyRoot, 'admin', 'adjudications', state] as const,
   adminPair: (itemId: number) => [...reviewQueryKeyRoot, 'admin', 'pair', itemId] as const,
@@ -303,7 +304,7 @@ export function useAnnotators(period: PeriodRange = {}) {
   });
 }
 
-export function useAnnotatorItems(userId: string | undefined, state: MyItemsState, period: PeriodRange = {}) {
+export function useAnnotatorItems(userId: string | undefined, state: AnnotatorItemsState, period: PeriodRange = {}) {
   return useQuery({
     queryKey: keys.annotatorItems(userId ?? '', state, period),
     queryFn: ({ signal }) => fetchAnnotatorItems(userId!, state, period, { signal }),
