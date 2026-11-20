@@ -76,6 +76,10 @@ class OutlinerSegment(Base):
     corrected_by_reviewer: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # What the reviewer's merges removed from this segment, so the annotator's segment can be
+    # put back (Undo merge, or a re-split at the same spot). One entry per removed boundary,
+    # keyed by its document offset; see outliner.controller.merge_restore. NULL = nothing.
+    merge_history: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     is_annotated: Mapped[bool] = mapped_column(default=False)
     comment: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

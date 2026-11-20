@@ -502,11 +502,18 @@ export const updateSegmentsBulk = async (
   return handleApiResponse(response);
 };
 
+export interface SplitSegmentResult {
+  message: string;
+  id: string;
+  /** The split put back a segment the reviewer merged away, with the annotator's credit. */
+  restored?: boolean;
+}
+
 export const splitSegment = async (
   segmentId: string,
   splitPosition: number,
   documentId?: string
-): Promise<OutlinerSegment[]> => {
+): Promise<SplitSegmentResult> => {
   const response = await outlinerFetch(`${OUTLINER_BASE_URL}/segments/${segmentId}/split`, {
     method: 'POST',
     headers: {
@@ -531,6 +538,29 @@ export const mergeSegments = async (
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ segment_ids: segmentIds }),
+  });
+
+  return handleApiResponse(response);
+};
+
+/** Reviewer: put the outline back exactly as the annotator sent it this review round. */
+export const resetDocumentToAnnotator = async (
+  documentId: string
+): Promise<{ message: string; restored: number; removed: number }> => {
+  const response = await outlinerFetch(
+    `${OUTLINER_BASE_URL}/documents/${documentId}/reset-to-annotator`,
+    { method: 'POST' }
+  );
+
+  return handleApiResponse(response);
+};
+
+/** Put back the segment the reviewer's latest merge on this segment removed. */
+export const undoMergeSegment = async (
+  segmentId: string
+): Promise<{ message: string; id: string; restored_segment_id: string }> => {
+  const response = await outlinerFetch(`${OUTLINER_BASE_URL}/segments/${segmentId}/undo-merge`, {
+    method: 'POST',
   });
 
   return handleApiResponse(response);

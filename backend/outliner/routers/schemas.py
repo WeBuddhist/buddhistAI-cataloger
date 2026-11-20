@@ -309,6 +309,8 @@ class SegmentResponseDocument(BaseModel):
     updated_at: Optional[datetime] = None
     created_by_id: Optional[str] = None  # See SegmentResponse
     corrected_by_reviewer: Optional[bool] = None
+    # Document offsets where a segment the reviewer merged away can be put back (Undo merge).
+    merge_restore_positions: Optional[List[int]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

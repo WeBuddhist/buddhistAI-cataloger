@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@/hooks/useUser';
 import {
@@ -20,7 +21,9 @@ import {
   mergeSegments,
   rejectSegment,
   splitSegment,
+  undoMergeSegment,
   updateSegment,
+  type SplitSegmentResult,
   type MarkedSpan,
   type OutlineSegmentStatus,
   type SegmentRejection,
@@ -53,6 +56,9 @@ import { MarkedTextChips } from './MarkedTextChips';
 import { normalizeMarks, toMarkedSpans, type DraftMark } from './markedSpans';
 import AdminSanityFindingIndicator from './AdminSanityFindingIndicator';
 import type { SanityCheckFinding } from '@/api/outliner';
+
+/** Characters of leeway for a re-split to count as putting the annotator's boundary back. */
+const RESTORE_LEEWAY_CHARS = 5;
 
 const REJECTION_REASONS = [
   'reconstructed ལ་འགྲིག་རྟགས་བཀོད་དགོས།',
@@ -176,6 +182,17 @@ function SegmentRow({
   const splitLimitReached =
     reviewerAccount?.role !== 'admin' && splitLimit !== null && splitsUsed >= splitLimit;
   const canSplit = canRestructure && !splitLimitReached;
+  /**
+   * A split within a few characters of a boundary the reviewer merged away puts the annotator's
+   * segment back (same leeway as the backend's RESTORE_LEEWAY_CHARS). It is not a new segment,
+   * so it is allowed even at the split limit.
+   */
+  const isRestoreSpot = (bodyOffset: number) =>
+    (segment.merge_restore_positions ?? []).some(
+      (p) => Math.abs(p - (segment.span_start + bodyOffset)) <= RESTORE_LEEWAY_CHARS
+    );
+  const canUndoMerge = canRestructure && (segment.merge_restore_positions?.length ?? 0) > 0;
+  const { t } = useTranslation();
   /** Tells the reviewer the split limit is used up; they can close it and reject if they choose. */
   const [splitLimitDialogOpen, setSplitLimitDialogOpen] = useState(false);
   const [textSearchQuery, setTextSearchQuery] = useState('');
@@ -302,8 +319,14 @@ function SegmentRow({
   };
   // After a split the reviewer works on the new segment next: open it and bring it into view.
   // This segment keeps its id; the new one is right after it in document order.
-  const openSplitOffSegment = async () => {
-    toast.success('Segment split — the new segment is credited to you');
+  const openSplitOffSegment = async (result?: SplitSegmentResult) => {
+    if (result?.restored) {
+      toast.info(t('outliner.restoreOutline.restoredToast'), {
+        description: t('outliner.restoreOutline.restoredToastHint'),
+      });
+    } else {
+      toast.success('Segment split — the new segment is credited to you');
+    }
     const docKey = ['outliner-admin-document', documentId];
     await queryClient.invalidateQueries({ queryKey: docKey });
     const doc = queryClient.getQueryData<{ segments?: Segment[] }>(docKey);
@@ -330,6 +353,17 @@ function SegmentRow({
     mutationFn: (nextId: string) => mergeSegments([segment.id, nextId]),
     onSuccess: () => restructureSuccess('Segments merged'),
     onError: (error: Error) => toast.error(`Failed to merge segments: ${error.message}`),
+  });
+  const undoMergeMutation = useMutation({
+    mutationFn: () => undoMergeSegment(segment.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['outliner-admin-document', documentId] });
+      toast.info(t('outliner.restoreOutline.undoMergeToast'), {
+        description: t('outliner.restoreOutline.undoMergeToastHint'),
+      });
+    },
+    onError: (error: Error) =>
+      toast.error(t('outliner.restoreOutline.undoMergeFailed', { error: error.message })),
   });
 
   const handleSave = () => {
@@ -779,16 +813,20 @@ function SegmentRow({
   );
   const isApproved = segment.status === 'approved';
   const showApproveButton= selectedDocument?.status==='completed';
-  const isRestructuring = splitMutation.isPending || mergeMutation.isPending;
+  const isRestructuring =
+    splitMutation.isPending || mergeMutation.isPending || undoMergeMutation.isPending;
   const isSaving = statusMutation.isPending || rejectMutation.isPending || titleAuthorSaving || bdrcSaveMutation.isPending || isRestructuring;
   // Merging deletes the next segment, so only take one that is also still awaiting review.
   const canMergeWithNext = canRestructure && nextSegment?.status === 'checked';
+
+  const selectionRestores = selectionBubble != null && isRestoreSpot(selectionBubble.start);
 
   const splitAtSelection = () => {
     if (!selectionBubble || !canRestructure) return;
     const { start } = selectionBubble;
     setSelectionBubble(null);
-    if (splitLimitReached) {
+    const restores = isRestoreSpot(start);
+    if (splitLimitReached && !restores) {
       setSplitLimitDialogOpen(true);
       return;
     }
@@ -796,8 +834,16 @@ function SegmentRow({
       toast.error('Select text inside the segment, not at its very start');
       return;
     }
-    if (!globalThis.confirm('Split this segment here? The new segment starts at the selected text.')) return;
+    const question = restores
+      ? t('outliner.restoreOutline.restoreConfirm')
+      : 'Split this segment here? The new segment starts at the selected text.';
+    if (!globalThis.confirm(question)) return;
     splitMutation.mutate(start);
+  };
+
+  const handleUndoMerge = () => {
+    if (!globalThis.confirm(t('outliner.restoreOutline.undoMergeConfirm'))) return;
+    undoMergeMutation.mutate();
   };
 
   const handleMergeWithNext = () => {
@@ -843,18 +889,24 @@ function SegmentRow({
                   onClick={splitAtSelection}
                   disabled={isSaving}
                   title={
-                    splitLimitReached
+                    selectionRestores
+                      ? t('outliner.restoreOutline.restoreSplitHint')
+                      : splitLimitReached
                       ? `You have added ${splitsUsed} of ${splitLimit} segments allowed in this document. Reject and send it back to the annotator instead.`
                       : splitLimit !== null && reviewerAccount?.role !== 'admin'
                         ? `Start a new segment at the selected text (${splitsUsed} of ${splitLimit} used)`
                         : 'Start a new segment at the selected text'
                   }
                   className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-white shadow-lg cursor-pointer disabled:opacity-60 ${
-                    splitLimitReached ? 'bg-gray-500 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                    splitLimitReached && !selectionRestores ? 'bg-gray-500 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
                   <Scissors className="h-3 w-3 shrink-0" aria-hidden />
-                  {splitLimitReached ? `Split limit reached (${splitsUsed}/${splitLimit})` : 'Split here'}
+                  {selectionRestores
+                    ? t('outliner.restoreOutline.restoreSplit')
+                    : splitLimitReached
+                      ? `Split limit reached (${splitsUsed}/${splitLimit})`
+                      : 'Split here'}
                 </button>
               )}
             </div>
@@ -1260,6 +1312,19 @@ function SegmentRow({
                   >
                     <Merge className="w-3.5 h-3.5 shrink-0" aria-hidden />
                     Merge with next
+                  </Button>
+                )}
+                {canUndoMerge && (
+                  <Button
+                    size="sm"
+                    onClick={handleUndoMerge}
+                    disabled={isSaving}
+                    variant="outline"
+                    title={t('outliner.restoreOutline.undoMergeHint')}
+                    className="cursor-pointer hover:bg-amber-50 hover:border-amber-400"
+                  >
+                    <Undo className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                    {t('outliner.restoreOutline.undoMerge')}
                   </Button>
                 )}
               </div>

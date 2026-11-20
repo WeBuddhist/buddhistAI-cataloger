@@ -162,6 +162,8 @@ export interface Segment {
   created_by_id?: string | null
   /** The reviewer split/merged this annotator segment. */
   corrected_by_reviewer?: boolean | null
+  /** Document offsets where a segment the reviewer merged away can be put back. */
+  merge_restore_positions?: number[] | null
 }
 
 export interface DocumentStats {
