@@ -188,8 +188,9 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   const [scan, setScan] = useState<ScanTag | null>(null);
   const [askPreferred, setAskPreferred] = useState(false);
   // Open while asking why, before saving the answer: why the texts are different, or why
-  // the adjudicator's answer goes against both annotators'.
-  const [askReason, setAskReason] = useState<'different' | 'override-same' | 'override-different' | null>(null);
+  // the adjudicator's answer goes against both annotators'; or, for "different" with its
+  // reason given, showing that reason with room for more notes.
+  const [askReason, setAskReason] = useState<'different' | 'override-same' | 'override-different' | 'confirm-different' | null>(null);
   const advanceTimer = useRef<number | undefined>(undefined);
   // The docked action bar wraps onto several rows on a phone; the page keeps its
   // height free so nothing is hidden behind it.
@@ -211,15 +212,18 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   useEffect(() => () => window.clearTimeout(advanceTimer.current), []);
 
   const submit = useCallback(
-    // `withAlso`: notes made along with this answer (the reason for "different").
-    async (fields: DecisionInput, withAlso: PairNote[] = []) => {
+    // `withAlso`: notes made along with this answer (the reason for "different"); `without`:
+    // notes removed while answering, left out even before the pair is read again.
+    async (fields: DecisionInput, withAlso: PairNote[] = [], without: string[] = []) => {
       if (!item) return;
       const body: DecisionInput = {
         // What was flagged while the pair had no answer goes with the answer.
         ...(fields.verdict && draft.issues.length > 0 ? { issues: draft.issues } : {}),
         ...fields,
         // Only "same" carries a preferred copy, so a stale one is dropped; notes stay.
-        ...(fields.verdict ? { partner_payload: withNotes(fields.partner_payload, [...notes, ...withAlso]) } : {}),
+        ...(fields.verdict
+          ? { partner_payload: withNotes(fields.partner_payload, [...notes, ...withAlso].filter((n) => !without.includes(n.id))) }
+          : {}),
         // Confidence only means something alongside a verdict.
         ...(fields.verdict && confidence != null ? { confidence } : {}),
       };
@@ -276,6 +280,16 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
       }
     },
     [item, t],
+  );
+
+  // A note on the whole pair written in an answer's popup: kept there and saved with the
+  // answer, so it never lands on the answer being replaced.
+  const makeAnswerNote = useCallback(
+    async (edit: NoteEdit) => {
+      const recordingId = await storeRecording(edit.recording);
+      return makeNote({ ...edit, target: 'both', voice_note_ids: recordingId ? [recordingId] : undefined });
+    },
+    [storeRecording],
   );
 
   const getFullText = useGetFullText();
@@ -381,14 +395,16 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     (verdict: 'same' | 'different') => {
       // Why the texts are different, or why the answer goes against both annotators.
       const ask = askBeforeSaving(verdict, notes, bothSaid);
-      if (ask) {
+      // The last look at the reason is there to add notes: where none can be written
+      // (an admin's correction), "different" is saved at once, as before.
+      if (ask && !(ask === 'confirm-different' && (correct || locked))) {
         setAskReason(ask);
         return;
       }
       if (verdict === 'same') setAskPreferred(true);
       else submit({ verdict }).catch(() => {});
     },
-    [submit, notes, bothSaid],
+    [submit, notes, bothSaid, correct, locked],
   );
 
   const saveReason = useCallback(
@@ -410,8 +426,27 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
   );
 
   const saveSame = useCallback(
-    (preferred: PreferredChoice) => submit({ verdict: 'same', partner_payload: { preferred_mw_id: preferred } }),
+    (preferred: PreferredChoice, added: PairNote[], removed: string[]) =>
+      submit({ verdict: 'same', partner_payload: { preferred_mw_id: preferred } }, added, removed),
     [submit],
+  );
+
+  const confirmDifferent = useCallback(
+    async (added: PairNote[], removed: string[]) => {
+      await submit({ verdict: 'different' }, added, removed);
+      setAskReason(null);
+    },
+    [submit],
+  );
+
+  // Notes written in an answer's popup that was closed without answering: kept like any
+  // other note, on the saved answer, or waiting for the answer.
+  const keepNotes = useCallback(
+    (added: PairNote[]) => {
+      if (item?.verdict) saveNotes([...savedNotes, ...added]);
+      else added.forEach((n) => draft.addNote(n));
+    },
+    [item?.verdict, saveNotes, savedNotes, draft],
   );
 
   const answered = Boolean(item && isDecided(item));
@@ -714,12 +749,21 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
         b={cardB}
         current={item.verdict === 'same' ? preferred : undefined}
         onPick={saveSame}
+        onKeepNotes={keepNotes}
+        pairNotes={notes}
+        canRemoveNotes={canWriteNotes}
+        makeNote={canWriteNotes ? makeAnswerNote : undefined}
       />
 
       <DifferentReasonDialog
         open={askReason != null}
-        mode={askReason === 'different' ? 'different' : 'override'}
+        mode={reasonMode(askReason)}
         annotatorsSaid={bothSaid ?? undefined}
+        pairNotes={notes}
+        canRemoveNotes={canWriteNotes}
+        onConfirm={confirmDifferent}
+        onKeepNotes={keepNotes}
+        makeNote={canWriteNotes ? makeAnswerNote : undefined}
         onSave={saveReason}
         onCancel={() => setAskReason(null)}
       />
@@ -734,6 +778,13 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
     </div>
     </PairNotesContext.Provider>
   );
+}
+
+/** Which form the reason dialog shows for what is being asked. */
+function reasonMode(ask: string | null): 'different' | 'confirm' | 'override' {
+  if (ask === 'different') return 'different';
+  if (ask === 'confirm-different') return 'confirm';
+  return 'override';
 }
 
 function Kbd({ children }: { children: ReactNode }) {

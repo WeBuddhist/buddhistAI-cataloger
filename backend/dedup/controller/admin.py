@@ -636,15 +636,25 @@ def _when(value) -> Optional[datetime]:
         return None
 
 
+def _kinds_of(n: dict) -> list[str]:
+    """A saved note's types: its ``kinds`` list, or the one ``kind`` of an older note."""
+    kinds = n.get("kinds")
+    if isinstance(kinds, list) and kinds:
+        return [k for k in kinds if isinstance(k, str) and k]
+    return [n["kind"]] if n.get("kind") else []
+
+
 def _saved_note(d: DedupDecision, n: dict, index: int) -> dict:
     """One note as saved in ``partner_payload.notes`` (older ones hold one ``voice_note_id``)."""
     ids = [n["voice_note_id"]] if n.get("voice_note_id") else []
+    kinds = _kinds_of(n)
     return {
         "id": str(n.get("id") or f"{d.id}:{index}"),
         "target": n.get("target"),
         "quote": n.get("quote") or None,
         "text": n.get("text") or "",
-        "kind": n.get("kind") or None,
+        "kinds": kinds,
+        "kind": kinds[0] if kinds else None,
         "checked": n.get("checked") or None,
         "page": n.get("page") or None,
         "witness_id": n.get("witness_id") or None,
@@ -659,13 +669,13 @@ def _notes_of(d: DedupDecision) -> list[dict]:
     more (about the whole pair)."""
     saved = [
         n for n in (d.partner_payload or {}).get("notes") or []
-        if isinstance(n, dict) and ((n.get("text") or "").strip() or n.get("kind"))
+        if isinstance(n, dict) and ((n.get("text") or "").strip() or _kinds_of(n))
     ]
     out = [_saved_note(d, n, i) for i, n in enumerate(saved)]
     if d.note and d.note.strip():
         out.append({
             "id": f"decision:{d.id}", "target": None, "quote": None, "text": d.note.strip(),
-            "kind": None, "checked": None, "page": None, "witness_id": None, "voice_note_ids": [], "created_at": d.decided_at, "updated_at": None,
+            "kinds": [], "kind": None, "checked": None, "page": None, "witness_id": None, "voice_note_ids": [], "created_at": d.decided_at, "updated_at": None,
         })
     return out
 
@@ -701,6 +711,7 @@ def pair_notes(db: Session, item_id: int) -> list[AdminPairNoteOut]:
             target=n["target"],
             quote=n["quote"],
             text=n["text"],
+            kinds=n["kinds"],
             kind=n["kind"],
             checked=n["checked"],
             page=n["page"],
