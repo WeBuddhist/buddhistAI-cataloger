@@ -135,6 +135,8 @@ export function NoteList({
               <NoteForm
                 target={note.target}
                 quote={note.quote}
+                // Made without a passage (in an answer's popup): none can be selected here.
+                wholePair={!note.quote}
                 initialText={note.text}
                 initialDetails={note}
                 onCancel={() => setEditing(null)}
