@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2, LocateFixed, Mic, Pause, Pencil, Play, SearchCheck, Square, Trash2, TriangleAlert, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, LocateFixed, Mic, Pause, Pencil, Play, SearchCheck, Square, Trash2, TriangleAlert, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { fetchVoiceNoteUrl, transcribeVoiceNote, type SttRequest } from '../api/review';
 import { toWav, useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import {
-  isReasonKind,
+  hasReasonKind,
   KEEPS_ESCAPE,
+  kindsOf,
   MIN_QUOTE_SYLLABLES,
   missingPlace,
   NOTE_CHECKS,
@@ -270,24 +271,25 @@ function VoiceButton({
   );
 }
 
-/** A note's kind and what it was checked against, as small tags. Nothing when neither is set. */
+/** A note's kinds and what it was checked against, as small tags. Nothing when neither is set. */
 export function NoteDetailTags({ note }: Readonly<{ note: NoteDetails }>) {
   const { t } = useTranslation();
-  if (!note.kind && !note.checked) return null;
-  const group = note.kind ? groupOf(note.kind) : 'same';
+  const kinds = kindsOf(note);
+  if (kinds.length === 0 && !note.checked) return null;
   let checked = note.checked ? t(`dedup.notes.checked.${note.checked}`) : '';
   if (note.checked === 'scan' && note.page) checked = t('dedup.notes.checked.scanPage', { page: note.page });
   if (note.checked === 'bdrc' && note.witness_id) checked = t('dedup.notes.checked.bdrcFound', { id: note.witness_id });
   return (
     <div className="mb-1 flex flex-wrap gap-1">
-      {note.kind && (
+      {kinds.map((kind) => (
         <span
-          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${GROUP_STYLE[group].tag}`}
-          title={t(`dedup.notes.kind.groups.${group}`)}
+          key={kind}
+          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${GROUP_STYLE[groupOf(kind)].tag}`}
+          title={t(`dedup.notes.kind.groups.${groupOf(kind)}`)}
         >
-          {t(`dedup.notes.kind.options.${note.kind}.label`)}
+          {t(`dedup.notes.kind.options.${kind}.label`)}
         </span>
-      )}
+      ))}
       {note.checked && (
         <span className="inline-flex items-center gap-1 rounded bg-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700">
           <SearchCheck className="h-3 w-3" /> {checked}
@@ -312,16 +314,16 @@ export type KindGroup = keyof typeof NOTE_KINDS;
 const groupOf = (kind: NoteKind): KindGroup =>
   (NOTE_KINDS.same as readonly NoteKind[]).includes(kind) ? 'same' : 'different';
 
-/** A type's name, with a dot in its group's colour. */
-function KindLabel({ kind, withGroup = false }: Readonly<{ kind: NoteKind; withGroup?: boolean }>) {
+/** The chosen types' names (all from one group), after the group, with a dot in its colour. */
+function KindLabel({ kinds }: Readonly<{ kinds: NoteKind[] }>) {
   const { t } = useTranslation();
-  const group = groupOf(kind);
+  const group = groupOf(kinds[0]);
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       <span className={`h-2 w-2 shrink-0 rounded-full ${GROUP_STYLE[group].dot}`} aria-hidden />
       <span className="truncate">
-        {withGroup && <span className={`font-medium ${GROUP_STYLE[group].text}`}>{t(`dedup.notes.kind.groups.${group}`)} </span>}
-        {t(`dedup.notes.kind.options.${kind}.label`)}
+        <span className={`font-medium ${GROUP_STYLE[group].text}`}>{t(`dedup.notes.kind.groups.${group}`)} </span>
+        {kinds.map((k) => t(`dedup.notes.kind.options.${k}.label`)).join(', ')}
       </span>
     </span>
   );
@@ -332,7 +334,15 @@ function DetailFields({
   details,
   onChange,
   onlyGroup,
-}: Readonly<{ details: NoteDetails; onChange: (next: NoteDetails) => void; onlyGroup?: KindGroup }>) {
+  required = false,
+}: Readonly<{
+  details: NoteDetails;
+  onChange: (next: NoteDetails) => void;
+  /** Only this group's types are offered. */
+  onlyGroup?: KindGroup;
+  /** A type must be chosen: it cannot be cleared. */
+  required?: boolean;
+}>) {
   const { t } = useTranslation();
   const kindId = useId();
   const pageId = useId();
@@ -343,6 +353,14 @@ function DetailFields({
   const [side, setSide] = useState<'top' | 'bottom'>('bottom');
   const trigger = useRef<HTMLButtonElement>(null);
   const keepOpen = (e: Event) => e.preventDefault();
+  const chosen = kindsOf(details);
+  const setKinds = (kinds: NoteKind[]) => onChange({ ...details, kinds, kind: undefined });
+  // Ticking a type adds it; one from the other group starts over with it: a note is either
+  // "same, but…" or "different because…", not both.
+  const toggle = (kind: NoteKind) => {
+    if (chosen.includes(kind)) setKinds(chosen.filter((k) => k !== kind));
+    else setKinds([...chosen.filter((k) => groupOf(k) === groupOf(kind)), kind]);
+  };
   return (
     <div className="space-y-2">
       <div className="space-y-1">
@@ -354,7 +372,7 @@ function DetailFields({
             onOpenChange={(open) => {
               // Opens on the chosen type's group, so it can be changed in one click.
               if (!open) return;
-              setStep(onlyGroup ?? (details.kind ? groupOf(details.kind) : null));
+              setStep(onlyGroup ?? (chosen.length > 0 ? groupOf(chosen[0]) : null));
               const box = trigger.current?.getBoundingClientRect();
               if (box) setSide(window.innerHeight - box.bottom >= box.top ? 'bottom' : 'top');
             }}
@@ -366,11 +384,11 @@ function DetailFields({
                 type="button"
                 className="flex h-9 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-xs hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 sm:w-80"
               >
-                {details.kind ? (
-                  <KindLabel kind={details.kind} withGroup />
+                {chosen.length > 0 ? (
+                  <KindLabel kinds={chosen} />
                 ) : (
                   <span className="truncate text-gray-500">
-                    {t(onlyGroup ? 'dedup.notes.kind.placeholderRequired' : 'dedup.notes.kind.placeholder')}
+                    {t(required ? 'dedup.notes.kind.placeholderRequired' : 'dedup.notes.kind.placeholder')}
                   </span>
                 )}
                 <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
@@ -408,21 +426,26 @@ function DetailFields({
                   )}
                   <DropdownMenuSeparator />
                   {NOTE_KINDS[step].map((kind) => {
-                    const on = details.kind === kind;
+                    const on = chosen.includes(kind);
+                    const box = on ? `${GROUP_STYLE[step].ring} ${GROUP_STYLE[step].dot}` : 'border-gray-300';
                     return (
-                      // One type per note: a radio circle shows which.
+                      // Several types per note: a checkbox for each, and the menu stays open.
                       <DropdownMenuItem
                         key={kind}
-                        role="menuitemradio"
+                        role="menuitemcheckbox"
                         aria-checked={on}
-                        onSelect={() => onChange({ ...details, kind })}
+                        onSelect={(e) => {
+                          keepOpen(e);
+                          toggle(kind);
+                        }}
                         className="cursor-pointer items-start py-2"
                       >
                         <span
                           aria-hidden
-                          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${on ? GROUP_STYLE[step].ring : 'border-gray-300'}`}
+                          // A square with small corners: the theme's `rounded` turns a box this size into a circle.
+                          className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border-2 ${box}`}
                         >
-                          {on && <span className={`h-2 w-2 rounded-full ${GROUP_STYLE[step].dot}`} />}
+                          {on && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                         </span>
                         {/* The meaning shows with each type: touch screens have no hover. */}
                         <span className="min-w-0 flex-1">
@@ -436,10 +459,10 @@ function DetailFields({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          {details.kind && !onlyGroup && (
+          {chosen.length > 0 && !required && (
             <button
               type="button"
-              onClick={() => onChange({ ...details, kind: undefined })}
+              onClick={() => setKinds([])}
               aria-label={t('dedup.notes.kind.clear')}
               title={t('dedup.notes.kind.clear')}
               className={ICON_BUTTON}
@@ -448,7 +471,7 @@ function DetailFields({
             </button>
           )}
         </div>
-        {details.kind && <p className="text-xs text-gray-500">{t(`dedup.notes.kind.options.${details.kind}.help`)}</p>}
+        {chosen.length === 1 && <p className="text-xs text-gray-500">{t(`dedup.notes.kind.options.${chosen[0]}.help`)}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className={FIELD_LABEL} id={`${kindId}-checked`}>
@@ -517,6 +540,7 @@ export function NoteForm({
   initialDetails,
   onDetailsChange,
   onlyGroup,
+  kindGroup,
   requireText = false,
   wholePair = false,
   quote,
@@ -539,9 +563,12 @@ export function NoteForm({
   onDetailsChange?: (details: NoteDetails) => void;
   /** A type from this group must be chosen (the reason for a "different" answer). */
   onlyGroup?: KindGroup;
+  /** Only this group's types are offered, but none has to be chosen (a note made while
+   * answering, which matches the answer). */
+  kindGroup?: KindGroup;
   /** A sentence must be written, whatever the type (explaining an answer). */
   requireText?: boolean;
-  /** A note explaining an answer, about the whole pair: no passage can be selected for
+  /** A note about the whole pair, made while answering: no passage can be selected for
    * it, so a kind about a place does not ask for one. */
   wholePair?: boolean;
   /** In place of "Save note". */
@@ -555,7 +582,7 @@ export function NoteForm({
   // "Both" may have been chosen before the choices changed.
   const side = choices.includes(chosen) ? chosen : target;
   const [details, setDetails] = useState<NoteDetails>({
-    kind: initialDetails?.kind,
+    kinds: initialDetails ? kindsOf(initialDetails) : [],
     checked: initialDetails?.checked,
     page: initialDetails?.page,
     witness_id: initialDetails?.witness_id,
@@ -600,11 +627,12 @@ export function NoteForm({
   };
 
   // A reason for "different" needs a sentence: the type alone does not say why.
-  const needsSentence = requireText || isReasonKind(details.kind);
+  const kinds = kindsOf(details);
+  const needsSentence = requireText || hasReasonKind(kinds);
   // A kind about a place needs a passage (no sentence); a short one is asked about first.
-  const placeMissing = wholePair ? null : missingPlace(details.kind, quote);
+  const placeMissing = wholePair ? null : missingPlace(kinds, quote);
   const canSave =
-    (onlyGroup ? Boolean(details.kind) && Boolean(text.trim()) : Boolean(text.trim() || details.kind) && !(needsSentence && !text.trim())) &&
+    (onlyGroup ? kinds.length > 0 && Boolean(text.trim()) : Boolean(text.trim() || kinds.length > 0) && !(needsSentence && !text.trim())) &&
     placeMissing !== 'none';
   const [askingShort, setAskingShort] = useState(false);
 
@@ -648,7 +676,7 @@ export function NoteForm({
       <span className="text-xs text-gray-500">{t('dedup.notes.targetHelp')}</span>
       </div>
       )}
-      <DetailFields details={details} onChange={changeDetails} onlyGroup={onlyGroup} />
+      <DetailFields details={details} onChange={changeDetails} onlyGroup={onlyGroup ?? kindGroup} required={onlyGroup != null} />
       <Textarea
         ref={box}
         value={text}
@@ -658,7 +686,7 @@ export function NoteForm({
         autoFocus
         className="min-h-[64px] bg-white text-sm"
       />
-      {isReasonKind(details.kind) && !text.trim() && <p className="text-xs text-red-700">{t('dedup.notes.whyRequired')}</p>}
+      {hasReasonKind(kinds) && !text.trim() && <p className="text-xs text-red-700">{t('dedup.notes.whyRequired')}</p>}
       {placeMissing === 'none' && <p className="text-xs text-red-700">{t('dedup.notes.placeRequired')}</p>}
       <Dialog open={askingShort} onOpenChange={setAskingShort}>
         <DialogContent className="sm:max-w-md" {...{ [KEEPS_ESCAPE]: '' }}>

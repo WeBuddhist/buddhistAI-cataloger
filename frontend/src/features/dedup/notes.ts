@@ -11,14 +11,21 @@ export type NoteTarget = 'a' | 'b' | 'both';
 /** What a note is about, from the annotation guidelines: how two copies of one text
  * differ, or why two texts are different works. Sent to BDRC as these ids. */
 export const NOTE_KINDS = {
-  same: ['content_missing', 'extra_content', 'outlining_issue', 'page_order', 'ocr', 'title'],
+  same: ['content_missing', 'extra_content', 'outlining_issue', 'expanded_condensed', 'page_order', 'ocr', 'title'],
   different: ['totally_different', 'commentary', 'sadhana_instructions'],
 } as const;
 export type NoteKind = (typeof NOTE_KINDS)[keyof typeof NOTE_KINDS][number];
 
 /** The kinds that are about a place in the text: such a note needs a passage selected
  * that points to one place, but no sentence. */
-export const PLACE_KINDS: readonly NoteKind[] = ['content_missing', 'extra_content', 'outlining_issue', 'page_order', 'ocr'];
+export const PLACE_KINDS: readonly NoteKind[] = [
+  'content_missing',
+  'extra_content',
+  'outlining_issue',
+  'expanded_condensed',
+  'page_order',
+  'ocr',
+];
 
 /** Below this many syllables a quote is found in many places, so it cannot say where the
  * note is (a lone ༔ or །།). */
@@ -29,11 +36,11 @@ export function syllableCount(text: string): number {
   return text.split(/[\s་-༔_]+/).filter((s) => s.length > 0).length;
 }
 
-/** What is wrong with the place of a note of `kind` on `quote`: it is about a place but
- * has no passage (`none`: it cannot be saved), or one too short to point to one place
- * (`short`: asked about before saving). Null when nothing is. */
-export function missingPlace(kind: NoteKind | undefined, quote: string | undefined): 'none' | 'short' | null {
-  if (kind == null || !PLACE_KINDS.includes(kind)) return null;
+/** What is wrong with the place of a note of `kinds` on `quote`: one of them is about a
+ * place but there is no passage (`none`: it cannot be saved), or one too short to point to
+ * one place (`short`: asked about before saving). Null when nothing is. */
+export function missingPlace(kinds: readonly NoteKind[], quote: string | undefined): 'none' | 'short' | null {
+  if (!kinds.some((k) => PLACE_KINDS.includes(k))) return null;
   if (!quote?.trim()) return 'none';
   if (syllableCount(quote) < MIN_QUOTE_SYLLABLES) return 'short';
   return null;
@@ -46,29 +53,47 @@ export type NoteCheck = (typeof NOTE_CHECKS)[number];
 /** The kinds that say why two texts are different works. */
 export const REASON_KINDS: readonly NoteKind[] = NOTE_KINDS.different;
 
-/** Whether `kind` says why two texts are different works: such a note needs a sentence. */
-export const isReasonKind = (kind: NoteKind | undefined) => kind != null && REASON_KINDS.includes(kind);
+/** Whether one of `kinds` says why two texts are different works: such a note needs a sentence. */
+export const hasReasonKind = (kinds: readonly NoteKind[]) => kinds.some((k) => REASON_KINDS.includes(k));
 
 /** Whether `notes` say why the texts are different: a reason kind, with a sentence. */
-export const givesReason = (notes: PairNote[]) => notes.some((n) => isReasonKind(n.kind) && n.text.trim());
+export const givesReason = (notes: PairNote[]) => notes.some((n) => hasReasonKind(kindsOf(n)) && n.text.trim());
+
+/** Whether `note` has a type that goes against `verdict`: a "same, but…" type on a
+ * "different" answer, or a "different because…" type on a "same" one. */
+export function goesAgainst(note: NoteDetails, verdict: 'same' | 'different'): boolean {
+  const other: readonly NoteKind[] = verdict === 'same' ? NOTE_KINDS.different : NOTE_KINDS.same;
+  return kindsOf(note).some((k) => other.includes(k));
+}
+
+/** A note's types, in the order chosen. Older notes hold one, as `kind`. */
+export function kindsOf(note: NoteDetails): NoteKind[] {
+  if (note.kinds?.length) return note.kinds;
+  return note.kind ? [note.kind] : [];
+}
 
 /** What must be asked before saving `verdict`: why the texts are different (a reason note
  * is missing), why the answer goes against both annotators (`bothSaid`, when they agreed;
  * the person's own note with a sentence answers it, a note kept from an annotator does
- * not), or nothing. */
+ * not), or, for "different" with its reason already given, a last look at that reason
+ * (`confirm-different`, where more notes can be added). Null for "same" with nothing to
+ * ask: the preferred copy is asked next. */
 export function askBeforeSaving(
   verdict: 'same' | 'different',
   notes: PairNote[],
   bothSaid: string | null,
-): 'different' | 'override-same' | 'override-different' | null {
+): 'different' | 'override-same' | 'override-different' | 'confirm-different' | null {
   if (verdict === 'different' && !givesReason(notes)) return 'different';
   const explained = notes.some((n) => !n.adopted_from?.length && n.text.trim());
   if (bothSaid && bothSaid !== verdict && !explained) return verdict === 'same' ? 'override-same' : 'override-different';
-  return null;
+  return verdict === 'different' ? 'confirm-different' : null;
 }
 
-/** A note's kind and what it was checked against; all optional. */
+/** A note's kinds and what it was checked against; all optional. */
 export interface NoteDetails {
+  /** The types chosen, in order; read through `kindsOf`. Sent to BDRC as this list. */
+  kinds?: NoteKind[];
+  /** Older notes' one type, before `kinds`; no longer written (an edit moves it to `kinds`). */
   kind?: NoteKind;
   checked?: NoteCheck;
   /** The scan page looked at, when checked on the scan. */
@@ -93,7 +118,10 @@ export function bdrcId(typed: string): string {
  * they belong. */
 function tidyDetails<T extends NoteDetails>(note: T): T {
   const next = { ...note };
-  if (!next.kind) delete next.kind;
+  const kinds = [...new Set(kindsOf(note))];
+  delete next.kinds;
+  delete next.kind;
+  if (kinds.length > 0) next.kinds = kinds;
   if (!next.checked) delete next.checked;
   if (next.checked !== 'scan' || !next.page?.trim()) delete next.page;
   else next.page = next.page.trim();
@@ -185,7 +213,8 @@ export function editedNote(note: PairNote, edit: NoteEdit, newRecordingId?: stri
     ...note,
     target: edit.target,
     text: edit.text,
-    kind: edit.kind,
+    kinds: kindsOf(edit),
+    kind: undefined,
     checked: edit.checked,
     page: edit.page,
     witness_id: edit.witness_id,
@@ -310,7 +339,7 @@ const OVERLAP_LETTERS = 12;
 /** Whether two notes say something about the same place: their passages overlap in a
  * text they share, or, without passages, they have the same kind. */
 export function samePlace(x: PairNote, y: PairNote): boolean {
-  if (!x.quote || !y.quote) return !x.quote && !y.quote && x.kind != null && x.kind === y.kind;
+  if (!x.quote || !y.quote) return !x.quote && !y.quote && kindsOf(x).some((k) => kindsOf(y).includes(k));
   if (x.target !== y.target && x.target !== 'both' && y.target !== 'both') return false;
   for (const side of ['a', 'b'] as const) {
     const p = x.range?.[side];
@@ -342,7 +371,7 @@ export function groupBySamePlace<T extends { note: PairNote }>(items: T[]): T[][
 }
 
 /** One note made from several notes about the same place (an adjudicator keeping them as
- * one): the widest passage, every text, and the first kind and check given. */
+ * one): the widest passage, every text, every kind, and the first check given. */
 export function mergedNote(notes: PairNote[]): NewNote {
   const widest = notes.reduce((w, n) => ((n.quote?.length ?? 0) > (w.quote?.length ?? 0) ? n : w), notes[0]);
   const targets = new Set(notes.map((n) => n.target));
@@ -354,7 +383,7 @@ export function mergedNote(notes: PairNote[]): NewNote {
     quote: widest.quote,
     // Only kept when every note is on the same text: it may need placing in the other too.
     range: targets.size === 1 ? widest.range : undefined,
-    kind: notes.find((n) => n.kind)?.kind,
+    kinds: [...new Set(notes.flatMap(kindsOf))],
     checked: checked?.checked,
     page: checked?.page,
     witness_id: checked?.witness_id,
@@ -424,7 +453,7 @@ export function keptNote(note: PairNote): NewNote {
     text: note.text,
     quote: note.quote,
     range: note.range,
-    kind: note.kind,
+    kinds: kindsOf(note),
     checked: note.checked,
     page: note.page,
     witness_id: note.witness_id,

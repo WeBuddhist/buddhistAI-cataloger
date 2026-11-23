@@ -1757,6 +1757,10 @@
             "label": "Outlining issue",
             "help": "They would be the same if the text were split properly. A few syllables are enough to mark the spot."
           },
+          "expanded_condensed": {
+            "label": "Expanded / condensed",
+            "help": "One is the expanded version of the text, the other the condensed one."
+          },
           "page_order": {
             "label": "Page order",
             "help": "The text is the same and complete, but its pages are in a mixed-up order."
@@ -1808,12 +1812,30 @@
     "differentReason": {
       "title": "Why are they different?",
       "help": "Choose the reason and say why in a sentence. It is saved as a note with your answer.",
-      "save": "Save as Different"
+      "save": "Save as Different",
+      "confirm": {
+        "title": "Save as Different?",
+        "help": "Check your notes below. You can add another note before saving."
+      }
     },
     "overrideReason": {
       "title": "Why do you disagree with both annotators?",
       "help": "Both annotators answered “{{answer}}”. Say in a sentence why your answer is different. It is saved as a note with your answer.",
       "save": "Continue"
+    },
+    "answerNotes": {
+      "add": "Add a note (optional)",
+      "addAnother": "Add another note",
+      "help": "About the whole pair, saved with your answer. No text needs to be selected.",
+      "save": "Add note",
+      "finishFirst": "Save or cancel your note first.",
+      "savedWith_one": "Your note, saved with this answer",
+      "savedWith_other": "Your {{count}} notes, saved with this answer",
+      "against": {
+        "same": "Marked “Different because…”, but your answer is Same. Remove it if it no longer applies.",
+        "different": "Marked “Same, but…”, but your answer is Different. Remove it if it no longer applies."
+      },
+      "reasonNeeded": "A “Different” answer needs a reason. Add a note with a “Different because…” type and a sentence."
     }
   }
 }

@@ -651,6 +651,8 @@ export interface AdminPairNote {
   quote: string | null;
   // May be empty when the note has a kind.
   text: string;
+  // Every type chosen; `kind` is the first (older notes have only that).
+  kinds: NoteKind[];
   kind: NoteKind | null;
   checked: NoteCheck | null;
   page: string | null;

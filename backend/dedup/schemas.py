@@ -273,7 +273,9 @@ class AdminPairNoteOut(BaseModel):
     quote: Optional[str] = None
     # May be empty when the note has a kind.
     text: str
-    # From the guidelines' list, e.g. content_missing, commentary.
+    # From the guidelines' list, e.g. content_missing, commentary: every type chosen, and
+    # the first of them (older notes have only ``kind``).
+    kinds: list[str] = Field(default_factory=list)
     kind: Optional[str] = None
     # What the note was checked against: scan | bdrc | none; with the scan page.
     checked: Optional[str] = None
