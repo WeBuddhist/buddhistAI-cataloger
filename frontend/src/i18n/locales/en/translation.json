@@ -59,6 +59,8 @@
     "featureDeduplicatorDescription": "Review whether two texts are copies of the same work.",
     "featureOutlineFixerTitle": "Outline Fixer",
     "featureOutlineFixerDescription": "Fix span and part-type issues in BDRC outlines, one work at a time.",
+    "featureAuthorIdentificationTitle": "Author Identification",
+    "featureAuthorIdentificationDescription": "Find who wrote a text and link it to their BDRC person.",
     "statsCatalog": "Text Catalog",
     "statsPersons": "Contributors",
     "statsOpen": "Open Source",
