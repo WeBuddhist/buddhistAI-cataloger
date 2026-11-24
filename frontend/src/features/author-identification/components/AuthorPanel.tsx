@@ -27,6 +27,7 @@ const savedPerson = (saved: SavedAnswer | null): BdrcPerson | null =>
 
 export default function AuthorPanel({
   taskId,
+  taskTitle,
   prediction,
   saved,
   kind,
@@ -43,6 +44,7 @@ export default function AuthorPanel({
   onNext,
 }: Readonly<{
   taskId: string;
+  taskTitle: string;
   prediction: AuthorPrediction | null;
   saved: SavedAnswer | null;
   kind: AnswerKind;
@@ -153,6 +155,7 @@ export default function AuthorPanel({
 
           {kind === 'person' && (
             <PersonSearch
+              text={{ id: taskId, title: taskTitle }}
               query={query}
               searched={searched}
               onQueryChange={onQueryChange}

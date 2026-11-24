@@ -51,6 +51,7 @@ const AuthorIdentificationQueueLazy = lazy(() => import('@/features/author-ident
 const AuthorIdentificationWorkspaceLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Workspace })));
 const AuthorIdentificationAdminLayoutLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminLayout })));
 const AuthorIdentificationAdminUsersLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminUsers })));
+const AuthorIdentificationAdminDuplicatesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminDuplicates })));
 const OutlinerWorkspaceLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.Workspace })));
 const OutlinerMyStatsLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.MyStats })));
 const OutlinerAdminDashboardLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.AdminDashboard })));
@@ -231,6 +232,13 @@ function App() {
             <ProtectedRoute>
               <AuthorIdentificationAdminLayoutLazy>
                 <AuthorIdentificationAdminUsersLazy />
+              </AuthorIdentificationAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification-admin/duplicates" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminDuplicatesLazy />
               </AuthorIdentificationAdminLayoutLazy>
             </ProtectedRoute>
           } />

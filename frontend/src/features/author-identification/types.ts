@@ -65,6 +65,23 @@ export type SavedAnswer = AuthorAnswer & { savedAt: string };
 export interface TaskSummary {
   id: string;
   title: string;
+  versionCount: number;
+  prediction: AuthorPrediction | null;
   /** Null while it is to do. */
   answer: SavedAnswer | null;
+}
+
+export type DuplicateDecision = 'same' | 'different';
+
+/** Two BDRC persons reported as one and the same. Nothing changes in BDRC by it. */
+export interface DuplicateReport {
+  id: string;
+  persons: [BdrcPerson, BdrcPerson];
+  reason: string;
+  /** The text it was noticed on. */
+  text: { id: string; title: string };
+  reportedBy: string;
+  reportedAt: string;
+  /** Null while it is to be checked. */
+  decision: { kind: DuplicateDecision; note: string; by: string; at: string } | null;
 }

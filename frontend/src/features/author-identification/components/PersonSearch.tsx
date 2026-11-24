@@ -2,9 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useNameSuggestions, usePersonSearch } from '../hooks';
+import { useDuplicates, useNameSuggestions, usePersonSearch } from '../hooks';
 import type { BdrcPerson } from '../types';
-import { cleanName } from '../utils';
+import { cleanName, reportOf } from '../utils';
+import DuplicateDialog from './DuplicateDialog';
 import PersonCard from './PersonCard';
 import PersonDialog from './PersonDialog';
 
@@ -12,6 +13,7 @@ const BOX = 'rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-600';
 
 /** Search BDRC's persons by name and pick one. */
 export default function PersonSearch({
+  text,
   query,
   searched,
   onQueryChange,
@@ -20,6 +22,8 @@ export default function PersonSearch({
   selected,
   onSelect,
 }: Readonly<{
+  /** The text the author is looked for. */
+  text: { id: string; title: string };
   query: string;
   /** The name the results are for; empty before the first search. */
   searched: string;
@@ -35,6 +39,8 @@ export default function PersonSearch({
   const nobody = search.isSuccess && total === 0;
   const suggestions = useNameSuggestions(searched, nobody);
   const [viewing, setViewing] = useState<number | null>(null);
+  const duplicates = useDuplicates();
+  const [reporting, setReporting] = useState<BdrcPerson | null>(null);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -113,7 +119,15 @@ export default function PersonSearch({
           </p>
           <ul className="space-y-2">
             {persons.map((p, i) => (
-              <PersonCard key={p.id} person={p} selected={selected?.id === p.id} onSelect={() => onSelect(p)} onView={() => setViewing(i)} />
+              <PersonCard
+                key={p.id}
+                person={p}
+                selected={selected?.id === p.id}
+                onSelect={() => onSelect(p)}
+                onView={() => setViewing(i)}
+                report={reportOf(p.id, duplicates.data)}
+                onReport={() => setReporting(p)}
+              />
             ))}
           </ul>
           {search.isFetchNextPageError && <p className="text-xs text-red-700">Could not load more. Try again.</p>}
@@ -140,8 +154,16 @@ export default function PersonSearch({
           onSelect(p);
           setViewing(null);
         }}
+        onReport={(p) => {
+          setViewing(null);
+          setReporting(p);
+        }}
         onClose={() => setViewing(null)}
       />
+      {/* Keyed so each report starts empty. */}
+      {reporting && (
+        <DuplicateDialog key={reporting.id} person={reporting} searched={searched} text={text} onClose={() => setReporting(null)} />
+      )}
     </div>
   );
 }

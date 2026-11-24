@@ -6,6 +6,7 @@ import { isAuthorIdAdmin } from '../access/utils';
 
 const TABS = [
   { to: '/author-identification-admin/users', label: 'Users' },
+  { to: '/author-identification-admin/duplicates', label: 'Duplicates' },
 ];
 
 /** Admin pages of Author Identification: open to its own admins (users.author_identification_role). */

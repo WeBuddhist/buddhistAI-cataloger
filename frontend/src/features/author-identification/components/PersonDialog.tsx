@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import type { BdrcPerson } from '../types';
@@ -12,6 +12,7 @@ export default function PersonDialog({
   selectedId,
   onIndexChange,
   onSelect,
+  onReport,
   onClose,
 }: Readonly<{
   persons: BdrcPerson[];
@@ -21,6 +22,7 @@ export default function PersonDialog({
   selectedId: string | null;
   onIndexChange: (index: number) => void;
   onSelect: (person: BdrcPerson) => void;
+  onReport: (person: BdrcPerson) => void;
   onClose: () => void;
 }>) {
   const person = index == null ? undefined : persons[index];
@@ -57,7 +59,10 @@ export default function PersonDialog({
             <div className="min-h-0 flex-1">
               <BdrcFrame bdrcId={person.id} title={`BDRC page of ${person.nameBo}`} />
             </div>
-            <div className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 px-4 py-3">
+              <Button variant="ghost" className="mr-auto cursor-pointer text-gray-600" onClick={() => onReport(person)}>
+                <Copy /> Report duplicate
+              </Button>
               <Button variant="outline" className="cursor-pointer" onClick={onClose}>
                 Back to results
               </Button>

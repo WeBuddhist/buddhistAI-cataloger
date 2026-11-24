@@ -52,8 +52,23 @@ function ordinal(n: number): string {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
+/** A date as BDRC's own page shows it: "18XX" as "19th C.", "1778/1780" as "1778~1780", "08XX?" as "9th C. ?". */
+function dateLabel(date: string): string {
+  const [, value, doubt] = /^(.*?)(\??)$/.exec(date) ?? [];
+  const centuries = /^(\d\d)XX(?:\/(\d\d)XX)?$/.exec(value);
+  let label = value.replace('/', '~');
+  if (centuries) {
+    const [first, last] = centuries.slice(1).map((c) => c && Number(c) + 1);
+    label = last ? `${first}-${ordinal(Number(last))} C.` : `${ordinal(Number(first))} C.`;
+  }
+  return doubt ? `${label} ?` : label;
+}
+
+/** As on BDRC's page: "B. 1895", "16th C. – 1565". A date BDRC leaves out is left out. */
 function datesOf({ birthDate, deathDate, associatedCentury }: Hit['_source']): string | null {
-  if (birthDate || deathDate) return `${birthDate ?? '?'} – ${deathDate ?? '?'}`;
+  if (birthDate && deathDate) return `${dateLabel(birthDate)} – ${dateLabel(deathDate)}`;
+  if (birthDate) return `B. ${dateLabel(birthDate)}`;
+  if (deathDate) return `D. ${dateLabel(deathDate)}`;
   if (associatedCentury?.length) return `${associatedCentury.map(ordinal).join(', ')} century`;
   return null;
 }

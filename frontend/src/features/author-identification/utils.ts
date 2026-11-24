@@ -1,5 +1,5 @@
 import { fromWylie } from 'jsewts';
-import type { AuthorAnswer, TextVersion } from './types';
+import type { AuthorAnswer, DuplicateReport, TextVersion } from './types';
 
 const TIBETAN = /[ༀ-࿿]/;
 
@@ -51,3 +51,13 @@ export function answerLabel(answer: AuthorAnswer): string {
   if (answer.kind === 'not_in_bdrc') return `${answer.name} · not in BDRC`;
   return 'I don’t know';
 }
+
+export const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** A person's report, leaving out those found to be two different people. */
+export const reportOf = (personId: string, reports: DuplicateReport[] = []) =>
+  reports.find((r) => r.decision?.kind !== 'different' && r.persons.some((p) => p.id === personId)) ?? null;
+
+/** The report of these two persons, whatever was decided. */
+export const reportOfPair = (a: string, b: string, reports: DuplicateReport[] = []) =>
+  reports.find((r) => r.persons.every((p) => p.id === a || p.id === b)) ?? null;

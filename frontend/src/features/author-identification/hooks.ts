@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { decideDuplicate, fetchDuplicates, removeDuplicate, reportDuplicate } from './api/duplicates';
 import { searchPersons, suggestNames } from './api/persons';
 import { fetchTask, fetchTasks, removeAnswer, saveAnswer } from './api/tasks';
 import { fetchVersionDetails } from './api/versions';
@@ -8,6 +9,7 @@ const root = ['author-identification'] as const;
 
 const keys = {
   tasks: [...root, 'tasks'] as const,
+  duplicates: [...root, 'duplicates'] as const,
   task: (id: string) => [...root, 'task', id] as const,
   versionDetails: (id: string) => [...root, 'version-details', id] as const,
   persons: (name: string) => [...root, 'persons', name] as const,
@@ -62,3 +64,30 @@ export const useNameSuggestions = (name: string, enabled: boolean) =>
     queryFn: ({ signal }) => suggestNames(name, signal),
     enabled,
   });
+
+/** Every report of a person who has two BDRC ids. */
+export const useDuplicates = () => useQuery({ queryKey: keys.duplicates, queryFn: fetchDuplicates });
+
+export function useReportDuplicate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: reportDuplicate,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.duplicates }),
+  });
+}
+
+export function useRemoveDuplicate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: removeDuplicate,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.duplicates }),
+  });
+}
+
+export function useDecideDuplicate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: Parameters<typeof decideDuplicate>[1] }) => decideDuplicate(id, decision),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.duplicates }),
+  });
+}

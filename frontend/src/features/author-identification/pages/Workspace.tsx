@@ -136,6 +136,7 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
         <div className="min-h-0 border-t border-gray-200 lg:border-l lg:border-t-0">
           <AuthorPanel
             taskId={task.id}
+            taskTitle={task.title}
             prediction={task.prediction}
             saved={saved}
             kind={kind}
