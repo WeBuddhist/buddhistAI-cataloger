@@ -1,0 +1,67 @@
+import { Copy } from 'lucide-react';
+import type { BdrcPerson, DuplicateReport } from '../types';
+
+export default function PersonCard({
+  person,
+  selected,
+  onSelect,
+  onView,
+  report,
+  onReport,
+}: Readonly<{
+  person: BdrcPerson;
+  selected: boolean;
+  onSelect: () => void;
+  onView: () => void;
+  /** This person's duplicate report, unless it was decided they are someone else. */
+  report: DuplicateReport | null;
+  onReport: () => void;
+}>) {
+  const other = report?.persons.find((p) => p.id !== person.id);
+  return (
+    <li className={`rounded-lg border ${selected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+      <label className="flex cursor-pointer gap-3 px-3 pt-2.5">
+        <input type="radio" name="bdrc-person" checked={selected} onChange={onSelect} className="mt-2.5 h-4 w-4 shrink-0 accent-blue-600" />
+        <span className="min-w-0 flex-1">
+          <span className="block break-words font-monlam text-base leading-loose text-gray-900">{person.nameBo}</span>
+          {person.nameWylie && <span className="block break-words text-xs text-gray-500">{person.nameWylie}</span>}
+          {person.matchedName && (
+            <span className="block text-xs text-gray-600">
+              Matched on <span className="font-monlam text-sm">{person.matchedName}</span>
+            </span>
+          )}
+        </span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2 pl-10 pr-2 text-xs text-gray-600">
+        <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-gray-700">{person.id}</span>
+        <span className="min-w-0 truncate">{person.dates ?? 'No dates'}</span>
+        {other && (
+          <span
+            title={`${report?.decision ? 'Confirmed to be the same person as' : 'Reported as a duplicate of'} ${other.id}`}
+            className={`rounded-full px-2 py-0.5 font-medium ${report?.decision ? 'bg-gray-200 text-gray-700' : 'bg-amber-100 text-amber-900'}`}
+          >
+            {report?.decision ? 'Same as' : 'Reported with'} {other.id}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1 pb-1.5 pl-8 pr-2 pt-1 text-xs">
+        <button
+          type="button"
+          onClick={onView}
+          aria-label={`View details of ${person.nameBo}`}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-medium text-blue-600 hover:bg-blue-100"
+        >
+          View details
+        </button>
+        <button
+          type="button"
+          onClick={onReport}
+          aria-label={`Report a duplicate of ${person.nameBo} ${person.id}`}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+        >
+          <Copy className="h-3 w-3" aria-hidden /> Report duplicate
+        </button>
+      </div>
+    </li>
+  );
+}

@@ -47,6 +47,11 @@ const OutlineFixWorkspaceLazy = lazy(() => import('@/features/outline-fix').then
 const OutlineFixAdminLazy = lazy(() => import('@/features/outline-fix').then((m) => ({ default: m.Admin })));
 const OutlineFixAdminLayoutLazy = lazy(() => import('@/features/outline-fix').then((m) => ({ default: m.AdminLayout })));
 const OutlineFixAdminUsersLazy = lazy(() => import('@/features/outline-fix').then((m) => ({ default: m.AdminUsers })));
+const AuthorIdentificationQueueLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Queue })));
+const AuthorIdentificationWorkspaceLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Workspace })));
+const AuthorIdentificationAdminLayoutLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminLayout })));
+const AuthorIdentificationAdminUsersLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminUsers })));
+const AuthorIdentificationAdminDuplicatesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminDuplicates })));
 const OutlinerWorkspaceLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.Workspace })));
 const OutlinerMyStatsLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.MyStats })));
 const OutlinerAdminDashboardLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.AdminDashboard })));
@@ -210,6 +215,31 @@ function App() {
           <Route path="/outline-fix/work/:workId" element={
             <ProtectedRoute>
               <OutlineFixWorkspaceLazy />
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification" element={
+            <ProtectedRoute>
+              <AuthorIdentificationQueueLazy />
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification/:textId" element={
+            <ProtectedRoute>
+              <AuthorIdentificationWorkspaceLazy />
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification-admin" element={<Navigate to="/author-identification-admin/users" replace />} />
+          <Route path="/author-identification-admin/users" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminUsersLazy />
+              </AuthorIdentificationAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification-admin/duplicates" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminDuplicatesLazy />
+              </AuthorIdentificationAdminLayoutLazy>
             </ProtectedRoute>
           } />
           <Route path="/outline-fix-admin" element={

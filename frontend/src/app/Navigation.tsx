@@ -10,6 +10,8 @@ import AvatarWrapper from '@/components/AvatarWrapper';
 import { isDedupAdmin } from '@/features/dedup/utils';
 import { hasOutlineFixAccess, isOutlineFixAdmin } from '@/features/outline-fix/utils';
 import { useFixerMe } from '@/features/outline-fix/hooks';
+import { hasAuthorIdAccess, isAuthorIdAdmin } from '@/features/author-identification/access/utils';
+import { useAuthorIdMe } from '@/features/author-identification/access/hooks';
 
 
 function Navigation() {
@@ -22,6 +24,8 @@ function Navigation() {
   const {user:userFromDb} = useUser();
   // The Outline Fixer's own role; asked only of users who have access to it.
   const outlineFixMe = useFixerMe(hasOutlineFixAccess(userFromDb));
+  // Author Identification's own role, likewise.
+  const authorIdMe = useAuthorIdMe(hasAuthorIdAccess(userFromDb));
   const hexToRgb = (hex: string) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
@@ -50,7 +54,7 @@ function Navigation() {
   }, [isMenuOpen]);
 
   // On an admin page, the menu opens with the Admin section already expanded.
-  const onAdminPage = /^\/(outliner|dedup|outline-fix)-admin(\/|$)/.test(location.pathname);
+  const onAdminPage = /^\/(outliner|dedup|outline-fix|author-identification)-admin(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (isMenuOpen) setAdminOpen(onAdminPage);
   }, [isMenuOpen, onAdminPage]);
@@ -74,6 +78,7 @@ function Navigation() {
     ...(isAdminOrReviewer ? [{ to: '/outliner-admin', label: 'Outliner' }] : []),
     ...(isDedupAdmin(userFromDb) ? [{ to: '/dedup-admin', label: 'Deduplicator' }] : []),
     ...(isOutlineFixAdmin(outlineFixMe.data) ? [{ to: '/outline-fix-admin', label: 'Outline Fixer' }] : []),
+    ...(isAuthorIdAdmin(authorIdMe.data) ? [{ to: '/author-identification-admin', label: 'Author Identification' }] : []),
   ];
   const primaryRgb = hexToRgb(primaryColor);
   const getActiveStyle = (isActiveLink: boolean) => {
@@ -169,6 +174,19 @@ function Navigation() {
                   style={getActiveStyle(location.pathname.startsWith('/outline-fix'))}
                 >
                   Outline Fixer
+                </Link>
+              )}
+              {hasAuthorIdAccess(userFromDb) && (
+                <Link
+                  to="/author-identification"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/author-identification')
+                      ? ''
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                  style={getActiveStyle(location.pathname.startsWith('/author-identification'))}
+                >
+                  Author Identification
                 </Link>
               )}
             </div>
