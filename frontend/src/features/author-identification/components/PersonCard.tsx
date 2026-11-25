@@ -1,4 +1,5 @@
 import { Copy } from 'lucide-react';
+import { BO } from '../labels';
 import type { BdrcPerson, DuplicateReport } from '../types';
 
 export default function PersonCard({
@@ -6,6 +7,7 @@ export default function PersonCard({
   selected,
   onSelect,
   onView,
+  onIntent,
   report,
   onReport,
 }: Readonly<{
@@ -13,6 +15,8 @@ export default function PersonCard({
   selected: boolean;
   onSelect: () => void;
   onView: () => void;
+  /** About to view: the pointer or focus is on the button. */
+  onIntent: () => void;
   /** This person's duplicate report, unless it was decided they are someone else. */
   report: DuplicateReport | null;
   onReport: () => void;
@@ -24,17 +28,16 @@ export default function PersonCard({
         <input type="radio" name="bdrc-person" checked={selected} onChange={onSelect} className="mt-2.5 h-4 w-4 shrink-0 accent-blue-600" />
         <span className="min-w-0 flex-1">
           <span className="block break-words font-monlam text-base leading-loose text-gray-900">{person.nameBo}</span>
-          {person.nameWylie && <span className="block break-words text-xs text-gray-500">{person.nameWylie}</span>}
           {person.matchedName && (
-            <span className="block text-xs text-gray-600">
-              Matched on <span className="font-monlam text-sm">{person.matchedName}</span>
+            <span className="block break-words font-monlam text-sm leading-loose text-gray-600">
+              {BO.otherName} {person.matchedName}
             </span>
           )}
         </span>
       </label>
       <div className="flex flex-wrap items-center gap-2 pl-10 pr-2 text-xs text-gray-600">
         <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-gray-700">{person.id}</span>
-        <span className="min-w-0 truncate">{person.dates ?? 'No dates'}</span>
+        {person.dates && <span className="min-w-0 truncate font-monlam text-sm leading-loose text-gray-700">{person.dates}</span>}
         {other && (
           <span
             title={`${report?.decision ? 'Confirmed to be the same person as' : 'Reported as a duplicate of'} ${other.id}`}
@@ -48,6 +51,8 @@ export default function PersonCard({
         <button
           type="button"
           onClick={onView}
+          onPointerEnter={onIntent}
+          onFocus={onIntent}
           aria-label={`View details of ${person.nameBo}`}
           className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-medium text-blue-600 hover:bg-blue-100"
         >

@@ -1,6 +1,6 @@
 // What BDRC's own records say about a text's versions, read live from its search.
 import { msearch } from './bdrc';
-import { trimLabel, wylieToTibetan } from '../utils';
+import { boDate, trimLabel, wylieToTibetan } from '../utils';
 import type { TextVersion, VersionDetails } from '../types';
 
 interface Source {
@@ -28,22 +28,22 @@ const FIELDS = [
 ];
 
 const PRINTED: Record<string, string> = {
-  PrintMethod_Modern: 'Modern print',
-  PrintMethod_Relief_WoodBlock: 'Woodblock',
-  PrintMethod_Manuscript: 'Manuscript',
+  // BDRC has no Tibetan word for it.
+  PrintMethod_Modern: 'Modern',
+  PrintMethod_Relief_WoodBlock: 'ཤིང་པར།',
+  PrintMethod_Manuscript: 'བྲིས་མ།',
 };
 
-const SCRIPT: Record<string, string> = { ScriptDbuCan: 'Uchen', ScriptDbuMed: 'Umé' };
+const SCRIPT: Record<string, string> = { ScriptDbuCan: 'དབུ་ཅན།', ScriptDbuMed: 'དབུ་མེད།' };
 
-// BDRC marks an uncertain place or publisher with "*".
-const bo = (wylie?: string[]) => (wylie?.[0] ? wylieToTibetan(wylie[0].replace(/^\*/, '')) : null);
+// BDRC puts "*" before some places and publishers, and shows it. The converter would make it a Tibetan mark.
+const bo = (wylie?: string[]) => wylie?.[0]?.replace(/^(\*?)(.*)$/s, (_, star: string, name: string) => star + wylieToTibetan(name)) ?? null;
 const en = (text?: string[]) => (text?.[0] ? trimLabel(text[0]) : null);
 
-/** "70 v." as volumes; page counts of every text in a volume are left out. */
+/** As BDRC writes it ("70 v."); page counts of every text in a volume are left out. */
 function sizeOf(extent?: string): string | null {
-  const volumes = /^(\d+) v\.?$/.exec(extent?.trim() ?? '');
-  if (volumes) return `${volumes[1]} ${volumes[1] === '1' ? 'volume' : 'volumes'}`;
-  return extent && extent.length <= 20 ? extent : null;
+  const size = extent?.trim();
+  return size && size.length <= 20 ? size : null;
 }
 
 function detailsOf(own: Source | undefined, collection: Source | undefined): VersionDetails {
@@ -55,7 +55,7 @@ function detailsOf(own: Source | undefined, collection: Source | undefined): Ver
   return {
     author: bo(own?.authorName_bo_x_ewts),
     printed: PRINTED[all.printMethod?.[0] ?? ''] ?? null,
-    date: all.publicationDate?.replace('/', '–') ?? null,
+    date: all.publicationDate ? boDate(all.publicationDate) : null,
     publisher: [publisher, place].filter(Boolean).join(', ') || null,
     size: sizeOf(all.extent),
     script: SCRIPT[all.script?.[0] ?? ''] ?? null,

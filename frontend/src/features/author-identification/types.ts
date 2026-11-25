@@ -17,12 +17,22 @@ export interface VersionDetails {
   script: string | null;
 }
 
-/** The model's guess. `evidence` is quoted from the text, so it can be marked there. */
-export interface AuthorPrediction {
+/** A name the model found at the end of the text or of one of its versions. */
+export interface ExtractedName {
   name: string;
   /** 0 to 1. */
   confidence: number | null;
+  /** The version it was found in; null for the text itself. */
+  versionId: string | null;
+  /** Quoted from there. */
   evidence: string | null;
+}
+
+/** The same name, with everywhere it was found. */
+export interface NameCandidate {
+  name: string;
+  confidence: number | null;
+  found: { versionId: string | null; evidence: string | null }[];
 }
 
 /** One deduplicated text to find the author of. */
@@ -31,13 +41,13 @@ export interface AuthorTask {
   title: string;
   content: string;
   versions: TextVersion[];
-  prediction: AuthorPrediction | null;
+  /** They can differ from one version to another. */
+  extractedNames: ExtractedName[];
 }
 
 export interface BdrcPerson {
   id: string;
   nameBo: string;
-  nameWylie: string;
   /** Another name of theirs, when that is what the search matched. */
   matchedName: string | null;
   dates: string | null;
@@ -66,7 +76,7 @@ export interface TaskSummary {
   id: string;
   title: string;
   versionCount: number;
-  prediction: AuthorPrediction | null;
+  extractedNames: ExtractedName[];
   /** Null while it is to do. */
   answer: SavedAnswer | null;
 }
@@ -84,4 +94,43 @@ export interface DuplicateReport {
   reportedAt: string;
   /** Null while it is to be checked. */
   decision: { kind: DuplicateDecision; note: string; by: string; at: string } | null;
+}
+
+/** One value of a person's record: words, or another record, shown by its name. */
+export type RecordValue = { text: string } | { id: string };
+
+/** A line of a person's record, with BDRC's own Tibetan label. */
+export interface RecordRow {
+  label: string;
+  /** Under a label of their own (when, where) for events. */
+  values: { label?: string; value: RecordValue }[];
+}
+
+/** A person's record on BDRC, as BDRC has it. */
+export interface PersonRecord {
+  /** Names and events. */
+  life: RecordRow[];
+  /** Family, teachers, tradition and so on. */
+  relations: RecordRow[];
+  links: { label: string; href: string }[];
+  wikidataId: string | null;
+}
+
+export interface PersonImage {
+  src: string;
+  /** Its page on Wikimedia Commons, with the licence and who made it. */
+  page: string;
+}
+
+/** A work on BDRC: a book, or a text inside one. */
+export interface BdrcWork {
+  id: string;
+  title: string;
+  /** The BDRC id of the book or collection it is in. */
+  collectionId: string | null;
+}
+
+export interface WorkPage {
+  total: number;
+  works: BdrcWork[];
 }

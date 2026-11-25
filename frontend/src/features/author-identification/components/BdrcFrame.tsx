@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ExternalLink, Loader2 } from 'lucide-react';
-import { getBdrclink } from '@/lib/bdrclink';
+import { bdrcPage } from '../utils';
 
 /** A live page of library.bdrc.io, with a link to open it outside. `children` go at the start of
  * the bar above it. */
@@ -10,7 +10,7 @@ export default function BdrcFrame({
   children,
 }: Readonly<{ bdrcId: string; title: string; children?: ReactNode }>) {
   const [loadedId, setLoadedId] = useState<string | null>(null);
-  const url = getBdrclink(bdrcId);
+  const url = bdrcPage(bdrcId);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

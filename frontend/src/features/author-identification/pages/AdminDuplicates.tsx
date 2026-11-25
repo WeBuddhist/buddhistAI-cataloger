@@ -5,11 +5,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/hooks/useUser';
-import { getBdrclink } from '@/lib/bdrclink';
 import { useDecideDuplicate, useDuplicates } from '../hooks';
 import SampleNotice from '../sample/SampleNotice';
 import type { BdrcPerson, DuplicateDecision, DuplicateReport } from '../types';
-import { dateOf } from '../utils';
+import { bdrcPage, dateOf, FIELD } from '../utils';
 
 type Tab = 'open' | 'checked';
 
@@ -128,7 +127,7 @@ function Report({ report }: Readonly<{ report: DuplicateReport }>) {
               onChange={(e) => setNote(e.target.value)}
               aria-label="Note"
               placeholder="Note (optional)"
-              className="h-9 min-w-48 flex-1 bg-white"
+              className={`h-9 min-w-48 flex-1 ${FIELD}`}
             />
             <Button variant="outline" className="cursor-pointer bg-white" disabled={decide.isPending} onClick={() => save('different')}>
               <X /> Different people
@@ -147,12 +146,11 @@ function Person({ person }: Readonly<{ person: BdrcPerson }>) {
   return (
     <div className="min-w-0 px-5 py-4">
       <div className="break-words font-monlam text-lg leading-loose text-gray-900">{person.nameBo}</div>
-      {person.nameWylie && <div className="break-words text-xs text-gray-500">{person.nameWylie}</div>}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
         <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-700">{person.id}</span>
-        <span>{person.dates ?? 'No dates'}</span>
+        {person.dates && <span className="font-monlam leading-loose">{person.dates}</span>}
         <a
-          href={getBdrclink(person.id)}
+          href={bdrcPage(person.id)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline"

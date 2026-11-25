@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useSaveAnswer } from '../hooks';
-import type { AuthorAnswer, AuthorPrediction, BdrcPerson, SavedAnswer } from '../types';
-import { answerLabel, cleanName } from '../utils';
+import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
+import { answerLabel, cleanName, FIELD } from '../utils';
 import PersonSearch from './PersonSearch';
 
 export type AnswerKind = AuthorAnswer['kind'];
@@ -22,13 +22,14 @@ const LINK = 'cursor-pointer font-medium text-blue-600 underline-offset-2 hover:
 /** The picked person of a saved answer, so it can be changed without searching again. */
 const savedPerson = (saved: SavedAnswer | null): BdrcPerson | null =>
   saved?.kind === 'person'
-    ? { id: saved.personId, nameBo: saved.name, nameWylie: '', matchedName: null, dates: null }
+    ? { id: saved.personId, nameBo: saved.name, matchedName: null, dates: null }
     : null;
 
 export default function AuthorPanel({
   taskId,
   taskTitle,
-  prediction,
+  candidates,
+  versions,
   saved,
   kind,
   onKindChange,
@@ -39,13 +40,16 @@ export default function AuthorPanel({
   onQueryChange,
   onSearch,
   onShowEvidence,
+  onShowVersion,
   onShowVersions,
   onSaved,
   onNext,
 }: Readonly<{
   taskId: string;
   taskTitle: string;
-  prediction: AuthorPrediction | null;
+  /** The names the model found. */
+  candidates: NameCandidate[];
+  versions: TextVersion[];
   saved: SavedAnswer | null;
   kind: AnswerKind;
   onKindChange: (kind: AnswerKind) => void;
@@ -56,7 +60,8 @@ export default function AuthorPanel({
   searched: string;
   onQueryChange: (query: string) => void;
   onSearch: (name: string) => void;
-  onShowEvidence: () => void;
+  onShowEvidence: (evidence: string) => void;
+  onShowVersion: (versionId: string) => void;
   onShowVersions: () => void;
   /** After a first answer; changing one stays on the text. */
   onSaved: () => void;
@@ -127,10 +132,12 @@ export default function AuthorPanel({
     <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
         <ModelPrediction
-          prediction={prediction}
+          candidates={candidates}
+          versions={versions}
           searched={kind === 'person' ? searched : ''}
           onSearch={onSearch}
           onShowEvidence={onShowEvidence}
+          onShowVersion={onShowVersion}
           onShowVersions={onShowVersions}
         />
 
@@ -170,7 +177,7 @@ export default function AuthorPanel({
               <p className="text-sm text-gray-600">For an author you can name who is not in BDRC. Try other spellings in the search first.</p>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Author’s name in Tibetan</span>
-                <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className="h-11 bg-white font-monlam text-base md:text-base" />
+                <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-11 font-monlam text-base md:text-base ${FIELD}`} />
               </label>
               <NoteField label="Where did you find the name? (optional)" value={note} onChange={setNote} />
             </div>
@@ -208,49 +215,50 @@ export default function AuthorPanel({
   );
 }
 
-/** The AI's guess, styled as the Deduplicator's AI analysis is. */
+/** The names the AI found, styled as the Deduplicator's AI analysis is. */
 function ModelPrediction({
-  prediction,
+  candidates,
+  versions,
   searched,
   onSearch,
   onShowEvidence,
+  onShowVersion,
   onShowVersions,
 }: Readonly<{
-  prediction: AuthorPrediction | null;
+  candidates: NameCandidate[];
+  versions: TextVersion[];
   searched: string;
   onSearch: (name: string) => void;
-  onShowEvidence: () => void;
+  onShowEvidence: (evidence: string) => void;
+  onShowVersion: (versionId: string) => void;
   onShowVersions: () => void;
 }>) {
-  const percent = prediction?.confidence == null ? null : Math.round(prediction.confidence * 100);
-
   return (
     <div className="rounded-md border border-sky-200 bg-sky-50/60 px-4 py-3">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-sky-700" />
         <h2 className="text-sm font-semibold text-sky-900">Model prediction</h2>
         <span className="rounded-full border border-sky-200 bg-white px-2 text-xs font-medium text-sky-800">AI</span>
-        {percent != null && <span className="ml-auto text-sm tabular-nums text-gray-700">{percent}% sure</span>}
+        {candidates.length > 1 && (
+          <span className="ml-auto rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">{candidates.length} different names</span>
+        )}
       </div>
-      {prediction ? (
+      {candidates.length > 0 ? (
         <>
-          <div className="mt-1 break-words font-monlam text-xl leading-loose text-gray-900">{prediction.name}</div>
-          {prediction.evidence && (
-            <p className="text-sm text-gray-600">
-              Found in the text: <mark className="rounded bg-amber-200 px-0.5 font-monlam text-gray-900">{prediction.evidence}</mark>{' '}
-              <button type="button" onClick={onShowEvidence} className={`whitespace-nowrap ${LINK}`}>
-                Show in text
-              </button>
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-gray-500">AI can be wrong. Please check.</span>
-            {searched !== cleanName(prediction.name) && (
-              <Button variant="outline" size="sm" className="cursor-pointer bg-white" onClick={() => onSearch(prediction.name)}>
-                <Search /> Search this name
-              </Button>
-            )}
-          </div>
+          <ul className="divide-y divide-sky-100">
+            {candidates.map((c) => (
+              <Candidate
+                key={c.name}
+                candidate={c}
+                versions={versions}
+                searched={searched === c.name}
+                onSearch={() => onSearch(c.name)}
+                onShowEvidence={onShowEvidence}
+                onShowVersion={onShowVersion}
+              />
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-gray-500">AI can be wrong. Please check.</p>
         </>
       ) : (
         <p className="mt-1 text-sm text-gray-600">
@@ -265,11 +273,71 @@ function ModelPrediction({
   );
 }
 
+const PLACE = 'cursor-pointer rounded-full border border-sky-200 bg-white px-2 text-xs font-medium leading-5 text-blue-700 hover:border-blue-400 hover:bg-blue-50';
+
+function Candidate({
+  candidate,
+  versions,
+  searched,
+  onSearch,
+  onShowEvidence,
+  onShowVersion,
+}: Readonly<{
+  candidate: NameCandidate;
+  versions: TextVersion[];
+  /** The results below are for it. */
+  searched: boolean;
+  onSearch: () => void;
+  onShowEvidence: (evidence: string) => void;
+  onShowVersion: (versionId: string) => void;
+}>) {
+  const { name, confidence, found } = candidate;
+  const evidence = found.find((f) => f.evidence)?.evidence;
+  return (
+    <li className="py-2 first:pt-1">
+      <div className="flex items-start gap-2">
+        <span className="min-w-0 flex-1 break-words font-monlam text-xl leading-loose text-gray-900">{name}</span>
+        {confidence != null && <span className="shrink-0 text-sm leading-10 tabular-nums text-gray-700">{Math.round(confidence * 100)}% sure</span>}
+      </div>
+      {evidence && (
+        <p className="break-words text-sm">
+          <mark className="rounded bg-amber-200 px-0.5 font-monlam leading-loose text-gray-900">{evidence}</mark>
+        </p>
+      )}
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-gray-600">Found in</span>
+        {found.map((f) => {
+          if (f.versionId == null) {
+            return (
+              <button key="text" type="button" className={PLACE} title="Show in text" onClick={() => onShowEvidence(f.evidence ?? '')}>
+                Text
+              </button>
+            );
+          }
+          const { versionId } = f;
+          const index = versions.findIndex((v) => v.id === versionId);
+          if (index < 0) return null;
+          return (
+            <button key={versionId} type="button" className={PLACE} title="Open this version" onClick={() => onShowVersion(versionId)}>
+              Version {index + 1}
+            </button>
+          );
+        })}
+        {!searched && (
+          <Button variant="outline" size="sm" className="ml-auto h-7 cursor-pointer bg-white" aria-label={`Search ${name}`} onClick={onSearch}>
+            <Search /> Search
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function NoteField({ label, value, onChange }: Readonly<{ label: string; value: string; onChange: (value: string) => void }>) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block font-medium text-gray-700">{label}</span>
-      <Textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} className="bg-white" />
+      <Textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} className={FIELD} />
     </label>
   );
 }

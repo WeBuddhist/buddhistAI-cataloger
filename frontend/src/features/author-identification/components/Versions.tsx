@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { useVersionDetails } from '../hooks';
 import type { AuthorTask, TextVersion, VersionDetails } from '../types';
 import { hasTibetan, isOnBdrc, wylieToTibetan } from '../utils';
+import { BO } from '../labels';
 import BdrcFrame from './BdrcFrame';
 
 /** Which BDRC page of a version is shown: its own, or that of the collection it is in. */
@@ -20,22 +21,31 @@ const summaryOf = (details?: VersionDetails) =>
   [details?.printed, details?.date, details?.size].filter(Boolean).join(' · ');
 
 /** The versions of a text: pick one, see what BDRC knows about it, and open its pages. */
-export default function Versions({ task, onSearchName }: Readonly<{ task: AuthorTask; onSearchName: (name: string) => void }>) {
+export default function Versions({
+  task,
+  versionId,
+  onVersionChange,
+  onSearchName,
+}: Readonly<{
+  task: AuthorTask;
+  /** Null for the first one on BDRC. */
+  versionId: string | null;
+  onVersionChange: (versionId: string) => void;
+  onSearchName: (name: string) => void;
+}>) {
   const { versions } = task;
   const details = useVersionDetails(task);
-  const [version, setVersion] = useState(() => versions.find(isOnBdrc) ?? null);
-  const [page, setPage] = useState<BdrcPage>(version ? firstPage(version) : 'version');
-  const bdrcId = page === 'collection' ? version?.collection?.bdrcId : version?.bdrcId;
+  const version = versions.find((v) => v.id === versionId && isOnBdrc(v)) ?? versions.find(isOnBdrc);
+  // Kept from one version to the next, for comparing their collections.
+  const [wanted, setPage] = useState<BdrcPage>('version');
 
-  if (!version || !bdrcId) {
+  if (!version) {
     return <p className="p-8 text-center text-sm text-gray-500">No version of this text is on BDRC.</p>;
   }
 
-  const pick = (next: TextVersion) => {
-    setVersion(next);
-    // Stay on collections while comparing them, when the next version has one.
-    setPage(page === 'collection' && next.collection ? 'collection' : firstPage(next));
-  };
+  const page = wanted === 'collection' && version.collection ? 'collection' : firstPage(version);
+  const bdrcId = (page === 'collection' ? version.collection?.bdrcId : version.bdrcId) ?? '';
+  const pick = (next: TextVersion) => onVersionChange(next.id);
   const number = (v: TextVersion) => versions.indexOf(v) + 1;
   const onBdrc = versions.filter(isOnBdrc);
   const previous = onBdrc[onBdrc.indexOf(version) - 1];
@@ -95,7 +105,7 @@ export default function Versions({ task, onSearchName }: Readonly<{ task: Author
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className={`block text-base leading-loose ${isOnBdrc(v) ? 'font-monlam' : ''}`}>{nameOf(v)}</span>
-                        <span className="block text-xs text-gray-500">
+                        <span className={`block text-gray-500 ${isOnBdrc(v) ? 'font-monlam text-sm' : 'text-xs'}`}>
                           {isOnBdrc(v) ? summaryOf(details.data?.[v.id]) : 'This copy has no BDRC page to open'}
                         </span>
                       </span>
@@ -151,7 +161,7 @@ function Details({
     <dl className="flex flex-wrap gap-x-8 gap-y-2.5 px-3.5 py-2.5">
       {/* Only its own record can say that there is no author; a collection's cannot. */}
       {details && version.bdrcId && (
-        <Detail icon={User} label="Author on BDRC">
+        <Detail icon={User} label={BO.author}>
           {author ? (
             <span className="flex items-center gap-2">
               <span className="min-w-0 break-words font-monlam">{author}</span>
@@ -164,22 +174,22 @@ function Details({
               </button>
             </span>
           ) : (
-            <span className="font-normal text-gray-400">Not given</span>
+            <span className="font-normal text-gray-400">—</span>
           )}
         </Detail>
       )}
       {details?.printed && (
-        <Detail icon={BookOpen} label="Type">
+        <Detail icon={BookOpen} label={BO.printMethod}>
           {details.printed}
         </Detail>
       )}
       {details?.date && (
-        <Detail icon={Calendar} label="Published">
+        <Detail icon={Calendar} label={BO.published}>
           {details.date}
         </Detail>
       )}
       {details?.publisher && (
-        <Detail icon={Landmark} label="Publisher">
+        <Detail icon={Landmark} label={BO.publisher}>
           {/* Some are very long; the whole of it shows on hover. */}
           <span className={`block max-w-60 truncate ${hasTibetan(details.publisher) ? 'font-monlam' : 'capitalize'}`} title={details.publisher}>
             {details.publisher}
@@ -187,12 +197,12 @@ function Details({
         </Detail>
       )}
       {details?.size && (
-        <Detail icon={Library} label="Collection size">
+        <Detail icon={Library} label={BO.extent}>
           {details.size}
         </Detail>
       )}
       {details?.script && (
-        <Detail icon={Type} label="Script">
+        <Detail icon={Type} label={BO.script}>
           {details.script}
         </Detail>
       )}
@@ -208,10 +218,16 @@ function Details({
 function Detail({ icon: Icon, label, children }: Readonly<{ icon: LucideIcon; label: string; children: ReactNode }>) {
   return (
     <div className="min-w-0">
-      <dt className="flex items-center gap-1.5 text-xs text-gray-500">
+      <dt className={`flex items-center gap-1.5 text-gray-500 ${hasTibetan(label) ? 'font-monlam text-sm' : 'text-xs'}`}>
         <Icon className="h-3.5 w-3.5 text-gray-400" aria-hidden /> {label}
       </dt>
-      <dd className="mt-0.5 break-words text-sm font-medium leading-6 text-gray-900">{children}</dd>
+      <dd
+        className={`mt-0.5 break-words font-medium leading-7 text-gray-900 ${
+          typeof children === 'string' && hasTibetan(children) ? 'font-monlam text-base' : 'text-sm'
+        }`}
+      >
+        {children}
+      </dd>
     </div>
   );
 }

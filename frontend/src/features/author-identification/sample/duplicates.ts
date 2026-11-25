@@ -5,8 +5,8 @@ import type { DuplicateReport } from '../types';
 export const SAMPLE_REPORT: DuplicateReport = {
   id: 'sample-report',
   persons: [
-    { id: 'P10278', nameBo: 'འགྱུར་མེད་རྡོ་རྗེ', nameWylie: "'gyur med rdo rje", matchedName: null, dates: '20th century' },
-    { id: 'P1KG11864', nameBo: 'འགྱུར་མེད་རྡོ་རྗེ', nameWylie: "'gyur med rdo rje", matchedName: null, dates: '20th century' },
+    { id: 'P10278', nameBo: 'འགྱུར་མེད་རྡོ་རྗེ', matchedName: null, dates: 'དུས་རབས་༢༠' },
+    { id: 'P1KG11864', nameBo: 'འགྱུར་མེད་རྡོ་རྗེ', matchedName: null, dates: 'དུས་རབས་༢༠' },
   ],
   reason: 'Sample report: same name and same century, and neither has dates. Could be one person entered twice.',
   text: { id: 'sample-6', title: 'ཐུགས་ཐིག་བུམ་སྒྲུབ་ངག་བསྒྲིགས་བཞུགས།' },

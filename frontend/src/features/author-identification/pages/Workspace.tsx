@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import SourceViewer, { type SourceTab } from '../components/SourceViewer';
 import TextView from '../components/TextView';
 import { useRemoveAnswer, useTask, useTasks } from '../hooks';
 import type { AuthorTask, TaskSummary } from '../types';
-import { cleanName } from '../utils';
+import { cleanName, nameCandidates } from '../utils';
 
 const ROOT = '/author-identification';
 
@@ -48,12 +48,17 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   const undo = useRemoveAnswer();
   const index = tasks.findIndex((t) => t.id === task.id);
   const saved = tasks[index]?.answer ?? null;
-  const predicted = cleanName(task.prediction?.name ?? '');
+  const candidates = useMemo(() => nameCandidates(task.extractedNames), [task.extractedNames]);
+  const predicted = candidates[0]?.name ?? '';
 
   const [tab, setTab] = useState<SourceTab>('text');
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState(
+    () => task.extractedNames.find((n) => n.versionId == null)?.evidence ?? null,
+  );
   const [focusEvidence, setFocusEvidence] = useState(0);
   const [query, setQuery] = useState(predicted);
-  // The suggested name is searched straight away; nobody is picked for the annotator.
+  // The first name is searched straight away; nobody is picked for the annotator.
   const [searched, setSearched] = useState(predicted);
   const [kind, setKind] = useState<AnswerKind>(saved?.kind ?? 'person');
   const [editing, setEditing] = useState(saved == null);
@@ -70,8 +75,13 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
     setKind('person');
     setEditing(true);
   };
-  const showEvidence = () => {
+  const showVersion = (id: string) => {
+    setVersionId(id);
+    setTab('versions');
+  };
+  const showEvidence = (quote: string) => {
     setTab('text');
+    setEvidence(quote);
     setFocusEvidence((n) => n + 1);
   };
 
@@ -124,10 +134,17 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
         <main className="h-[75dvh] min-h-0 lg:h-auto">
-          <SourceViewer tab={tab} onTabChange={setTab} task={task} onSearchName={search}>
+          <SourceViewer
+            tab={tab}
+            onTabChange={setTab}
+            task={task}
+            versionId={versionId}
+            onVersionChange={setVersionId}
+            onSearchName={search}
+          >
             <TextView
               content={task.content}
-              evidence={task.prediction?.evidence ?? null}
+              evidence={evidence}
               focusEvidence={focusEvidence}
               onSearchName={search}
             />
@@ -137,7 +154,8 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
           <AuthorPanel
             taskId={task.id}
             taskTitle={task.title}
-            prediction={task.prediction}
+            candidates={candidates}
+            versions={task.versions}
             saved={saved}
             kind={kind}
             onKindChange={setKind}
@@ -148,6 +166,7 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
             onQueryChange={setQuery}
             onSearch={search}
             onShowEvidence={showEvidence}
+            onShowVersion={showVersion}
             onShowVersions={() => setTab('versions')}
             onSaved={afterFirstAnswer}
             onNext={nextId ? () => goTo(nextId) : undefined}

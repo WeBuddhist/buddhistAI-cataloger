@@ -8,8 +8,8 @@ import RequireAccess from '../access/RequireAccess';
 import { isAuthorIdAdmin } from '../access/utils';
 import { useTasks } from '../hooks';
 import SampleNotice from '../sample/SampleNotice';
-import type { AuthorPrediction, SavedAnswer, TaskSummary } from '../types';
-import { dateOf } from '../utils';
+import type { ExtractedName, SavedAnswer, TaskSummary } from '../types';
+import { dateOf, FIELD, nameCandidates } from '../utils';
 
 type Tab = 'todo' | 'done';
 type Row = TaskSummary & { number: number };
@@ -30,7 +30,7 @@ const versionsLabel = (count: number) => `${count} ${count === 1 ? 'version' : '
 
 function matches(row: Row, needle: string): boolean {
   const { answer } = row;
-  const words = [row.title, row.id, String(row.number), row.prediction?.name];
+  const words = [row.title, row.id, String(row.number), ...row.extractedNames.map((n) => n.name)];
   if (answer && answer.kind !== 'unknown') words.push(answer.name);
   if (answer?.kind === 'person') words.push(answer.personId);
   return words.some((w) => w?.toLowerCase().includes(needle));
@@ -116,7 +116,7 @@ function MyTexts() {
           onChange={(e) => setQ(e.target.value)}
           aria-label="Search my texts"
           placeholder="Search title, author or number"
-          className="w-full bg-white sm:w-72"
+          className={`w-full sm:w-72 ${FIELD}`}
         />
       </div>
 
@@ -182,7 +182,7 @@ function Table({ rows, tab }: Readonly<{ rows: Row[]; tab: Tab }>) {
                 </div>
                 <div className="text-xs text-gray-500">{versionsLabel(row.versionCount)}</div>
               </td>
-              <td className="px-4 py-4">{row.answer ? <Answer answer={row.answer} /> : <Prediction prediction={row.prediction} />}</td>
+              <td className="px-4 py-4">{row.answer ? <Answer answer={row.answer} /> : <Prediction names={row.extractedNames} />}</td>
               {tab === 'done' && (
                 <td className="hidden whitespace-nowrap px-4 py-4 text-gray-600 lg:table-cell">{row.answer && dateOf(row.answer.savedAt)}</td>
               )}
@@ -221,7 +221,7 @@ function Cards({ rows }: Readonly<{ rows: Row[] }>) {
             </span>
             <span className="mt-1 block break-words font-monlam text-base leading-loose text-gray-900">{row.title}</span>
             <span className="mt-2 flex items-end justify-between gap-3">
-              <span className="min-w-0">{row.answer ? <Answer answer={row.answer} /> : <Prediction prediction={row.prediction} />}</span>
+              <span className="min-w-0">{row.answer ? <Answer answer={row.answer} /> : <Prediction names={row.extractedNames} />}</span>
               <span className={`inline-flex shrink-0 items-center gap-1 text-sm font-medium ${row.answer ? 'text-gray-600' : 'text-blue-700'}`}>
                 <OpenLabel done={row.answer != null} />
               </span>
@@ -245,14 +245,18 @@ function OpenLabel({ done }: Readonly<{ done: boolean }>) {
   );
 }
 
-function Prediction({ prediction }: Readonly<{ prediction: AuthorPrediction | null }>) {
-  if (!prediction) return <span className="text-gray-400">No prediction</span>;
+function Prediction({ names }: Readonly<{ names: ExtractedName[] }>) {
+  const [first, ...others] = nameCandidates(names);
+  if (!first) return <span className="text-gray-400">No prediction</span>;
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2">
       <Sparkles className="h-3.5 w-3.5 shrink-0 text-sky-700" aria-hidden />
-      <span className="min-w-0 break-words font-monlam text-sm leading-relaxed text-gray-900">{prediction.name}</span>
-      {prediction.confidence != null && (
-        <span className="shrink-0 text-xs tabular-nums text-gray-500">{Math.round(prediction.confidence * 100)}%</span>
+      <span className="min-w-0 break-words font-monlam text-sm leading-relaxed text-gray-900">{first.name}</span>
+      {first.confidence != null && (
+        <span className="shrink-0 text-xs tabular-nums text-gray-500">{Math.round(first.confidence * 100)}%</span>
+      )}
+      {others.length > 0 && (
+        <span className="shrink-0 rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">+{others.length} other {others.length === 1 ? 'name' : 'names'}</span>
       )}
     </span>
   );

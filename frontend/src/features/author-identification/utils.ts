@@ -1,5 +1,6 @@
 import { fromWylie } from 'jsewts';
-import type { AuthorAnswer, DuplicateReport, TextVersion } from './types';
+import { getBdrclink } from '@/lib/bdrclink';
+import type { AuthorAnswer, DuplicateReport, ExtractedName, NameCandidate, TextVersion } from './types';
 
 const TIBETAN = /[ༀ-࿿]/;
 
@@ -61,3 +62,51 @@ export const reportOf = (personId: string, reports: DuplicateReport[] = []) =>
 /** The report of these two persons, whatever was decided. */
 export const reportOfPair = (a: string, b: string, reports: DuplicateReport[] = []) =>
   reports.find((r) => r.persons.every((p) => p.id === a || p.id === b)) ?? null;
+
+/** For this tool's fields. The theme's own focus and selection color is red, which here means a problem. */
+export const FIELD =
+  'bg-white selection:bg-blue-200 selection:text-gray-900 focus-visible:border-blue-500 focus-visible:ring-blue-500/30';
+
+const BO_DIGITS = '༠༡༢༣༤༥༦༧༨༩';
+
+/** With Tibetan numerals. */
+export const boDigits = (text: string | number) => String(text).replace(/[0-9]/g, (d) => BO_DIGITS[Number(d)]);
+
+/** A label of BDRC in Tibetan script, with its closing shad as BDRC shows it. */
+export function boLabel(wylie: string): string {
+  if (hasTibetan(wylie)) return wylie;
+  try {
+    return fromWylie(wylie.trim()).replace(/\s+།/g, '།').trim();
+  } catch {
+    return wylie;
+  }
+}
+
+/** A date as the Tibetan version of BDRC's page shows it: "18XX" as "དུས་རབས་༡༩", "1778/1780" as "༡༧༧༨~༡༧༨༠". */
+export function boDate(date: string): string {
+  const [, value, doubt] = /^(.*?)(\??)$/.exec(date) ?? [];
+  const centuries = /^(\d\d)XX(?:\/(\d\d)XX)?$/.exec(value);
+  let label = boDigits(value.replace('/', '~'));
+  if (centuries) {
+    const [first, last] = centuries.slice(1).map((c) => c && boDigits(Number(c) + 1));
+    label = last ? `དུས་རབས་${first} ནས་${last} བར` : `དུས་རབས་${first}`;
+  }
+  return doubt ? `${label} ?` : label;
+}
+
+/** A record's page on library.bdrc.io, in Tibetan. */
+export const bdrcPage = (id: string) => `${getBdrclink(id)}?uilang=bo`;
+
+/** The different names found, each once: those of the text itself first, then the most found. */
+export function nameCandidates(names: ExtractedName[]): NameCandidate[] {
+  const candidates = new Map<string, NameCandidate>();
+  for (const { name, confidence, versionId, evidence } of names) {
+    const key = cleanName(name);
+    const known = candidates.get(key) ?? { name: key, confidence: null, found: [] };
+    known.found.push({ versionId, evidence });
+    if (confidence != null) known.confidence = Math.max(confidence, known.confidence ?? 0);
+    candidates.set(key, known);
+  }
+  const inText = (c: NameCandidate) => (c.found.some((f) => f.versionId == null) ? 0 : 1);
+  return [...candidates.values()].sort((a, b) => inText(a) - inText(b) || b.found.length - a.found.length);
+}

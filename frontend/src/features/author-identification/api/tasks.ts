@@ -20,11 +20,11 @@ const writeAnswers = (answers: Answers) => localStorage.setItem(STORE, JSON.stri
 /** My texts, in the order to work through them. */
 export async function fetchTasks(): Promise<TaskSummary[]> {
   const answers = readAnswers();
-  return SAMPLE_TASKS.map(({ id, title, versions, prediction }) => ({
+  return SAMPLE_TASKS.map(({ id, title, versions, extractedNames }) => ({
     id,
     title,
     versionCount: versions.length,
-    prediction,
+    extractedNames,
     answer: answers[id] ?? null,
   }));
 }

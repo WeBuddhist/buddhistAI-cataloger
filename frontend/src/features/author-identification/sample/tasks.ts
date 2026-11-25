@@ -1,5 +1,7 @@
 // SAMPLE DATA, to try the tool until the real endpoint exists. The texts are from the Outliner's
-// approved export and the BDRC ids are real, so the embedded pages load. The predictions are made up.
+// approved export and the BDRC ids are real, so the embedded pages load. The names and quotes are from the
+// real endings of the texts and their versions; that a model found them, and the percentages, are
+// made up.
 //
 // To remove it: delete this folder, replace the bodies in ../api/tasks.ts and ../api/duplicates.ts
 // with the endpoints', and take <SampleNotice /> out of ../pages/Queue.tsx and
@@ -53,11 +55,32 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "རཱ་ག་ཨ་སྱ",
-      "confidence": 0.91,
-      "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་སྨྲས"
-    }
+    "extractedNames": [
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": 0.91,
+        "versionId": null,
+        "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་སྨྲས"
+      },
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": null,
+        "versionId": "v2",
+        "evidence": "དེ་ སྐད་རཱ་ག་ཨ་སྱས་སྨྲས"
+      },
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": null,
+        "versionId": "v3",
+        "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་སྨྲས"
+      },
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": null,
+        "versionId": "v4",
+        "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་སྨྲས"
+      }
+    ]
   },
   {
     "id": "sample-2",
@@ -81,11 +104,20 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "འགྱུར་མེད་རྡོ་རྗེ",
-      "confidence": 0.87,
-      "evidence": "འགྱུར་མེད་རྡོ་རྗེས་བྲིས་པ"
-    }
+    "extractedNames": [
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": 0.87,
+        "versionId": null,
+        "evidence": "འགྱུར་མེད་རྡོ་རྗེས་བྲིས་པ"
+      },
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": null,
+        "versionId": "v2",
+        "evidence": "འགྱུར་མེད་རྡོ་རྗེས་བྲིས་པ"
+      }
+    ]
   },
   {
     "id": "sample-3",
@@ -122,11 +154,26 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         "collection": null
       }
     ],
-    "prediction": {
-      "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
-      "confidence": 0.94,
-      "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྦྱར་བ"
-    }
+    "extractedNames": [
+      {
+        "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
+        "confidence": 0.94,
+        "versionId": null,
+        "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྦྱར་བ"
+      },
+      {
+        "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
+        "confidence": null,
+        "versionId": "v2",
+        "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྦྱར་བ"
+      },
+      {
+        "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
+        "confidence": null,
+        "versionId": "v3",
+        "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྤྱར་བ"
+      }
+    ]
   },
   {
     "id": "sample-4",
@@ -142,7 +189,7 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": null
+    "extractedNames": []
   },
   {
     "id": "sample-5",
@@ -174,11 +221,26 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "རཱ་ག་ཨ་སྱ",
-      "confidence": 0.89,
-      "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་བསྡུས་ཏེ་བྲིས"
-    }
+    "extractedNames": [
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": 0.89,
+        "versionId": null,
+        "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་བསྡུས་ཏེ་བྲིས"
+      },
+      {
+        "name": "རཱ་ག་ཨ་སྱ",
+        "confidence": null,
+        "versionId": "v2",
+        "evidence": "དེ་སྐད་རཱ་ག་ཨ་སྱས་བསྡུས་ཏེ་བྲིས"
+      },
+      {
+        "name": "སྤྲུལ་སྐུ་མི་འགྱུར་རྡོ་རྗེ",
+        "confidence": null,
+        "versionId": "v3",
+        "evidence": "ཅེས་པ་སྤྲུལ་སྐུ་མི་འགྱུར་རྡོ་རྗེ་བྱ་ལོ་སྣྲོན་ཟླ་བའི་བཅུ་བདུན་ལ"
+      }
+    ]
   },
   {
     "id": "sample-6",
@@ -218,11 +280,26 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "འགྱུར་མེད་རྡོ་རྗེ",
-      "confidence": 0.84,
-      "evidence": "འགྱུར་མེད་རྡོ་རྗེས་དབང་དང་རབ་གནས་སོགས་ལ་ཉེར་མཁོའི་ཟིན་བྲིས་སུ་བཏབ་པ"
-    }
+    "extractedNames": [
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": 0.84,
+        "versionId": null,
+        "evidence": "འགྱུར་མེད་རྡོ་རྗེས་དབང་དང་རབ་གནས་སོགས་ལ་ཉེར་མཁོའི་ཟིན་བྲིས་སུ་བཏབ་པ"
+      },
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": null,
+        "versionId": "v2",
+        "evidence": "འགྱུར་མེད་རྡོ་ རྗེས་དབང་དང་རབ་གནས་སོགས་ལ་ཉེར་མཁོའི་ཟིན་བྲིས་སུ་བཏབ་པ"
+      },
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": null,
+        "versionId": "v3",
+        "evidence": "འགྱུར་མེད་རྡོ་རྗེས་དབང་དང་རབ་གནས་སོགས་ལ་ཉེར་མཁོའི་ཟིན་བྲིས་སུ་བཏབ་པ"
+      }
+    ]
   },
   {
     "id": "sample-7",
@@ -238,11 +315,14 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "འགྱུར་མེད་རྡོ་རྗེ",
-      "confidence": 0.92,
-      "evidence": "འགྱུར་མེད་རྡོ་རྗེས་བྲིས་པ"
-    }
+    "extractedNames": [
+      {
+        "name": "འགྱུར་མེད་རྡོ་རྗེ",
+        "confidence": 0.92,
+        "versionId": null,
+        "evidence": "འགྱུར་མེད་རྡོ་རྗེས་བྲིས་པ"
+      }
+    ]
   },
   {
     "id": "sample-8",
@@ -258,11 +338,14 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "མི་ཕམ་པ",
-      "confidence": 0.63,
-      "evidence": "མི་ཕམ་པས་སོ"
-    }
+    "extractedNames": [
+      {
+        "name": "མི་ཕམ་པ",
+        "confidence": 0.63,
+        "versionId": null,
+        "evidence": "མི་ཕམ་པས་སོ"
+      }
+    ]
   },
   {
     "id": "sample-9",
@@ -278,11 +361,14 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
-      "confidence": 0.95,
-      "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྦྱར་བ"
-    }
+    "extractedNames": [
+      {
+        "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
+        "confidence": 0.95,
+        "versionId": null,
+        "evidence": "ཤཱཀྱའི་བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྦྱར་བ"
+      }
+    ]
   },
   {
     "id": "sample-10",
@@ -298,10 +384,13 @@ export const SAMPLE_TASKS: AuthorTask[] = [
         }
       }
     ],
-    "prediction": {
-      "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
-      "confidence": 0.9,
-      "evidence": "བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྤྱར་པ"
-    }
+    "extractedNames": [
+      {
+        "name": "བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན",
+        "confidence": 0.9,
+        "versionId": null,
+        "evidence": "བཙུན་པ་བློ་བཟང་ཆོས་ཀྱི་རྒྱལ་མཚན་གྱིས་སྤྱར་པ"
+      }
+    ]
   }
 ];

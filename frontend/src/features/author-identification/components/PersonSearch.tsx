@@ -2,9 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useDuplicates, useNameSuggestions, usePersonSearch } from '../hooks';
+import { useDuplicates, useNameSuggestions, usePersonSearch, usePrefetchPerson } from '../hooks';
 import type { BdrcPerson } from '../types';
-import { cleanName, reportOf } from '../utils';
+import { cleanName, FIELD, reportOf } from '../utils';
 import DuplicateDialog from './DuplicateDialog';
 import PersonCard from './PersonCard';
 import PersonDialog from './PersonDialog';
@@ -39,6 +39,7 @@ export default function PersonSearch({
   const nobody = search.isSuccess && total === 0;
   const suggestions = useNameSuggestions(searched, nobody);
   const [viewing, setViewing] = useState<number | null>(null);
+  const prefetch = usePrefetchPerson();
   const duplicates = useDuplicates();
   const [reporting, setReporting] = useState<BdrcPerson | null>(null);
 
@@ -55,7 +56,7 @@ export default function PersonSearch({
           onChange={(e) => onQueryChange(e.target.value)}
           aria-label="Author name"
           placeholder="Tibetan, Wylie or English"
-          className="h-10 flex-1 bg-white font-monlam text-base md:text-base"
+          className={`h-10 flex-1 font-monlam text-base md:text-base ${FIELD}`}
         />
         <Button type="submit" className="h-10 cursor-pointer bg-blue-600 text-white hover:bg-blue-700" disabled={!cleanName(query)}>
           <Search /> Find
@@ -125,6 +126,7 @@ export default function PersonSearch({
                 selected={selected?.id === p.id}
                 onSelect={() => onSelect(p)}
                 onView={() => setViewing(i)}
+                onIntent={() => prefetch(p.id)}
                 report={reportOf(p.id, duplicates.data)}
                 onReport={() => setReporting(p)}
               />

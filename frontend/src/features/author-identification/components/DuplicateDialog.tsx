@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useUser } from '@/hooks/useUser';
 import { useDuplicates, usePersonSearch, useRemoveDuplicate, useReportDuplicate } from '../hooks';
 import type { BdrcPerson } from '../types';
-import { cleanName, reportOfPair } from '../utils';
+import { cleanName, FIELD, reportOfPair } from '../utils';
 
 /** Report that a person has a second BDRC id. It is only reported: nothing changes in BDRC. */
 export default function DuplicateDialog({
@@ -87,7 +87,7 @@ export default function DuplicateDialog({
                 onChange={(e) => setQuery(e.target.value)}
                 aria-label="Name of the other person"
                 placeholder="Tibetan, Wylie or English"
-                className="h-9 flex-1 bg-white font-monlam text-base md:text-base"
+                className={`h-9 flex-1 font-monlam text-base md:text-base ${FIELD}`}
               />
               <Button type="submit" variant="outline" className="cursor-pointer bg-white" disabled={!cleanName(query)}>
                 <Search /> Find
@@ -146,7 +146,7 @@ export default function DuplicateDialog({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="For example: same teacher, same dates, same works"
-              className="bg-white"
+              className={FIELD}
             />
           </label>
         </div>
@@ -169,7 +169,8 @@ function PersonLines({ person }: Readonly<{ person: BdrcPerson }>) {
     <span className="min-w-0 flex-1">
       <span className="block break-words font-monlam text-base leading-loose text-gray-900">{person.nameBo}</span>
       <span className="block text-xs text-gray-600">
-        <span className="font-mono">{person.id}</span> · {person.dates ?? 'No dates'}
+        <span className="font-mono">{person.id}</span>
+        {person.dates && <span className="ml-2 font-monlam text-sm leading-loose">{person.dates}</span>}
       </span>
     </span>
   );

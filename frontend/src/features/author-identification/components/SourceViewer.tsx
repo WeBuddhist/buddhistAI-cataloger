@@ -12,12 +12,17 @@ export default function SourceViewer({
   tab,
   onTabChange,
   task,
+  versionId,
+  onVersionChange,
   onSearchName,
   children,
 }: Readonly<{
   tab: SourceTab;
   onTabChange: (tab: SourceTab) => void;
   task: AuthorTask;
+  /** The version shown; null for the first one on BDRC. */
+  versionId: string | null;
+  onVersionChange: (versionId: string) => void;
   onSearchName: (name: string) => void;
   /** The text. */
   children: ReactNode;
@@ -59,7 +64,7 @@ export default function SourceViewer({
       <div className={tab === 'text' ? 'min-h-0 flex-1' : 'hidden'}>{children}</div>
       {opened && (
         <div className={tab === 'versions' ? 'min-h-0 flex-1' : 'hidden'}>
-          <Versions task={task} onSearchName={onSearchName} />
+          <Versions task={task} versionId={versionId} onVersionChange={onVersionChange} onSearchName={onSearchName} />
         </div>
       )}
     </div>

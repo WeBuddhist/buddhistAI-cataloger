@@ -2,7 +2,7 @@
 // or fuzzy spelling changes nothing, hence suggestNames below.
 // To move to our backend later: keep the two exported functions and change what they call.
 import { msearch, type Hit as BdrcHit } from './bdrc';
-import { cleanName, nameParts, trimLabel, wylieToTibetan } from '../utils';
+import { boDate, boDigits, cleanName, nameParts, trimLabel, wylieToTibetan } from '../utils';
 import type { BdrcPerson, NameSuggestion, PersonPage } from '../types';
 
 export const PAGE_SIZE = 10;
@@ -46,30 +46,12 @@ function personQuery(name: string, from: number, size: number) {
   };
 }
 
-function ordinal(n: number): string {
-  const rest = n % 100;
-  if (rest >= 11 && rest <= 13) return `${n}th`;
-  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
-}
-
-/** A date as BDRC's own page shows it: "18XX" as "19th C.", "1778/1780" as "1778~1780", "08XX?" as "9th C. ?". */
-function dateLabel(date: string): string {
-  const [, value, doubt] = /^(.*?)(\??)$/.exec(date) ?? [];
-  const centuries = /^(\d\d)XX(?:\/(\d\d)XX)?$/.exec(value);
-  let label = value.replace('/', '~');
-  if (centuries) {
-    const [first, last] = centuries.slice(1).map((c) => c && Number(c) + 1);
-    label = last ? `${first}-${ordinal(Number(last))} C.` : `${ordinal(Number(first))} C.`;
-  }
-  return doubt ? `${label} ?` : label;
-}
-
-/** As on BDRC's page: "B. 1895", "16th C. – 1565". A date BDRC leaves out is left out. */
+/** As the Tibetan version of their BDRC page has it. A date BDRC leaves out is left out. */
 function datesOf({ birthDate, deathDate, associatedCentury }: Hit['_source']): string | null {
-  if (birthDate && deathDate) return `${dateLabel(birthDate)} – ${dateLabel(deathDate)}`;
-  if (birthDate) return `B. ${dateLabel(birthDate)}`;
-  if (deathDate) return `D. ${dateLabel(deathDate)}`;
-  if (associatedCentury?.length) return `${associatedCentury.map(ordinal).join(', ')} century`;
+  if (birthDate && deathDate) return `${boDate(birthDate)} – ${boDate(deathDate)}`;
+  if (birthDate) return `${/XX/.test(birthDate) ? 'འཁྲུངས་དུས།' : 'འཁྲུངས་ལོ།'} ${boDate(birthDate)}`;
+  if (deathDate) return `འདས་དུས། ${boDate(deathDate)}`;
+  if (associatedCentury?.length) return associatedCentury.map((c) => `དུས་རབས་${boDigits(c)}`).join(' ');
   return null;
 }
 
@@ -81,7 +63,6 @@ function toPerson(hit: Hit): BdrcPerson {
   return {
     id: hit._id,
     nameBo: wylie ? wylieToTibetan(wylie) : other,
-    nameWylie: wylie,
     matchedName: alias && !nameMatched ? wylieToTibetan(alias) : null,
     dates: datesOf(hit._source),
   };

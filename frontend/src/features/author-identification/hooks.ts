@@ -1,5 +1,15 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { decideDuplicate, fetchDuplicates, removeDuplicate, reportDuplicate } from './api/duplicates';
+import { fetchNames, fetchPersonImage, fetchPersonRecord, fetchTerms, isTerm, termFallback } from './api/personRecord';
+import { fetchPersonWorks } from './api/personWorks';
 import { searchPersons, suggestNames } from './api/persons';
 import { fetchTask, fetchTasks, removeAnswer, saveAnswer } from './api/tasks';
 import { fetchVersionDetails } from './api/versions';
@@ -12,6 +22,11 @@ const keys = {
   duplicates: [...root, 'duplicates'] as const,
   task: (id: string) => [...root, 'task', id] as const,
   versionDetails: (id: string) => [...root, 'version-details', id] as const,
+  person: (id: string) => [...root, 'person', id] as const,
+  names: (ids: string[]) => [...root, 'names', ids] as const,
+  terms: (ids: string[]) => [...root, 'terms', ids] as const,
+  personWorks: (id: string) => [...root, 'person-works', id] as const,
+  personImage: (wikidataId: string) => [...root, 'person-image', wikidataId] as const,
   persons: (name: string) => [...root, 'persons', name] as const,
   suggestions: (name: string) => [...root, 'suggestions', name] as const,
 };
@@ -91,3 +106,81 @@ export function useDecideDuplicate() {
     onSuccess: () => client.invalidateQueries({ queryKey: keys.duplicates }),
   });
 }
+
+/** Records hardly change, so going back and forth between results asks for each once. */
+const RECORD_STALE_MS = 60 * 60 * 1000;
+
+const personRecordOptions = (id: string) =>
+  queryOptions({
+    queryKey: keys.person(id),
+    queryFn: ({ signal }) => fetchPersonRecord(id, signal),
+    staleTime: RECORD_STALE_MS,
+    retry: 1,
+  });
+
+const personWorksOptions = (id: string) =>
+  infiniteQueryOptions({
+    queryKey: keys.personWorks(id),
+    queryFn: ({ pageParam, signal }) => fetchPersonWorks(id, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.works.length, 0);
+      return last.works.length > 0 && loaded < last.total ? loaded : undefined;
+    },
+    staleTime: RECORD_STALE_MS,
+    retry: 1,
+  });
+
+export const usePersonRecord = (id: string) => useQuery(personRecordOptions(id));
+
+export const usePersonWorks = (id: string) => useInfiniteQuery(personWorksOptions(id));
+
+/** Loads a person before they are opened, as their record takes a while to come. */
+export function usePrefetchPerson() {
+  const client = useQueryClient();
+  return useCallback(
+    (id: string) => {
+      void client.prefetchQuery(personRecordOptions(id));
+      void client.prefetchInfiniteQuery(personWorksOptions(id));
+    },
+    [client],
+  );
+}
+
+/** Names of BDRC records by id, once they are there. */
+export function useNames(ids: string[]) {
+  const terms = ids.filter(isTerm);
+  const records = ids.filter((id) => !isTerm(id));
+  const recordNames = useQuery({
+    queryKey: keys.names(records),
+    queryFn: ({ signal }) => fetchNames(records, signal),
+    enabled: records.length > 0,
+    staleTime: RECORD_STALE_MS,
+    retry: 1,
+  });
+  // Apart, so that the slow ones do not hold up the others.
+  const termNames = useQuery({
+    queryKey: keys.terms(terms),
+    queryFn: ({ signal }) => fetchTerms(terms, signal),
+    enabled: terms.length > 0,
+    staleTime: RECORD_STALE_MS,
+    retry: 1,
+  });
+  return {
+    /** Undefined while it is loading; the id itself when BDRC has no name for it. */
+    nameOf: (id: string): string | undefined => {
+      const { data, isLoading } = isTerm(id) ? termNames : recordNames;
+      if (isLoading) return undefined;
+      return data?.[id] ?? (isTerm(id) ? termFallback(id) : id);
+    },
+  };
+}
+
+export const usePersonImage = (wikidataId: string | null) =>
+  useQuery({
+    queryKey: keys.personImage(wikidataId ?? ''),
+    queryFn: ({ signal }) => fetchPersonImage(wikidataId ?? '', signal),
+    enabled: wikidataId != null,
+    staleTime: RECORD_STALE_MS,
+    retry: false,
+  });
