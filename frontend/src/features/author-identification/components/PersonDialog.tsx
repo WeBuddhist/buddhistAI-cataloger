@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Check, ChevronLeft, ChevronRight, Copy, ExternalLink, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, ExternalLink, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription } from '@/components/ui/dialog';
 import { usePrefetchPerson } from '../hooks';
@@ -13,6 +13,8 @@ export default function PersonDialog({
   index,
   total,
   selectedId,
+  loadingMore,
+  loadFailed,
   onIndexChange,
   onSelect,
   onReport,
@@ -23,6 +25,10 @@ export default function PersonDialog({
   index: number | null;
   total: number;
   selectedId: string | null;
+  /** More results are on their way. */
+  loadingMore: boolean;
+  loadFailed: boolean;
+  /** Can be one past those loaded, for the next ones. */
   onIndexChange: (index: number) => void;
   onSelect: (person: BdrcPerson) => void;
   onReport: (person: BdrcPerson) => void;
@@ -48,9 +54,19 @@ export default function PersonDialog({
         {person && index != null && (
           <>
             <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
-              <DialogDescription className="min-w-0 flex-1 truncate text-sm text-gray-600">
-                Result {index + 1} of {total}
-              </DialogDescription>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Button variant="outline" size="icon-sm" aria-label="Previous result" title="Previous result" className="cursor-pointer" disabled={index === 0} onClick={() => onIndexChange(index - 1)}>
+                  <ChevronLeft />
+                </Button>
+                {/* As wide for every number, so that the buttons stay under the pointer. */}
+                <DialogDescription className="min-w-24 whitespace-nowrap text-center text-sm tabular-nums text-gray-600">
+                  Result {index + 1} of {total}
+                </DialogDescription>
+                <Button variant="outline" size="icon-sm" aria-label="Next result" title="Next result" className="cursor-pointer" disabled={index >= total - 1 || (loadingMore && index >= persons.length - 1)} onClick={() => onIndexChange(index + 1)}>
+                  {loadingMore && index >= persons.length - 1 ? <Loader2 className="animate-spin" /> : <ChevronRight />}
+                </Button>
+                {loadFailed && index >= persons.length - 1 && <span className="min-w-0 truncate text-xs text-red-700">Could not load more. Try again.</span>}
+              </div>
               <a
                 href={bdrcPage(person.id)}
                 target="_blank"
@@ -59,12 +75,6 @@ export default function PersonDialog({
               >
                 Open on BDRC <ExternalLink className="h-3.5 w-3.5" />
               </a>
-              <Button variant="outline" size="icon-sm" aria-label="Previous result" className="cursor-pointer" disabled={index === 0} onClick={() => onIndexChange(index - 1)}>
-                <ChevronLeft />
-              </Button>
-              <Button variant="outline" size="icon-sm" aria-label="Next result" className="cursor-pointer" disabled={index >= persons.length - 1} onClick={() => onIndexChange(index + 1)}>
-                <ChevronRight />
-              </Button>
               <DialogClose asChild>
                 <Button variant="ghost" size="icon-sm" aria-label="Close" className="cursor-pointer">
                   <X />

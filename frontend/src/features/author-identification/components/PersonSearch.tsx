@@ -43,6 +43,17 @@ export default function PersonSearch({
   const duplicates = useDuplicates();
   const [reporting, setReporting] = useState<BdrcPerson | null>(null);
 
+  /** The results come a page at a time; past the last one, the next page is loaded first. */
+  const view = async (index: number) => {
+    if (index >= persons.length) {
+      const { data } = await search.fetchNextPage();
+      const loaded = data?.pages.reduce((n, p) => n + p.persons.length, 0) ?? 0;
+      if (index >= loaded) return;
+    }
+    // Not when it was closed meanwhile.
+    setViewing((current) => (current == null ? null : index));
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (cleanName(query)) onSearch(query);
@@ -151,7 +162,9 @@ export default function PersonSearch({
         index={viewing}
         total={total}
         selectedId={selected?.id ?? null}
-        onIndexChange={setViewing}
+        loadingMore={search.isFetchingNextPage}
+        loadFailed={search.isFetchNextPageError}
+        onIndexChange={(i) => void view(i)}
         onSelect={(p) => {
           onSelect(p);
           setViewing(null);
