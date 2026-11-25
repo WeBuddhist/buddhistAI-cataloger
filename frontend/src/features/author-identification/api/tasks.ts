@@ -3,7 +3,8 @@
 import { SAMPLE_TASKS } from '../sample/tasks';
 import type { AuthorAnswer, AuthorTask, SavedAnswer, TaskSummary } from '../types';
 
-const STORE = 'author-identification:sample-answers';
+// Numbered: answers saved in an older shape are left behind.
+const STORE = 'author-identification:sample-answers-2';
 
 type Answers = Record<string, SavedAnswer | undefined>;
 

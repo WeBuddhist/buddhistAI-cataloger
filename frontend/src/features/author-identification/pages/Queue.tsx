@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { useAuthorIdMe } from '../access/hooks';
 import RequireAccess from '../access/RequireAccess';
 import { isAuthorIdAdmin } from '../access/utils';
+import { skipLabel } from '../guidelines';
 import { useTasks } from '../hooks';
 import SampleNotice from '../sample/SampleNotice';
 import type { ExtractedName, SavedAnswer, TaskSummary } from '../types';
@@ -22,7 +23,7 @@ const TABS: { key: Tab; label: string }[] = [
 const ANSWER: Record<SavedAnswer['kind'], { label: string; style: string }> = {
   person: { label: 'In BDRC', style: 'bg-green-50 text-green-700' },
   not_in_bdrc: { label: 'Not in BDRC', style: 'bg-amber-50 text-amber-800' },
-  unknown: { label: 'I don’t know', style: 'bg-gray-100 text-gray-600' },
+  skipped: { label: 'Skipped', style: 'bg-gray-100 text-gray-600' },
 };
 
 const pathOf = (row: { id: string }) => `/author-identification/${row.id}`;
@@ -31,7 +32,7 @@ const versionsLabel = (count: number) => `${count} ${count === 1 ? 'version' : '
 function matches(row: Row, needle: string): boolean {
   const { answer } = row;
   const words = [row.title, row.id, String(row.number), ...row.extractedNames.map((n) => n.name)];
-  if (answer && answer.kind !== 'unknown') words.push(answer.name);
+  if (answer && answer.kind !== 'skipped') words.push(answer.name);
   if (answer?.kind === 'person') words.push(answer.personId);
   return words.some((w) => w?.toLowerCase().includes(needle));
 }
@@ -267,10 +268,16 @@ function Answer({ answer }: Readonly<{ answer: SavedAnswer }>) {
   return (
     <span className="block min-w-0">
       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}>{label}</span>
-      {answer.kind !== 'unknown' && (
+      {answer.kind === 'skipped' && <span className="mt-1 block text-sm text-gray-600">{skipLabel(answer.reason)}</span>}
+      {answer.kind !== 'skipped' && (
         <span className="mt-1 block break-words font-monlam text-sm leading-relaxed text-gray-900">
           {answer.name}
           {answer.kind === 'person' && <span className="ml-2 font-sans text-xs text-gray-500">{answer.personId}</span>}
+        </span>
+      )}
+      {answer.note && (
+        <span className="mt-0.5 block truncate text-xs text-gray-500" title={answer.note}>
+          Note: {answer.note}
         </span>
       )}
     </span>

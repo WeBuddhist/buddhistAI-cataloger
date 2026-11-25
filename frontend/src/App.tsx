@@ -49,6 +49,7 @@ const OutlineFixAdminLayoutLazy = lazy(() => import('@/features/outline-fix').th
 const OutlineFixAdminUsersLazy = lazy(() => import('@/features/outline-fix').then((m) => ({ default: m.AdminUsers })));
 const AuthorIdentificationQueueLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Queue })));
 const AuthorIdentificationWorkspaceLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Workspace })));
+const AuthorIdentificationGuidelinesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Guidelines })));
 const AuthorIdentificationAdminLayoutLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminLayout })));
 const AuthorIdentificationAdminUsersLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminUsers })));
 const AuthorIdentificationAdminDuplicatesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminDuplicates })));
@@ -220,6 +221,11 @@ function App() {
           <Route path="/author-identification" element={
             <ProtectedRoute>
               <AuthorIdentificationQueueLazy />
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification/guidelines" element={
+            <ProtectedRoute>
+              <AuthorIdentificationGuidelinesLazy />
             </ProtectedRoute>
           } />
           <Route path="/author-identification/:textId" element={

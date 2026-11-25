@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { ArrowRight, Check, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, Plus, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { needsNote, SKIP_REASONS, type SkipReason } from '../guidelines';
 import { useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
 import { answerLabel, cleanName, FIELD } from '../utils';
+import GuidelinesLink from './GuidelinesLink';
 import PersonSearch from './PersonSearch';
 
 export type AnswerKind = AuthorAnswer['kind'];
@@ -14,7 +16,7 @@ export type AnswerKind = AuthorAnswer['kind'];
 const KINDS: { kind: AnswerKind; label: string }[] = [
   { kind: 'person', label: 'In BDRC' },
   { kind: 'not_in_bdrc', label: 'Not in BDRC' },
-  { kind: 'unknown', label: 'I don’t know' },
+  { kind: 'skipped', label: 'Skip' },
 ];
 
 const LINK = 'cursor-pointer font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline';
@@ -71,7 +73,10 @@ export default function AuthorPanel({
   const save = useSaveAnswer();
   const [person, setPerson] = useState<BdrcPerson | null>(savedPerson(saved));
   const [name, setName] = useState(saved?.kind === 'not_in_bdrc' ? saved.name : '');
-  const [note, setNote] = useState(saved && saved.kind !== 'person' ? saved.note : '');
+  const [reason, setReason] = useState<SkipReason | null>(saved?.kind === 'skipped' ? saved.reason : null);
+  const [note, setNote] = useState(saved?.note ?? '');
+  const [noteOpen, setNoteOpen] = useState(Boolean(saved?.note));
+  const noteNeeded = kind === 'skipped' && reason != null && needsNote(reason);
 
   const chooseKind = (next: AnswerKind) => {
     onKindChange(next);
@@ -80,9 +85,10 @@ export default function AuthorPanel({
   };
 
   const draft = (): AuthorAnswer | null => {
-    if (kind === 'unknown') return { kind, note: note.trim() };
-    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), note: note.trim() } : null;
-    return person ? { kind, personId: person.id, name: person.nameBo } : null;
+    const noted = { note: note.trim() };
+    if (kind === 'skipped') return reason && !(noteNeeded && !noted.note) ? { kind, reason, ...noted } : null;
+    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), ...noted } : null;
+    return person ? { kind, personId: person.id, name: person.nameBo, ...noted } : null;
   };
   const answer = draft();
 
@@ -111,7 +117,11 @@ export default function AuthorPanel({
           </div>
           <div>
             <div className="break-words font-monlam text-lg leading-loose text-gray-900">{answerLabel(saved)}</div>
-            {saved.kind !== 'person' && saved.note && <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">{saved.note}</p>}
+            {saved.note && (
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
+                <span className="font-medium text-gray-700">Note:</span> {saved.note}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2 border-t border-gray-200 px-5 py-3">
@@ -142,7 +152,10 @@ export default function AuthorPanel({
         />
 
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-gray-900">Author</h2>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-gray-900">Author</h2>
+            <GuidelinesLink />
+          </div>
           <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Author">
             {KINDS.map((k) => (
               <button
@@ -179,19 +192,50 @@ export default function AuthorPanel({
                 <span className="mb-1 block font-medium text-gray-700">Author’s name in Tibetan</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-11 font-monlam text-base md:text-base ${FIELD}`} />
               </label>
-              <NoteField label="Where did you find the name? (optional)" value={note} onChange={setNote} />
             </div>
           )}
-          {kind === 'unknown' && (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">For a text whose author you could not find in it or in its versions.</p>
-              <NoteField label="What did you check? (optional)" value={note} onChange={setNote} />
-            </div>
+          {kind === 'skipped' && (
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm text-gray-600">Why are you skipping this text?</legend>
+              {SKIP_REASONS.map((r) => (
+                <label
+                  key={r.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+                    reason === r.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="skip-reason"
+                    checked={reason === r.id}
+                    onChange={() => setReason(r.id)}
+                    className="h-4 w-4 shrink-0 accent-blue-600"
+                  />
+                  {r.label}
+                </label>
+              ))}
+            </fieldset>
           )}
         </div>
       </div>
 
       <div className="space-y-2.5 border-t border-gray-200 px-5 py-3">
+        {noteOpen || noteNeeded ? (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-gray-700">{noteNeeded ? 'Write the reason' : 'Note (optional)'}</span>
+            <Textarea
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={noteNeeded ? undefined : 'For example, the name of a co-author'}
+              className={FIELD}
+            />
+          </label>
+        ) : (
+          <button type="button" onClick={() => setNoteOpen(true)} className={`inline-flex items-center gap-1 text-sm ${LINK}`}>
+            <Plus className="h-3.5 w-3.5" aria-hidden /> Add a note
+          </button>
+        )}
         <p className="truncate text-sm text-gray-600">
           Your answer:{' '}
           {answer ? <span className="font-monlam text-gray-900">{answerLabel(answer)}</span> : 'none yet'}
@@ -207,7 +251,7 @@ export default function AuthorPanel({
             disabled={!answer || save.isPending}
             onClick={submit}
           >
-            {save.isPending ? 'Saving…' : 'Submit'}
+            {save.isPending ? 'Saving…' : kind === 'skipped' ? 'Skip this text' : 'Submit'}
           </Button>
         </div>
       </div>
@@ -330,14 +374,5 @@ function Candidate({
         )}
       </div>
     </li>
-  );
-}
-
-function NoteField({ label, value, onChange }: Readonly<{ label: string; value: string; onChange: (value: string) => void }>) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-gray-700">{label}</span>
-      <Textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} className={FIELD} />
-    </label>
   );
 }

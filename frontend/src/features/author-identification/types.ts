@@ -1,3 +1,5 @@
+import type { SkipReason } from './guidelines';
+
 /** One copy of a text. `bdrcId` is null when the copy has no page of its own on BDRC. */
 export interface TextVersion {
   id: string;
@@ -64,10 +66,12 @@ export interface NameSuggestion {
   total: number;
 }
 
-export type AuthorAnswer =
+/** The note can name a co-author, as a text has one author here. */
+export type AuthorAnswer = { note: string } & (
   | { kind: 'person'; personId: string; name: string }
-  | { kind: 'not_in_bdrc'; name: string; note: string }
-  | { kind: 'unknown'; note: string };
+  | { kind: 'not_in_bdrc'; name: string }
+  | { kind: 'skipped'; reason: SkipReason }
+);
 
 export type SavedAnswer = AuthorAnswer & { savedAt: string };
 
