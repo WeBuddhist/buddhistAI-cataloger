@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { BookOpen, Calendar, ChevronLeft, ChevronRight, Hash, Landmark, Library, Type, User, type LucideIcon } from 'lucide-react';
+import { BookOpen, Calendar, ChevronLeft, ChevronRight, ExternalLink, Hash, Images, Landmark, Library, Type, User, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useVersionDetails } from '../hooks';
@@ -13,8 +13,11 @@ type BdrcPage = 'version' | 'collection';
 
 const firstPage = (version: TextVersion): BdrcPage => (version.bdrcId ? 'version' : 'collection');
 
+// BDRC's editions API gives collection names in Tibetan already.
+const tibetan = (name: string) => (hasTibetan(name) ? name : wylieToTibetan(name));
+
 const nameOf = (version: TextVersion) =>
-  version.collection ? wylieToTibetan(version.collection.name) : (version.bdrcId ?? 'Not on BDRC');
+  version.collection ? tibetan(version.collection.name) : (version.bdrcId ?? 'Not on BDRC');
 
 /** What tells versions of the same name apart. */
 const summaryOf = (details?: VersionDetails) =>
@@ -157,21 +160,29 @@ function Details({
   onSearchName: (name: string) => void;
 }>) {
   const author = details?.author;
+  const found = version.nameInVersion;
   return (
     <dl className="flex flex-wrap gap-x-8 gap-y-2.5 px-3.5 py-2.5">
+      {version.title && (
+        <Detail icon={BookOpen} label="Title" wide>
+          <span className="font-monlam text-base">{version.title}</span>
+        </Detail>
+      )}
+      {found && (
+        <Detail icon={User} label="Name in this version">
+          <span className="flex items-center gap-2">
+            <span className="min-w-0 break-words font-monlam text-base">{found}</span>
+            <SearchButton onClick={() => onSearchName(found)} />
+          </span>
+        </Detail>
+      )}
       {/* Only its own record can say that there is no author; a collection's cannot. */}
       {details && version.bdrcId && (
         <Detail icon={User} label={BO.author}>
           {author ? (
             <span className="flex items-center gap-2">
               <span className="min-w-0 break-words font-monlam">{author}</span>
-              <button
-                type="button"
-                onClick={() => onSearchName(author)}
-                className="shrink-0 cursor-pointer rounded-full bg-blue-50 px-2.5 text-xs font-medium leading-5 text-blue-700 hover:bg-blue-100"
-              >
-                Search
-              </button>
+              <SearchButton onClick={() => onSearchName(author)} />
             </span>
           ) : (
             <span className="font-normal text-gray-400">—</span>
@@ -209,15 +220,39 @@ function Details({
       <Detail icon={Hash} label="BDRC ID">
         <span className="tabular-nums">{version.bdrcId ?? version.collection?.bdrcId}</span>
       </Detail>
+      {version.scansUrl && (
+        <Detail icon={Images} label="Scans">
+          <a
+            href={version.scansUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline"
+          >
+            Open scans <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+          </a>
+        </Detail>
+      )}
       {loading && <span className="self-center text-sm text-gray-500">Loading details…</span>}
       {failed && <span className="self-center text-sm text-gray-500">Could not load the other details.</span>}
     </dl>
   );
 }
 
-function Detail({ icon: Icon, label, children }: Readonly<{ icon: LucideIcon; label: string; children: ReactNode }>) {
+function SearchButton({ onClick }: Readonly<{ onClick: () => void }>) {
   return (
-    <div className="min-w-0">
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 cursor-pointer rounded-full bg-blue-50 px-2.5 font-sans text-xs font-medium leading-5 text-blue-700 hover:bg-blue-100"
+    >
+      Search
+    </button>
+  );
+}
+
+function Detail({ icon: Icon, label, wide, children }: Readonly<{ icon: LucideIcon; label: string; wide?: boolean; children: ReactNode }>) {
+  return (
+    <div className={wide ? 'min-w-0 basis-full' : 'min-w-0'}>
       <dt className={`flex items-center gap-1.5 text-gray-500 ${hasTibetan(label) ? 'font-monlam text-sm' : 'text-xs'}`}>
         <Icon className="h-3.5 w-3.5 text-gray-400" aria-hidden /> {label}
       </dt>

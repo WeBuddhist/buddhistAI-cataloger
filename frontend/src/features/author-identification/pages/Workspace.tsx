@@ -117,7 +117,9 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
           <h1 className="truncate font-monlam text-base leading-loose text-gray-900" title={task.title}>
             {task.title}
           </h1>
-          <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{task.id}</span>
+          <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600" title="BDRC id of this text">
+            {task.editionId}
+          </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-sm tabular-nums text-gray-500">

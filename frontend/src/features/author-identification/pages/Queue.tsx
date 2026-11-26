@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Eye, Settings, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthorIdMe } from '../access/hooks';
@@ -168,7 +168,7 @@ function Table({ rows, tab }: Readonly<{ rows: Row[]; tab: Tab }>) {
           <tr>
             <th className="w-16 px-4 py-3 font-medium">No.</th>
             <th className="px-4 py-3 font-medium">Text</th>
-            <th className="w-[34%] px-4 py-3 font-medium">{tab === 'todo' ? 'Model prediction' : 'Your answer'}</th>
+            <th className="w-[34%] px-4 py-3 font-medium">{tab === 'todo' ? 'Names found' : 'Your answer'}</th>
             {tab === 'done' && <th className="hidden w-32 px-4 py-3 font-medium lg:table-cell">Answered</th>}
             <th className="w-28 px-4 py-3" />
           </tr>
@@ -183,7 +183,7 @@ function Table({ rows, tab }: Readonly<{ rows: Row[]; tab: Tab }>) {
                 </div>
                 <div className="text-xs text-gray-500">{versionsLabel(row.versionCount)}</div>
               </td>
-              <td className="px-4 py-4">{row.answer ? <Answer answer={row.answer} /> : <Prediction names={row.extractedNames} />}</td>
+              <td className="px-4 py-4">{row.answer ? <Answer answer={row.answer} /> : <NamesFound names={row.extractedNames} />}</td>
               {tab === 'done' && (
                 <td className="hidden whitespace-nowrap px-4 py-4 text-gray-600 lg:table-cell">{row.answer && dateOf(row.answer.savedAt)}</td>
               )}
@@ -222,7 +222,7 @@ function Cards({ rows }: Readonly<{ rows: Row[] }>) {
             </span>
             <span className="mt-1 block break-words font-monlam text-base leading-loose text-gray-900">{row.title}</span>
             <span className="mt-2 flex items-end justify-between gap-3">
-              <span className="min-w-0">{row.answer ? <Answer answer={row.answer} /> : <Prediction names={row.extractedNames} />}</span>
+              <span className="min-w-0">{row.answer ? <Answer answer={row.answer} /> : <NamesFound names={row.extractedNames} />}</span>
               <span className={`inline-flex shrink-0 items-center gap-1 text-sm font-medium ${row.answer ? 'text-gray-600' : 'text-blue-700'}`}>
                 <OpenLabel done={row.answer != null} />
               </span>
@@ -246,16 +246,13 @@ function OpenLabel({ done }: Readonly<{ done: boolean }>) {
   );
 }
 
-function Prediction({ names }: Readonly<{ names: ExtractedName[] }>) {
+/** The first name found in the text and its versions, and how many others. */
+function NamesFound({ names }: Readonly<{ names: ExtractedName[] }>) {
   const [first, ...others] = nameCandidates(names);
-  if (!first) return <span className="text-gray-400">No prediction</span>;
+  if (!first) return <span className="text-gray-400">No name found</span>;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2">
-      <Sparkles className="h-3.5 w-3.5 shrink-0 text-sky-700" aria-hidden />
       <span className="min-w-0 break-words font-monlam text-sm leading-relaxed text-gray-900">{first.name}</span>
-      {first.confidence != null && (
-        <span className="shrink-0 text-xs tabular-nums text-gray-500">{Math.round(first.confidence * 100)}%</span>
-      )}
       {others.length > 0 && (
         <span className="shrink-0 rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">+{others.length} other {others.length === 1 ? 'name' : 'names'}</span>
       )}

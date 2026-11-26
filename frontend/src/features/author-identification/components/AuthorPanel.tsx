@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Check, Plus, Search, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { needsNote, SKIP_REASONS, type SkipReason } from '../guidelines';
 import { useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
-import { answerLabel, cleanName, FIELD } from '../utils';
+import { answerLabel, cleanName, FIELD, sameName } from '../utils';
 import GuidelinesLink from './GuidelinesLink';
 import PersonSearch from './PersonSearch';
 
@@ -49,7 +49,7 @@ export default function AuthorPanel({
 }: Readonly<{
   taskId: string;
   taskTitle: string;
-  /** The names the model found. */
+  /** The names found in the text and its versions. */
   candidates: NameCandidate[];
   versions: TextVersion[];
   saved: SavedAnswer | null;
@@ -141,7 +141,7 @@ export default function AuthorPanel({
   return (
     <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-        <ModelPrediction
+        <NamesFound
           candidates={candidates}
           versions={versions}
           searched={kind === 'person' ? searched : ''}
@@ -259,8 +259,8 @@ export default function AuthorPanel({
   );
 }
 
-/** The names the AI found, styled as the Deduplicator's AI analysis is. */
-function ModelPrediction({
+/** The author names found in the text and its versions (BDRC's editions API), with where. */
+function NamesFound({
   candidates,
   versions,
   searched,
@@ -280,9 +280,7 @@ function ModelPrediction({
   return (
     <div className="rounded-md border border-sky-200 bg-sky-50/60 px-4 py-3">
       <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-sky-700" />
-        <h2 className="text-sm font-semibold text-sky-900">Model prediction</h2>
-        <span className="rounded-full border border-sky-200 bg-white px-2 text-xs font-medium text-sky-800">AI</span>
+        <h2 className="text-sm font-semibold text-sky-900">Names found in the texts</h2>
         {candidates.length > 1 && (
           <span className="ml-auto rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">{candidates.length} different names</span>
         )}
@@ -302,11 +300,11 @@ function ModelPrediction({
               />
             ))}
           </ul>
-          <p className="mt-1 text-xs text-gray-500">AI can be wrong. Please check.</p>
+          <p className="mt-1 text-xs text-gray-500">A name found is not always the author. Please check.</p>
         </>
       ) : (
         <p className="mt-1 text-sm text-gray-600">
-          The AI found no author. Look for a name at the end of the text, or{' '}
+          No name was found. Look for one at the end of the text, or{' '}
           <button type="button" onClick={onShowVersions} className={LINK}>
             check the versions
           </button>
@@ -335,13 +333,13 @@ function Candidate({
   onShowEvidence: (evidence: string) => void;
   onShowVersion: (versionId: string) => void;
 }>) {
-  const { name, confidence, found } = candidate;
-  const evidence = found.find((f) => f.evidence)?.evidence;
+  const { name, found } = candidate;
+  // A quote around the name; not the name itself again.
+  const evidence = found.find((f) => f.evidence && !sameName(f.evidence, name))?.evidence;
   return (
     <li className="py-2 first:pt-1">
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 break-words font-monlam text-xl leading-loose text-gray-900">{name}</span>
-        {confidence != null && <span className="shrink-0 text-sm leading-10 tabular-nums text-gray-700">{Math.round(confidence * 100)}% sure</span>}
       </div>
       {evidence && (
         <p className="break-words text-sm">

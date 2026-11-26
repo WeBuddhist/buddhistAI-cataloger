@@ -5,8 +5,8 @@ import { clearSampleAnswers } from '../api/tasks';
 
 const KINDS = {
   answers: {
-    title: 'Sample texts.',
-    text: 'For trying the tool only. Your answers stay in this browser and are not sent anywhere.',
+    title: 'Trying out.',
+    text: 'The texts are BDRC’s, but your answers stay in this browser for now and are not sent anywhere.',
     clearLabel: 'Clear my answers',
     clear: clearSampleAnswers,
     queryKey: ['author-identification', 'tasks'],

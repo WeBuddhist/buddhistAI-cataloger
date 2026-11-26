@@ -6,6 +6,14 @@ export interface TextVersion {
   bdrcId: string | null;
   /** Null when the copy is not in any BDRC collection (e.g. a local upload). */
   collection: { name: string; bdrcId: string } | null;
+  /** Its title, as BDRC has it. */
+  title: string | null;
+  /** The author's name as written in this version, when one was found. */
+  nameInVersion: string | null;
+  /** Its scans on BDRC. */
+  scansUrl: string | null;
+  /** The version the text comes from. */
+  base: boolean;
 }
 
 /** What BDRC's records say about a version; null where they say nothing. */
@@ -19,10 +27,10 @@ export interface VersionDetails {
   script: string | null;
 }
 
-/** A name the model found at the end of the text or of one of its versions. */
+/** A name found in the text or in one of its versions. */
 export interface ExtractedName {
   name: string;
-  /** 0 to 1. */
+  /** 0 to 1; BDRC gives none for now. */
   confidence: number | null;
   /** The version it was found in; null for the text itself. */
   versionId: string | null;
@@ -37,9 +45,11 @@ export interface NameCandidate {
   found: { versionId: string | null; evidence: string | null }[];
 }
 
-/** One deduplicated text to find the author of. */
+/** One deduplicated text to find the author of. `id` is its place in the batch. */
 export interface AuthorTask {
   id: string;
+  /** BDRC's id of the text (edition). */
+  editionId: string;
   title: string;
   content: string;
   versions: TextVersion[];
