@@ -130,7 +130,7 @@ export default function AuthorPanel({
     const sure = savedConfidence(saved);
     return (
       <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
           <div className="flex items-center gap-2 text-sm font-medium text-green-700">
             <Check className="h-4 w-4" /> Answer saved
           </div>
@@ -144,7 +144,7 @@ export default function AuthorPanel({
             )}
           </div>
         </div>
-        <div className="flex gap-2 border-t border-gray-200 px-5 py-3">
+        <div className="flex gap-2 border-t border-gray-200 px-4 py-2.5">
           <Button variant="outline" className="h-10 flex-1 cursor-pointer bg-white" onClick={() => onEditingChange(true)}>
             Change answer
           </Button>
@@ -160,7 +160,7 @@ export default function AuthorPanel({
 
   return (
     <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
         <NamesFound
           candidates={candidates}
           versions={versions}
@@ -176,7 +176,7 @@ export default function AuthorPanel({
             <h2 className="text-sm font-semibold text-gray-900">Author</h2>
             <GuidelinesLink />
           </div>
-          <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Author">
+          <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Author">
             {KINDS.map((k) => (
               <button
                 key={k.kind}
@@ -184,7 +184,7 @@ export default function AuthorPanel({
                 role="tab"
                 aria-selected={kind === k.kind}
                 onClick={() => chooseKind(k.kind)}
-                className={`cursor-pointer rounded-md px-2 py-2 text-sm font-medium transition-colors ${
+                className={`cursor-pointer rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
                   kind === k.kind ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -212,7 +212,7 @@ export default function AuthorPanel({
               </p>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Author’s name in Tibetan</span>
-                <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-11 font-monlam text-base md:text-base ${FIELD}`} />
+                <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-10 font-monlam text-base md:text-base ${FIELD}`} />
               </label>
             </div>
           )}
@@ -222,7 +222,7 @@ export default function AuthorPanel({
               {SKIP_REASONS.map((r) => (
                 <label
                   key={r.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
                     reason === r.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
@@ -241,7 +241,7 @@ export default function AuthorPanel({
         </div>
       </div>
 
-      <div className="space-y-3 border-t border-gray-200 px-5 py-3">
+      <div className="space-y-2.5 border-t border-gray-200 px-4 py-2.5">
         {kind !== 'skipped' && <ConfidencePicker value={confidence} onChange={setConfidence} />}
         {noteOpen ? (
           <div className="text-sm">
@@ -275,12 +275,12 @@ export default function AuthorPanel({
         )}
         <div className="flex gap-2">
           {saved && (
-            <Button variant="outline" className="h-11 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
+            <Button variant="outline" className="h-10 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
               Cancel
             </Button>
           )}
           <Button
-            className="h-11 flex-1 cursor-pointer bg-green-600 text-base text-white hover:bg-green-700"
+            className="h-10 flex-1 cursor-pointer bg-green-600 text-white hover:bg-green-700"
             disabled={!answer || save.isPending}
             title={missing || undefined}
             onClick={submit}
@@ -293,18 +293,15 @@ export default function AuthorPanel({
   );
 }
 
-/** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. */
+/** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. One slim row. */
 function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; onChange: (value: number) => void }>) {
   const hint = CONFIDENCE.find((c) => c.value === value)?.hint;
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-        <span id="confidence-label" className="font-medium text-gray-700">
-          How sure are you?
-        </span>
-        <span className="text-xs text-gray-500">{value == null ? '1 = only clues · 5 = name clearly written' : hint || `${value} of 5`}</span>
-      </div>
-      <div role="radiogroup" aria-labelledby="confidence-label" className="grid grid-cols-5 gap-1">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span id="confidence-label" className="text-sm font-medium text-gray-700">
+        How sure are you?
+      </span>
+      <div role="radiogroup" aria-labelledby="confidence-label" className="inline-flex overflow-hidden rounded-md border border-gray-300">
         {CONFIDENCE.map((c) => {
           const on = value === c.value;
           return (
@@ -315,8 +312,8 @@ function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; 
               aria-checked={on}
               title={c.hint || undefined}
               onClick={() => onChange(c.value)}
-              className={`h-9 cursor-pointer rounded-md border text-sm font-semibold tabular-nums transition-colors ${
-                on ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+              className={`h-7 w-8 cursor-pointer border-l border-gray-300 text-xs font-semibold tabular-nums transition-colors first:border-l-0 ${
+                on ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700'
               }`}
             >
               {c.value}
@@ -324,6 +321,7 @@ function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; 
           );
         })}
       </div>
+      <span className="min-w-0 text-xs text-gray-500">{value == null ? '1 only clues · 5 clearly written' : hint || `${value} of 5`}</span>
     </div>
   );
 }
@@ -348,7 +346,7 @@ function NamesFound({
 }>) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
         <ScrollText className="h-4 w-4 text-gray-500" aria-hidden />
         <h2 className="text-sm font-semibold text-gray-900">Names found in the texts</h2>
         {candidates.length > 1 && (
@@ -357,7 +355,7 @@ function NamesFound({
       </div>
       {candidates.length > 0 ? (
         <>
-          <ul className="divide-y divide-gray-100 px-4">
+          <ul className="divide-y divide-gray-100 px-3">
             {candidates.map((c) => (
               <Candidate
                 key={c.name}
@@ -370,10 +368,10 @@ function NamesFound({
               />
             ))}
           </ul>
-          <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">A name found is not always the author. Please check.</p>
+          <p className="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500">A name found is not always the author. Please check.</p>
         </>
       ) : (
-        <p className="px-4 py-3 text-sm text-gray-600">
+        <p className="px-3 py-2.5 text-sm text-gray-600">
           No name was found. Look for one at the end of the text, or{' '}
           <button type="button" onClick={onShowVersions} className={LINK}>
             check the versions
@@ -414,11 +412,11 @@ function Candidate({
     return index < 0 ? [] : [{ id: versions[index].id, number: index + 1 }];
   });
   return (
-    <li className="py-2.5">
+    <li className="py-2">
       <div className="flex items-start gap-2">
-        <span className="min-w-0 flex-1 break-words font-monlam text-xl leading-loose text-gray-900">{name}</span>
+        <span className="min-w-0 flex-1 break-words font-monlam text-lg leading-loose text-gray-900">{name}</span>
         {!searched && (
-          <Button variant="outline" size="sm" className="mt-1 h-7 shrink-0 cursor-pointer bg-white" aria-label={`Search ${name}`} onClick={onSearch}>
+          <Button variant="outline" size="sm" className="mt-1 h-7 shrink-0 cursor-pointer bg-white text-xs" aria-label={`Search ${name}`} onClick={onSearch}>
             <Search /> Search
           </Button>
         )}

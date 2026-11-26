@@ -1,79 +1,151 @@
-import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Check, Copy } from 'lucide-react';
 import RequireAccess from '../access/RequireAccess';
-import { SKIP_REASONS } from '../guidelines';
+import { CONFIDENCE, SKIP_REASONS } from '../guidelines';
 
-/** The annotation guideline (Kaldan, 25 Nov 2026), as written. Opened in its own tab. */
+const ROOT = '/author-identification';
+
+/** The text the guidelines were opened from, if it is one of this tool's pages. */
+function useFrom(): string | null {
+  const [params] = useSearchParams();
+  const from = params.get('from');
+  return from?.startsWith(`${ROOT}/`) && !from.startsWith('//') ? from : null;
+}
+
+/**
+ * The annotation guideline (Kaldan, 25 Nov 2026), as written, in the same order. Opened in
+ * its own tab from a text; "Back to the text" closes that tab so the text is as it was left.
+ */
 export default function Guidelines() {
+  const from = useFrom();
+  // Opened from the tool in a new tab: closing it returns to the text, as it was left.
+  const canClose = from != null && window.opener != null;
   return (
     <RequireAccess>
       <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Link to="/author-identification" className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
-          <ArrowLeft className="h-4 w-4" /> My texts
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-gray-900">Author Identification: annotation guideline</h1>
-        <p className="mt-1 text-sm text-gray-500">25 November 2026 · Kaldan</p>
+        {canClose ? (
+          <button type="button" onClick={() => window.close()} className="inline-flex cursor-pointer items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="h-4 w-4" /> Back to the text
+          </button>
+        ) : (
+          <Link to={from ?? ROOT} className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="h-4 w-4" /> {from ? 'Back to the text' : 'My texts'}
+          </Link>
+        )}
+        <h1 className="mt-3 text-2xl font-semibold text-gray-900">Annotation guideline</h1>
+        <p className="mt-1 text-sm text-gray-500">Author Identification · 25 November 2026 · Kaldan</p>
 
-        <ol className="mt-6 list-decimal space-y-3 pl-6 text-[15px] leading-relaxed text-gray-800 marker:font-semibold marker:text-gray-500">
-          <Rule>
+        <Section title="Who is the author">
+          <Rule n={1}>
             Choose <b>only one</b> author for each text.
           </Rule>
-          <Rule>
+          <Rule n={2}>
             <b>Commentary:</b> the author is the person who wrote the commentary, not the author of the original text.
           </Rule>
-          <Rule>
+          <Rule n={3}>
             <b>Terma:</b> the author is the tertön.
           </Rule>
-          <Rule>
-            <b>No author, only a scribe (transcriber) named:</b> if you think the scribe is the author, choose them. In the note, write:{' '}
-            <Quote>This person is named as the transcriber.</Quote>
+          <Rule n={4}>
+            <b>No author, only a scribe (transcriber) named:</b> if you think the scribe is the author, choose them. In the note, write:
+            <Phrase>This person is named as the transcriber.</Phrase>
           </Rule>
-          <Rule>Choose the author from the BDRC list.</Rule>
-          <Rule>
-            <b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:{' '}
-            <Quote>Duplicate of this author: [person ID]</Quote>
+          <Rule n={5}>Choose the author from the BDRC list.</Rule>
+          <Rule n={6}>
+            <b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:
+            <Phrase>Duplicate of this author: [person ID]</Phrase>
           </Rule>
-          <Rule>
+          <Rule n={7}>
             <b>Author not in the list:</b> type the name yourself. In the note, add anything that could help, such as dates, teacher, monastery, or
             other names.
           </Rule>
-          <Rule>
+          <Rule n={8}>
             <b>More than one possible author:</b> choose only the one you are 100% sure of. Write the other names in the note.
           </Rule>
-          <Rule>
-            Every time, give a <b>confidence rating</b>:
-            <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              <li>
-                <b>High</b> (5): the name is clearly written in the text.
-              </li>
-              <li>
-                <b>Medium</b> (3): you are fairly sure.
-              </li>
-              <li>
-                <b>Low</b> (1): you only have clues.
-              </li>
-            </ul>
+        </Section>
+
+        <Section title="Confidence and notes">
+          <Rule n={9}>
+            Every time, give a <b>confidence rating</b>. In the tool it is 1 to 5:
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
+              {[
+                { level: 'High', value: 5, text: 'The name is clearly written in the text.' },
+                { level: 'Medium', value: 3, text: 'You are fairly sure.' },
+                { level: 'Low', value: 1, text: 'You only have clues.' },
+              ].map((c) => (
+                <div key={c.level} className="rounded-md border border-gray-200 bg-white px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-blue-600 text-xs font-semibold text-white">{c.value}</span>
+                    <span className="text-sm font-semibold text-gray-900">{c.level}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-600">{c.text}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-gray-500">In the tool, 2 and 4 are in between ({CONFIDENCE.length} levels in all).</p>
           </Rule>
-          <Rule>You can leave the note box empty. Only use it for information about the author.</Rule>
-          <Rule>
-            <b>Can’t decide?</b> Press <b>Skip</b> and choose a reason:
-            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+          <Rule n={10}>You can leave the note box empty. Only use it for information about the author.</Rule>
+        </Section>
+
+        <Section title="Can’t decide?">
+          <Rule n={11}>
+            Press <b>Skip</b> and choose a reason:
+            <ul className="mt-2 space-y-1">
               {SKIP_REASONS.map((r) => (
-                <li key={r.id}>{r.label}</li>
+                <li key={r.id} className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800">
+                  {r.label}
+                </li>
               ))}
             </ul>
           </Rule>
-        </ol>
+        </Section>
       </div>
     </RequireAccess>
   );
 }
 
-function Rule({ children }: Readonly<{ children: ReactNode }>) {
-  return <li className="pl-1">{children}</li>;
+function Section({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
+      <ol className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/60">{children}</ol>
+    </section>
+  );
 }
 
-function Quote({ children }: Readonly<{ children: ReactNode }>) {
-  return <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-900">“{children}”</span>;
+function Rule({ n, children }: Readonly<{ n: number; children: ReactNode }>) {
+  return (
+    <li className="flex gap-3 px-4 py-3 text-[15px] leading-relaxed text-gray-800">
+      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-600 ring-1 ring-gray-200">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </li>
+  );
+}
+
+/** A note wording to use as is, with a button to copy it. */
+function Phrase({ children }: Readonly<{ children: string }>) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(children);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* the text can still be selected by hand */
+    }
+  };
+  return (
+    <span className="mt-1.5 flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5">
+      <span className="min-w-0 flex-1 font-medium text-gray-900">{children}</span>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
 }

@@ -71,8 +71,8 @@ export default function TextView({
           <ArrowDownToLine className="h-3.5 w-3.5" /> Go to end
         </button>
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8">
-        <div ref={textRef} lang="bo" className="mx-auto max-w-3xl whitespace-pre-wrap break-words font-monlam text-lg leading-[2.2] text-gray-900">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div ref={textRef} lang="bo" className="mx-auto max-w-3xl whitespace-pre-wrap break-words font-monlam text-base leading-[2.1] text-gray-900 xl:text-lg xl:leading-[2.2]">
           {at < 0 || !evidence ? (
             content
           ) : (
