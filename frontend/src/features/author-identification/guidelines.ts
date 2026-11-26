@@ -15,6 +15,20 @@ export const isSkipReason = (value: string | null | undefined): value is SkipRea
 /** In the language chosen (translations: authorIdentification.skip.*). */
 export const skipLabel = (reason: SkipReason) => tr(`skip.${reason}`);
 
+/**
+ * The role the chosen person had in the text, as the annotators asked (Emma; agreed by
+ * Elie): the author, or the tertön of a terma, or only its scribe. "Other" is explained in
+ * the note. Sent to BDRC in the answer's data, as `role`.
+ */
+export const PERSON_ROLES = ['author', 'terton', 'scribe', 'other'] as const;
+
+export type PersonRole = (typeof PERSON_ROLES)[number];
+
+export const isPersonRole = (value: unknown): value is PersonRole => PERSON_ROLES.includes(value as PersonRole);
+
+/** In the language chosen (translations: authorIdentification.personRole.*). */
+export const roleLabel = (role: PersonRole) => tr(`personRole.${role}`);
+
 /** Confidence, 1 to 5, as BDRC takes it. The guideline's High / Medium / Low are 5, 3 and 1. */
 export const CONFIDENCE = [1, 2, 3, 4, 5] as const;
 

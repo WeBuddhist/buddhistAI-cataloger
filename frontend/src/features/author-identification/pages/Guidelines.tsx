@@ -51,7 +51,6 @@ export default function Guidelines() {
           </Rule>
           <Rule n={4}>
             <Trans t={t} i18nKey="guide.r4" components={{ b: <b /> }} />
-            <Phrase>This person is named as the transcriber.</Phrase>
           </Rule>
           <Rule n={5}>{t('guide.r5')}</Rule>
           <Rule n={6}>

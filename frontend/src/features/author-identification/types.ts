@@ -1,4 +1,4 @@
-import type { SkipReason } from './guidelines';
+import type { PersonRole, SkipReason } from './guidelines';
 
 /** One copy of a text. `bdrcId` is null when the copy has no page of its own on BDRC. */
 export interface TextVersion {
@@ -79,8 +79,8 @@ export interface NameSuggestion {
 /** One author per text; the note holds anything else about the author. Confidence is 1 to
  * 5, given with an author (not when skipping). */
 export type AuthorAnswer = { note: string } & (
-  | { kind: 'person'; personId: string; name: string; confidence: number }
-  | { kind: 'not_in_bdrc'; name: string; confidence: number }
+  | { kind: 'person'; personId: string; name: string; role: PersonRole; roleOther?: string; confidence: number }
+  | { kind: 'not_in_bdrc'; name: string; role: PersonRole; roleOther?: string; confidence: number }
   | { kind: 'skipped'; reason: SkipReason }
 );
 

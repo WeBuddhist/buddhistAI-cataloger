@@ -65,6 +65,7 @@ export function nameParts(name: string): string[] {
   return [...parts].slice(0, MAX_PARTS);
 }
 
+/** Who was answered; the role is shown on a line of its own. */
 export function answerLabel(answer: AuthorAnswer): string {
   if (answer.kind === 'person') return tr('answer.personLabel', { name: answer.name, id: answer.personId });
   if (answer.kind === 'not_in_bdrc') return tr('answer.notInBdrcLabel', { name: answer.name });

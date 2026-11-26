@@ -21,12 +21,12 @@
   line-height: 1.75;
 }
 
-.ai-bo :is(h1, h2, h3, h4, button, a, [role='tab'], .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
+.ai-bo :is(h1, h2, h3, h4, b, strong, button, a, [role='tab'], .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
   font-family: 'monlam', 'jomo', sans-serif;
 }
 /* Monlam has one weight, and the browser doesn't draw it bold: the strokes are thickened
    with an outline of the text's own color instead. */
-.ai-bo :is(h1, h2, h3, h4, .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
+.ai-bo :is(h1, h2, h3, h4, b, strong, .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
   -webkit-text-stroke: 0.45px currentColor;
 }
 .ai-bo :is(button, a, [role='tab']):not(.font-monlam) {

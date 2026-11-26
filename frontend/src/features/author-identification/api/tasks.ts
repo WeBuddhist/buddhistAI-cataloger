@@ -4,7 +4,7 @@
 import { API_URL } from '@/config/api';
 import { fetchWithAccessToken } from '@/lib/fetchWithAccessToken';
 import type { AuthorAnswer, AuthorTask, ExtractedName, SavedAnswer, TaskSummary, TextVersion } from '../types';
-import { isSkipReason } from '../guidelines';
+import { isPersonRole, isSkipReason, type PersonRole } from '../guidelines';
 import { cleanName, findName, hasTibetan, wylieToTibetan } from '../utils';
 import { tr } from '../i18n';
 
@@ -171,7 +171,7 @@ interface ApiAnswer {
   note: string | null;
   text_rejected: boolean;
   reject_reason: string | null;
-  data: { person_name?: string } | null;
+  data: { person_name?: string; role?: string; role_other?: string } | null;
   decided_at: string;
 }
 
@@ -181,14 +181,21 @@ function savedOf(a: ApiAnswer | null | undefined): SavedAnswer | null {
   const base = { note: a.note ?? '', savedAt: a.decided_at.endsWith('Z') ? a.decided_at : `${a.decided_at}Z` };
   if (a.text_rejected) return isSkipReason(a.reject_reason) ? { ...base, kind: 'skipped', reason: a.reject_reason } : null;
   if (a.person_answer === 'unknown') return { ...base, kind: 'skipped', reason: 'author_unknown' };
+  // Answers from before roles were asked are the author's.
+  const role = isPersonRole(a.data?.role) ? a.data.role : 'author';
+  const roleOther = a.data?.role_other;
   if (a.person_answer === 'bdrc' && a.p_id) {
-    return { ...base, kind: 'person', personId: a.p_id, name: a.data?.person_name ?? a.p_id, confidence: a.confidence ?? 0 };
+    return { ...base, kind: 'person', personId: a.p_id, name: a.data?.person_name ?? a.p_id, role, roleOther, confidence: a.confidence ?? 0 };
   }
-  if (a.person_answer === 'not_in_bdrc') return { ...base, kind: 'not_in_bdrc', name: a.name_bo ?? '', confidence: a.confidence ?? 0 };
+  if (a.person_answer === 'not_in_bdrc') return { ...base, kind: 'not_in_bdrc', name: a.name_bo ?? '', role, roleOther, confidence: a.confidence ?? 0 };
   return null;
 }
 
 /** The answer as BDRC's editions API takes it (our backend adds who answered). */
+/** The role as BDRC gets it, in the answer's data; with "other", which one. */
+const roleData = (answer: { role: PersonRole; roleOther?: string }) =>
+  answer.role === 'other' ? { role: answer.role, role_other: answer.roleOther ?? '' } : { role: answer.role };
+
 function bodyOf(answer: AuthorAnswer, editionId: string) {
   const note = answer.note.trim() || null;
   if (answer.kind === 'skipped') {
@@ -198,9 +205,17 @@ function bodyOf(answer: AuthorAnswer, editionId: string) {
   }
   if (answer.kind === 'person') {
     // The person's name is kept with the answer so it shows without asking BDRC again.
-    return { edition_id: editionId, person_answer: 'bdrc', p_id: answer.personId, confidence: answer.confidence, note, data: { person_name: answer.name } };
+    // The role the person had (author, tertön, scribe, other) goes with it too.
+    return {
+      edition_id: editionId,
+      person_answer: 'bdrc',
+      p_id: answer.personId,
+      confidence: answer.confidence,
+      note,
+      data: { person_name: answer.name, ...roleData(answer) },
+    };
   }
-  return { edition_id: editionId, person_answer: 'not_in_bdrc', name_bo: answer.name, confidence: answer.confidence, note };
+  return { edition_id: editionId, person_answer: 'not_in_bdrc', name_bo: answer.name, confidence: answer.confidence, note, data: roleData(answer) };
 }
 
 /** Save my answer on a text ("1/5"). Our backend keeps it and sends it to BDRC. */

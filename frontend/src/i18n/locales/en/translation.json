@@ -1953,8 +1953,8 @@
       "r10": "You can leave the note box empty. Only use it for information about the author.",
       "r11": "Press <b>Skip</b> and choose a reason:",
       "r2": "<b>Commentary:</b> the author is the person who wrote the commentary, not the author of the original text.",
-      "r3": "<b>Terma:</b> the author is the tertön.",
-      "r4": "<b>No author, only a scribe (transcriber) named:</b> if you think the scribe is the author, choose them. In the note, write:",
+      "r3": "<b>Terma:</b> choose the tertön, with the role <b>Tertön</b>.",
+      "r4": "<b>No author, only a scribe (transcriber) named:</b> choose the scribe, with the role <b>Scribe</b>.",
       "r5": "Choose the author from the BDRC list.",
       "r6": "<b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:",
       "r7": "<b>Author not in the list:</b> type the name yourself. In the note, add anything that could help, such as dates, teacher, monastery, or other names.",
@@ -2006,6 +2006,7 @@
       "missingName": "Write the name",
       "missingPerson": "Choose a person",
       "missingReason": "Choose a reason",
+      "missingRoleOther": "Write which role",
       "nameInTibetan": "Author’s name in Tibetan",
       "nextText": "Next text",
       "noneOfThese": "None of these is the author?",
@@ -2018,6 +2019,8 @@
       "otherAnswers": "Not in BDRC, or skip",
       "otherTitle": "The author is not found in BDRC",
       "removeNote": "Remove the note",
+      "role": "Role",
+      "roleOf": "Role: {{role}}",
       "saveFailed": "Could not save the answer: {{error}}",
       "saved": "Answer saved",
       "saving": "Saving…",
@@ -2031,6 +2034,8 @@
       "switchToSkip": "Skip this text instead",
       "switchToSkipQuestion": "Don’t know the author’s name?",
       "tryAgain": "try again",
+      "whichRole": "Which role?",
+      "whichRolePlaceholder": "e.g. editor of the collection",
       "whySkip": "Why are you skipping this text?"
     },
     "person": {
@@ -2042,6 +2047,12 @@
       "sameAsTitle": "Confirmed to be the same person as {{id}}",
       "viewDetails": "View details",
       "viewDetailsOf": "View details of {{name}}"
+    },
+    "personRole": {
+      "author": "Author",
+      "other": "Other",
+      "scribe": "Scribe",
+      "terton": "Tertön"
     },
     "queue": {
       "added_one": "{{count}} text added to your list",
@@ -2085,6 +2096,11 @@
       "versions_other": "{{count}} versions",
       "view": "View",
       "viewTitle": "View {{title}}"
+    },
+    "roleHint": {
+      "author": "Wrote or composed the text.",
+      "scribe": "Only wrote it down (scribe or transcriber).",
+      "terton": "Revealed this terma."
     },
     "roles": {
       "admin": "Admin",

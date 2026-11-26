@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { CONFIDENCE, confidenceHint, skipLabel, SKIP_REASONS, type SkipReason } from '../guidelines';
+import { CONFIDENCE, confidenceHint, PERSON_ROLES, roleLabel, skipLabel, SKIP_REASONS, type PersonRole, type SkipReason } from '../guidelines';
 import { usePersonSearch, useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
 import { answerLabel, cleanName, FIELD, sameName } from '../utils';
@@ -86,6 +86,9 @@ export default function AuthorPanel({
   const [name, setName] = useState(saved?.kind === 'not_in_bdrc' ? saved.name : '');
   const [reason, setReason] = useState<SkipReason | null>(saved?.kind === 'skipped' ? saved.reason : null);
   const [confidence, setConfidence] = useState<number | null>(savedConfidence(saved));
+  const [role, setRole] = useState<PersonRole>(saved && saved.kind !== 'skipped' ? saved.role : 'author');
+  // With "Other": which role, in the annotator's words.
+  const [roleOther, setRoleOther] = useState(saved && saved.kind !== 'skipped' ? (saved.roleOther ?? '') : '');
   const [note, setNote] = useState(saved?.note ?? '');
   const [noteOpen, setNoteOpen] = useState(Boolean(saved?.note));
 
@@ -105,9 +108,10 @@ export default function AuthorPanel({
     const noted = { note: note.trim() };
     if (kind === 'other') return null;
     if (kind === 'skipped') return reason ? { kind, reason, ...noted } : null;
-    if (confidence == null) return null;
-    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), confidence, ...noted } : null;
-    return person ? { kind, personId: person.id, name: person.nameBo, confidence, ...noted } : null;
+    const roled = role === 'other' ? { role, roleOther: roleOther.trim() } : { role };
+    if (confidence == null || (role === 'other' && !roled.roleOther)) return null;
+    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), ...roled, confidence, ...noted } : null;
+    return person ? { kind, personId: person.id, name: person.nameBo, ...roled, confidence, ...noted } : null;
   };
   const answer = draft();
   // How sure they are is asked once there is an author to be sure of.
@@ -124,6 +128,7 @@ export default function AuthorPanel({
   else if (kind === 'person' && !person) missing = t('panel.missingPerson');
   else if (kind === 'not_in_bdrc' && !cleanName(name)) missing = t('panel.missingName');
   else if (kind !== 'skipped' && confidence == null) missing = t('panel.missingConfidence');
+  else if (kind !== 'skipped' && role === 'other' && !roleOther.trim()) missing = t('panel.missingRoleOther');
 
   const submit = async () => {
     if (!answer) return;
@@ -151,6 +156,7 @@ export default function AuthorPanel({
           </div>
           <div>
             <div className="break-words font-monlam text-lg leading-loose text-gray-900">{answerLabel(saved)}</div>
+            {saved.kind !== 'skipped' && <p className="mt-1 text-sm text-gray-600">{t('panel.roleOf', { role: saved.role === 'other' && saved.roleOther ? saved.roleOther : roleLabel(saved.role) })}</p>}
             {sure && <p className="mt-1 text-sm text-gray-600">{t('panel.confidenceOf', { n: sure })}</p>}
             {saved.note && (
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
@@ -235,7 +241,13 @@ export default function AuthorPanel({
 
       {kind !== 'other' && (
         <div className="space-y-2.5 border-t border-gray-200 px-4 py-2.5">
-          {asksConfidence && <ConfidencePicker value={confidence} onChange={setConfidence} />}
+          {/* Two rows of choices, their labels in one column so they read as one small form. */}
+          {asksConfidence && (
+            <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+              <RolePicker value={role} onChange={setRole} other={roleOther} onOtherChange={setRoleOther} />
+              <ConfidencePicker value={confidence} onChange={setConfidence} />
+            </div>
+          )}
           {noteOpen ? (
             <div className="text-sm">
               <div className="mb-1 flex items-center justify-between">
@@ -392,37 +404,90 @@ function OtherChoices({ onChoose }: Readonly<{ onChoose: (kind: PanelStep) => vo
   );
 }
 
-/** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. One slim row. */
+const SEGMENT = 'cursor-pointer border-l border-gray-300 text-xs font-semibold transition-colors first:border-l-0';
+const segment = (on: boolean) => `${SEGMENT} ${on ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700'}`;
+
+/**
+ * The role the person had in the text, all four always in sight; Author is chosen at first.
+ * What a role means is on its button's hover, and said under the row once it isn't the
+ * author's. "Other" asks which role, in a box of its own. Cells of the panel's two-column grid.
+ */
+function RolePicker({
+  value,
+  onChange,
+  other,
+  onOtherChange,
+}: Readonly<{ value: PersonRole; onChange: (role: PersonRole) => void; other: string; onOtherChange: (other: string) => void }>) {
+  const t = useT();
+  return (
+    <>
+      <span id="role-label" className="text-sm font-medium text-gray-700">
+        {t('panel.role')}
+      </span>
+      <div role="radiogroup" aria-labelledby="role-label" className="inline-flex w-fit flex-wrap overflow-hidden rounded-md border border-gray-300">
+        {PERSON_ROLES.map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={value === r}
+            title={r === 'other' ? undefined : t(`roleHint.${r}`)}
+            onClick={() => onChange(r)}
+            className={`h-7 px-2.5 ${segment(value === r)}`}
+          >
+            {roleLabel(r)}
+          </button>
+        ))}
+      </div>
+      {/* A row of the form like the others: its label in the label column, the box full width. */}
+      {value === 'other' && (
+        <>
+          <label htmlFor="role-other" className="text-sm font-medium text-gray-700">
+            {t('panel.whichRole')}
+          </label>
+          <Input
+            id="role-other"
+            value={other}
+            onChange={(e) => onOtherChange(e.target.value)}
+            placeholder={t('panel.whichRolePlaceholder')}
+            autoFocus
+            className={`h-8 w-full ${FIELD}`}
+          />
+        </>
+      )}
+      {value !== 'other' && value !== 'author' && <p className="col-start-2 -mt-1 text-xs text-gray-500">{t(`roleHint.${value}`)}</p>}
+    </>
+  );
+}
+
+/** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. Cells of the panel's grid. */
 function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; onChange: (value: number) => void }>) {
   const t = useT();
   const hint = value == null ? '' : confidenceHint(value);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <>
       <span id="confidence-label" className="text-sm font-medium text-gray-700">
         {t('panel.howSure')}
       </span>
-      <div role="radiogroup" aria-labelledby="confidence-label" className="inline-flex overflow-hidden rounded-md border border-gray-300">
-        {CONFIDENCE.map((level) => {
-          const on = value === level;
-          return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div role="radiogroup" aria-labelledby="confidence-label" className="inline-flex overflow-hidden rounded-md border border-gray-300">
+          {CONFIDENCE.map((level) => (
             <button
               key={level}
               type="button"
               role="radio"
-              aria-checked={on}
+              aria-checked={value === level}
               title={confidenceHint(level) || undefined}
               onClick={() => onChange(level)}
-              className={`h-7 w-8 cursor-pointer border-l border-gray-300 text-xs font-semibold tabular-nums transition-colors first:border-l-0 ${
-                on ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700'
-              }`}
+              className={`h-7 w-8 tabular-nums ${segment(value === level)}`}
             >
               {level}
             </button>
-          );
-        })}
+          ))}
+        </div>
+        <span className="min-w-0 text-xs text-gray-500">{value == null ? t('panel.scaleHint') : hint || t('panel.levelOf', { n: value })}</span>
       </div>
-      <span className="min-w-0 text-xs text-gray-500">{value == null ? t('panel.scaleHint') : hint || t('panel.levelOf', { n: value })}</span>
-    </div>
+    </>
   );
 }
 
