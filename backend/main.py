@@ -154,6 +154,21 @@ def _stop_dedup_sync_worker():
     stop_worker()
 
 
+@app.on_event("startup")
+def _start_author_identification_sync_worker():
+    """Send saved Author Identification answers to BDRC in the background."""
+    from author_identification.sync_worker import start_worker
+
+    start_worker()
+
+
+@app.on_event("shutdown")
+def _stop_author_identification_sync_worker():
+    from author_identification.sync_worker import stop_worker
+
+    stop_worker()
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the FastAPI backend"}

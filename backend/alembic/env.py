@@ -23,6 +23,7 @@ from outliner.models.outliner import (
 )
 from dedup.models import DedupActiveTime, DedupAdjudication, DedupAssignment, DedupDecision, DedupItem, DedupSetting, DedupVoiceNote
 from outline_fix.models import OutlineFixEdit, OutlineFixWork
+from author_identification.models import AuthorActiveTime, AuthorAnswer
 
 import os
 load_dotenv()
