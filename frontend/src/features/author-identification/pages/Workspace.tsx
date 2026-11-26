@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,7 +7,7 @@ import RequireAccess from '../access/RequireAccess';
 import AuthorPanel, { type AnswerKind } from '../components/AuthorPanel';
 import SourceViewer, { type SourceTab } from '../components/SourceViewer';
 import TextView from '../components/TextView';
-import { useTask, useTasks } from '../hooks';
+import { usePrefetchTasks, useTask, useTasks } from '../hooks';
 import type { AuthorTask, TaskSummary } from '../types';
 import { cleanName, nameCandidates } from '../utils';
 
@@ -27,6 +27,8 @@ function TextPage() {
   const textId = `${batchId}/${itemId}`;
   const tasks = useTasks();
   const task = useTask(textId);
+  // The others, so going on to the next one is at once.
+  usePrefetchTasks(tasks.data);
 
   const error = tasks.error ?? task.error;
   if (error) {
@@ -39,7 +41,7 @@ function TextPage() {
       </div>
     );
   }
-  if (!tasks.data || !task.data) return <div className="p-8 text-sm text-gray-500">Loading text…</div>;
+  if (!tasks.data || !task.data) return <LoadingSkeleton />;
   if (!tasks.data.some((t) => t.id === textId)) {
     return (
       <div className="p-8 text-sm text-gray-700">
@@ -63,6 +65,17 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   const predicted = candidates[0]?.name ?? '';
 
   const [tab, setTab] = useState<SourceTab>('text');
+  // Focus mode of the versions: the BDRC page takes all the room on the left.
+  const [focus, setFocus] = useState(false);
+  const focused = focus && tab === 'versions';
+  useEffect(() => {
+    if (!focused) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFocus(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [focused]);
   const [versionId, setVersionId] = useState<string | null>(null);
   const [evidence, setEvidence] = useState(
     () => task.extractedNames.find((n) => n.versionId == null)?.evidence ?? null,
@@ -111,7 +124,7 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   return (
     // 65px: the navigation bar and its border.
     <div className="flex min-h-[calc(100dvh-65px)] flex-col bg-white text-base lg:h-[calc(100dvh-65px)]">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-200 px-4 py-2">
+      <header className={focused ? 'hidden' : 'flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-200 px-4 py-2'}>
         <Link to={ROOT} className="inline-flex shrink-0 items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
           <ArrowLeft className="h-4 w-4" /> My texts
         </Link>
@@ -141,6 +154,8 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
           <SourceViewer
             tab={tab}
             onTabChange={setTab}
+            focus={focus}
+            onFocusChange={setFocus}
             task={task}
             versionId={versionId}
             onVersionChange={setVersionId}
@@ -178,6 +193,35 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The page's shape while a text loads (a long text takes a few seconds the first time). */
+function LoadingSkeleton() {
+  const bar = 'animate-pulse rounded bg-gray-200';
+  return (
+    <div role="status" aria-label="Loading text" className="flex min-h-[calc(100dvh-65px)] flex-col bg-white lg:h-[calc(100dvh-65px)]">
+      <div className="flex items-center gap-4 border-b border-gray-200 px-4 py-3">
+        <div className={`${bar} h-4 w-20`} />
+        <div className={`${bar} h-5 max-w-md flex-1`} />
+        <div className={`${bar} ml-auto h-7 w-24`} />
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="space-y-4 px-6 py-6">
+          <div className={`${bar} h-8 w-48`} />
+          {[92, 100, 96, 88, 100, 94, 70, 98, 90, 85].map((w, i) => (
+            <div key={i} className={`${bar} mx-auto h-4 max-w-3xl`} style={{ width: `${w}%` }} />
+          ))}
+        </div>
+        <div className="space-y-4 border-t border-gray-200 px-4 py-4 lg:border-l lg:border-t-0">
+          <div className={`${bar} h-28 w-full`} />
+          <div className={`${bar} h-9 w-full`} />
+          <div className={`${bar} h-10 w-full`} />
+          <div className={`${bar} h-24 w-full`} />
+        </div>
+      </div>
+      <span className="sr-only">Loading text…</span>
     </div>
   );
 }

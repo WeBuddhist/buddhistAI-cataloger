@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { BookOpen, Calendar, ChevronLeft, ChevronRight, ExternalLink, Hash, Images, Landmark, Library, Type, User, type LucideIcon } from 'lucide-react';
+import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { BookOpen, Calendar, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ExternalLink, Hash, Images, Landmark, Library, Type, User, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useVersionDetails } from '../hooks';
@@ -29,18 +29,24 @@ export default function Versions({
   versionId,
   onVersionChange,
   onSearchName,
+  focus,
+  onFocusChange,
 }: Readonly<{
   task: AuthorTask;
   /** Null for the first one on BDRC. */
   versionId: string | null;
   onVersionChange: (versionId: string) => void;
   onSearchName: (name: string) => void;
+  /** The BDRC page takes all the room: the text's header, the tabs and the details are hidden. */
+  focus: boolean;
+  onFocusChange: (focus: boolean) => void;
 }>) {
   const { versions } = task;
   const details = useVersionDetails(task);
   const version = versions.find((v) => v.id === versionId && isOnBdrc(v)) ?? versions.find(isOnBdrc);
   // Kept from one version to the next, for comparing their collections.
   const [wanted, setPage] = useState<BdrcPage>('version');
+  const [open, setOpen] = useDetailsOpen();
 
   if (!version) {
     return <p className="p-8 text-center text-sm text-gray-500">No version of this text is on BDRC.</p>;
@@ -71,10 +77,11 @@ export default function Versions({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-4 py-3">
+      {/* Capped, so the BDRC page below always keeps most of the room. */}
+      <div className={focus ? 'hidden' : 'max-h-[45%] shrink-0 overflow-y-auto bg-gray-50 px-4 py-3'}>
         {/* One card, so the details read as those of the version named above them. */}
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs">
-          <div className="flex items-center gap-2 border-b border-gray-100 p-2">
+          <div className={`flex items-center gap-2 p-2 ${open ? 'border-b border-gray-100' : ''}`}>
             <Select value={version.id} onValueChange={(id) => pick(versions.find((v) => v.id === id) ?? version)}>
               <SelectTrigger
                 aria-label="Choose a version"
@@ -123,17 +130,33 @@ export default function Versions({
             <Button variant="outline" size="icon-sm" aria-label="Next version" title="Next version" className="cursor-pointer bg-white" disabled={!next} onClick={() => pick(next)}>
               <ChevronRight />
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={open}
+              aria-controls="version-details"
+              title={open ? 'Hide the details, for more room for the BDRC page' : 'Show the details of this version'}
+              className="cursor-pointer bg-white text-gray-700"
+              onClick={() => setOpen(!open)}
+            >
+              {open ? <ChevronUp /> : <ChevronDown />} <span className="hidden sm:inline">Details</span>
+            </Button>
           </div>
-          <Details
-            version={version}
-            details={details.data?.[version.id]}
-            loading={details.isLoading}
-            failed={details.isError}
-            onSearchName={onSearchName}
-          />
+          {open && (
+            <div id="version-details">
+              <Details
+                version={version}
+                details={details.data?.[version.id]}
+                loading={details.isLoading}
+                failed={details.isError}
+                onSearchName={onSearchName}
+              />
+            </div>
+          )}
         </div>
       </div>
 
+      <PullBar focus={focus} onFocusChange={onFocusChange} />
       <div className="min-h-0 flex-1">
         <BdrcFrame bdrcId={bdrcId} title={`BDRC page ${bdrcId}`}>
           <div className="inline-flex gap-1 rounded-lg border border-gray-200 bg-white p-0.5">
@@ -145,6 +168,9 @@ export default function Versions({
     </div>
   );
 }
+
+// Characters; past this a title would push the other details onto a second line anyway.
+const LONG_TITLE = 40;
 
 function Details({
   version,
@@ -162,9 +188,10 @@ function Details({
   const author = details?.author;
   const found = version.nameInVersion;
   return (
-    <dl className="flex flex-wrap gap-x-8 gap-y-2.5 px-3.5 py-2.5">
+    <dl className="flex flex-wrap items-start gap-x-6 gap-y-2 px-3 py-2">
       {version.title && (
-        <Detail icon={BookOpen} label="Title" wide>
+        // A long title has a line of its own, in full; a short one sits in the row with the rest.
+        <Detail icon={BookOpen} label="Title" wide={version.title.length > LONG_TITLE}>
           <span className="font-monlam text-base">{version.title}</span>
         </Detail>
       )}
@@ -263,6 +290,99 @@ function Detail({ icon: Icon, label, wide, children }: Readonly<{ icon: LucideIc
       >
         {children}
       </dd>
+    </div>
+  );
+}
+
+const DETAILS_KEY = 'author-identification:version-details-open';
+
+/** Whether a version's details are shown, remembered from text to text. Shown at first. */
+function useDetailsOpen(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(DETAILS_KEY) !== 'closed';
+    } catch {
+      return true;
+    }
+  });
+  const change = (next: boolean) => {
+    setOpen(next);
+    try {
+      localStorage.setItem(DETAILS_KEY, next ? 'open' : 'closed');
+    } catch {
+      /* kept for this visit only */
+    }
+  };
+  return [open, change];
+}
+
+// Pixels to drag before focus mode turns on or off; less is a click.
+const PULL = 24;
+
+/**
+ * Between the details and the BDRC page: drag it up (or click it) for focus mode, where the
+ * BDRC page takes all the room; drag it down (or click, or Esc) to bring everything back.
+ * Our page cannot see scrolling inside BDRC's page, so this is done by hand.
+ */
+function PullBar({ focus, onFocusChange }: Readonly<{ focus: boolean; onFocusChange: (focus: boolean) => void }>) {
+  const from = useRef<number | null>(null);
+  const [pull, setPull] = useState(0);
+
+  const down = (e: PointerEvent<HTMLDivElement>) => {
+    from.current = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    if (from.current != null) setPull(e.clientY - from.current);
+  };
+  const up = () => {
+    if (from.current == null) return;
+    from.current = null;
+    setPull(0);
+    if (pull < -PULL) onFocusChange(true);
+    else if (pull > PULL) onFocusChange(false);
+    else if (Math.abs(pull) < 5) onFocusChange(!focus);
+  };
+  const key = (e: KeyboardEvent<HTMLDivElement>) => {
+    const next = { ArrowUp: true, ArrowDown: false, Enter: !focus, ' ': !focus }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    onFocusChange(next);
+  };
+  // Says what letting go will do, while dragging.
+  let hint = focus ? 'Drag down or press Esc to show the details again' : 'Drag up for more room';
+  if (pull < -PULL && !focus) hint = 'Let go for focus mode';
+  if (pull > PULL && focus) hint = 'Let go to show the details';
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={focus}
+      aria-label={focus ? 'Leave focus mode' : 'Focus mode: give the BDRC page all the room'}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onKeyDown={key}
+      className={`group relative flex h-7 shrink-0 cursor-ns-resize touch-none select-none items-center justify-center gap-2 border-y border-gray-200 text-xs transition-colors ${
+        from.current != null ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-700'
+      }`}
+    >
+      {/* While dragging, the BDRC page must not take the pointer. */}
+      {from.current != null && <div className="fixed inset-0 z-10 cursor-ns-resize" />}
+      <span className="h-1 w-10 rounded-full bg-gray-300 group-hover:bg-blue-400" />
+      <span>{hint}</span>
+      {focus && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onFocusChange(false)}
+          className="absolute right-3 cursor-pointer rounded border border-gray-300 bg-white px-2 py-0.5 font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700"
+        >
+          Exit focus
+        </button>
+      )}
     </div>
   );
 }

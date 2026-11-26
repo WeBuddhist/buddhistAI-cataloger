@@ -15,6 +15,8 @@ export default function SourceViewer({
   versionId,
   onVersionChange,
   onSearchName,
+  focus,
+  onFocusChange,
   children,
 }: Readonly<{
   tab: SourceTab;
@@ -24,6 +26,9 @@ export default function SourceViewer({
   versionId: string | null;
   onVersionChange: (versionId: string) => void;
   onSearchName: (name: string) => void;
+  /** Focus mode of the versions: the BDRC page takes all the room. */
+  focus: boolean;
+  onFocusChange: (focus: boolean) => void;
   /** The text. */
   children: ReactNode;
 }>) {
@@ -39,7 +44,7 @@ export default function SourceViewer({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex shrink-0 items-center border-b border-gray-200 px-2">
+      <div className={focus && tab === 'versions' ? 'hidden' : 'flex shrink-0 items-center border-b border-gray-200 px-2'}>
         <div role="tablist" aria-label="Where to look" className="flex shrink-0">
           <button type="button" role="tab" aria-selected={tab === 'text'} onClick={() => onTabChange('text')} className={tabClass(tab === 'text')}>
             Text
@@ -64,7 +69,14 @@ export default function SourceViewer({
       <div className={tab === 'text' ? 'min-h-0 flex-1' : 'hidden'}>{children}</div>
       {opened && (
         <div className={tab === 'versions' ? 'min-h-0 flex-1' : 'hidden'}>
-          <Versions task={task} versionId={versionId} onVersionChange={onVersionChange} onSearchName={onSearchName} />
+          <Versions
+            task={task}
+            versionId={versionId}
+            onVersionChange={onVersionChange}
+            onSearchName={onSearchName}
+            focus={focus}
+            onFocusChange={onFocusChange}
+          />
         </div>
       )}
     </div>

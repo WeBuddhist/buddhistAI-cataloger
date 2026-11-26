@@ -89,6 +89,10 @@ export type SavedAnswer = AuthorAnswer & { savedAt: string };
 /** One of my texts, as listed. */
 export interface TaskSummary {
   id: string;
+  /** BDRC's id of the text (edition); empty if BDRC no longer lists it. */
+  editionId: string;
+  /** The author names BDRC found, as listed. */
+  authorNames: string[];
   title: string;
   versionCount: number;
   extractedNames: ExtractedName[];

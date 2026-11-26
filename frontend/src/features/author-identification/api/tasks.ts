@@ -116,6 +116,8 @@ export async function fetchTasks(): Promise<TaskSummary[]> {
     const id = textIdOf(batch_id, item_id);
     return {
       id,
+      editionId: item?.edition_id ?? '',
+      authorNames: item?.author_names ?? [],
       title: tibetan(item?.edition?.title_bo) ?? item?.edition_id ?? id,
       versionCount: item?.edition?.n_witnesses ?? 0,
       extractedNames: namesOf(item?.edition?.persons, item?.author_names),
@@ -131,10 +133,13 @@ export async function claimTexts(): Promise<{ claimed: number }> {
 }
 
 /** One text of the batch, with its whole text and its versions. */
-export async function fetchTask(id: string): Promise<AuthorTask> {
+export async function fetchTask(id: string, known?: Pick<TaskSummary, 'editionId' | 'title' | 'authorNames'>): Promise<AuthorTask> {
   const [, batchId, itemId] = /^([A-Za-z0-9._-]{1,80})\/(\d+)$/.exec(id) ?? [];
   if (!batchId) throw new Error('Text not found');
-  const item = await request<ApiItem>(`/batches/${encodeURIComponent(batchId)}/items/${itemId}`);
+  // From "My texts" the text's BDRC id is known: one request (of about 4 s) less.
+  const item: Pick<ApiItem, 'edition_id' | 'author_names'> & { title?: string | null } = known
+    ? { edition_id: known.editionId, author_names: known.authorNames, title: known.title }
+    : await request<ApiItem>(`/batches/${encodeURIComponent(batchId)}/items/${itemId}`).then((i) => ({ ...i, title: i.edition?.title_bo }));
   const edition = await request<ApiEdition>(`/editions/${encodeURIComponent(item.edition_id)}`);
   const content = edition.text_bo ?? '';
   const versions = (edition.versions ?? []).map(versionOf);
@@ -147,7 +152,7 @@ export async function fetchTask(id: string): Promise<AuthorTask> {
   return {
     id,
     editionId: edition.edition_id,
-    title: tibetan(edition.title_bo ?? item.edition?.title_bo) ?? edition.edition_id,
+    title: tibetan(edition.title_bo ?? item.title) ?? edition.edition_id,
     content,
     versions,
     extractedNames: [...inText, ...names],

@@ -8,7 +8,7 @@ import { useAuthorIdMe } from '../access/hooks';
 import RequireAccess from '../access/RequireAccess';
 import { isAuthorIdAdmin } from '../access/utils';
 import { skipLabel } from '../guidelines';
-import { useClaimTexts, useTasks } from '../hooks';
+import { useClaimTexts, usePrefetchTasks, useTasks } from '../hooks';
 import type { ExtractedName, SavedAnswer, TaskSummary } from '../types';
 import { dateOf, FIELD, nameCandidates } from '../utils';
 
@@ -48,6 +48,7 @@ export default function Queue() {
 function MyTexts() {
   const me = useAuthorIdMe();
   const tasks = useTasks();
+  usePrefetchTasks(tasks.data);
   // In the URL, so "back" from a text returns to the same tab.
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get('tab') === 'done' ? 'done' : 'todo';
