@@ -9,6 +9,7 @@ import { useUser } from '@/hooks/useUser';
 import { useDuplicates, usePersonSearch, useRemoveDuplicate, useReportDuplicate } from '../hooks';
 import type { BdrcPerson } from '../types';
 import { cleanName, FIELD, reportOfPair } from '../utils';
+import { useT } from '../i18n';
 
 /** Report that a person has a second BDRC id. It is only reported: nothing changes in BDRC. */
 export default function DuplicateDialog({
@@ -23,6 +24,7 @@ export default function DuplicateDialog({
   text: { id: string; title: string };
   onClose: () => void;
 }>) {
+  const t = useT();
   const { user } = useUser();
   const duplicates = useDuplicates();
   const report = useReportDuplicate();
@@ -52,12 +54,12 @@ export default function DuplicateDialog({
         reportedBy: user?.name || user?.email || 'Unknown',
       });
       onClose();
-      toast.success('Duplicate reported', {
+      toast.success(t('duplicate.sent'), {
         position: 'top-center',
-        action: { label: 'Undo', onClick: () => undo.mutate(saved.id) },
+        action: { label: t('duplicate.undo'), onClick: () => undo.mutate(saved.id) },
       });
     } catch {
-      toast.error('Could not send the report. Try again.', { position: 'top-center' });
+      toast.error(t('duplicate.sendFailed'), { position: 'top-center' });
     }
   };
 
@@ -65,43 +67,43 @@ export default function DuplicateDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-xl">
         <div className="border-b border-gray-200 px-5 py-4 pr-12">
-          <DialogTitle className="text-base font-semibold">Report duplicate</DialogTitle>
+          <DialogTitle className="text-base font-semibold">{t('duplicate.title')}</DialogTitle>
           <DialogDescription className="mt-1 text-sm text-gray-600">
-            For one person who has two BDRC IDs. It will be checked. Nothing changes in BDRC.
+            {t('duplicate.description')}
           </DialogDescription>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div>
-            <h3 className="mb-1 text-sm font-medium text-gray-700">This person</h3>
+            <h3 className="mb-1 text-sm font-medium text-gray-700">{t('duplicate.thisPerson')}</h3>
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
               <PersonLines person={person} />
             </div>
           </div>
 
           <div>
-            <h3 className="mb-1 text-sm font-medium text-gray-700">Is the same as</h3>
+            <h3 className="mb-1 text-sm font-medium text-gray-700">{t('duplicate.isSameAs')}</h3>
             <form onSubmit={find} className="flex gap-2">
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                aria-label="Name of the other person"
-                placeholder="Tibetan, Wylie or English"
+                aria-label={t('duplicate.otherName')}
+                placeholder={t('search.placeholder')}
                 className={`h-9 flex-1 font-monlam text-base md:text-base ${FIELD}`}
               />
               <Button type="submit" variant="outline" className="cursor-pointer bg-white" disabled={!cleanName(query)}>
-                <Search /> Find
+                <Search /> {t('search.find')}
               </Button>
             </form>
             <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-gray-200">
               {search.isLoading && (
                 <p className="flex items-center gap-2 px-3 py-3 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Searching BDRC…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t('search.searching')}
                 </p>
               )}
-              {search.isError && <p className="px-3 py-3 text-sm text-red-700">Could not search BDRC. Try again.</p>}
+              {search.isError && <p className="px-3 py-3 text-sm text-red-700">{t('duplicate.searchFailed')}</p>}
               {!search.isLoading && !search.isError && results.length === 0 && (
-                <p className="px-3 py-3 text-sm text-gray-500">Nobody else found. Try another spelling.</p>
+                <p className="px-3 py-3 text-sm text-gray-500">{t('duplicate.nobodyElse')}</p>
               )}
               <ul className="divide-y divide-gray-100">
                 {results.map((p) => (
@@ -126,26 +128,26 @@ export default function DuplicateDialog({
                   disabled={search.isFetchingNextPage}
                   className="w-full cursor-pointer border-t border-gray-100 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-gray-50"
                 >
-                  {search.isFetchingNextPage ? 'Loading…' : 'Show more'}
+                  {search.isFetchingNextPage ? t('common.loading') : t('duplicate.showMore')}
                 </button>
               )}
             </div>
             {known && (
               <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 {known.decision
-                  ? `These two were already checked: ${known.decision.kind === 'same' ? 'same person' : 'different people'}.`
-                  : 'These two were already reported.'}
+                  ? t(known.decision.kind === 'same' ? 'duplicate.checkedSame' : 'duplicate.checkedDifferent')
+                  : t('duplicate.alreadyReported')}
               </p>
             )}
           </div>
 
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-gray-700">Why are they the same person?</span>
+            <span className="mb-1 block font-medium text-gray-700">{t('duplicate.why')}</span>
             <Textarea
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="For example: same teacher, same dates, same works"
+              placeholder={t('duplicate.whyPlaceholder')}
               className={FIELD}
             />
           </label>
@@ -153,10 +155,10 @@ export default function DuplicateDialog({
 
         <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
           <Button variant="outline" className="cursor-pointer bg-white" onClick={onClose}>
-            Cancel
+            {t('duplicate.cancel')}
           </Button>
           <Button className="cursor-pointer bg-blue-600 text-white hover:bg-blue-700" disabled={!ready || report.isPending} onClick={send}>
-            {report.isPending ? 'Sending…' : 'Send report'}
+            {report.isPending ? t('duplicate.sending') : t('duplicate.send')}
           </Button>
         </div>
       </DialogContent>

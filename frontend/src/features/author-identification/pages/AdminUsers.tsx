@@ -7,7 +7,7 @@ import AvatarWrapper from '@/components/AvatarWrapper';
 import { useUser } from '@/hooks/useUser';
 import type { AuthorIdRole, Member, MemberFilter } from '../access/api';
 import { useMembers, useUpdateMember } from '../access/hooks';
-import { ROLE_LABEL } from '../access/utils';
+import { useT } from '../i18n';
 
 const PAGE_SIZE = 20;
 const ROLES: AuthorIdRole[] = ['annotator', 'reviewer', 'admin'];
@@ -17,6 +17,7 @@ const TD = 'px-4 py-3 align-middle sm:px-6';
 // Author Identification's own users page: its access and its role, each changed on its own.
 // Never another tool's role, so one tool's admins are not this one's.
 export default function AdminUsers() {
+  const t = useT();
   const { user: currentUser } = useUser();
   const [draft, setDraft] = useState('');
   const [q, setQ] = useState('');
@@ -30,7 +31,7 @@ export default function AdminUsers() {
     try {
       await update.mutateAsync({ id: user.id, ...body });
     } catch (e) {
-      toast.error(`Could not update ${user.name || user.email}: ${(e as Error).message}`);
+      toast.error(t('users.updateFailed', { name: user.name || user.email, error: (e as Error).message }));
     }
   };
 
@@ -49,7 +50,7 @@ export default function AdminUsers() {
           setPage(1);
         }}
       >
-        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Search by name or email…" className="h-9 sm:w-72" />
+        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t('users.searchPlaceholder')} className="h-9 sm:w-72" />
         <select
           value={role}
           onChange={(e) => {
@@ -58,14 +59,14 @@ export default function AdminUsers() {
           }}
           className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm sm:w-44"
         >
-          <option value="">Everyone</option>
-          <option value="admin">Admins</option>
-          <option value="reviewer">Reviewers</option>
-          <option value="annotator">Annotators</option>
-          <option value="none">No access</option>
+          <option value="">{t('users.everyone')}</option>
+          <option value="admin">{t('users.admins')}</option>
+          <option value="reviewer">{t('users.reviewers')}</option>
+          <option value="annotator">{t('users.annotators')}</option>
+          <option value="none">{t('users.noAccess')}</option>
         </select>
         <Button type="submit" className="h-9 cursor-pointer">
-          Search
+          {t('users.search')}
         </Button>
       </form>
 
@@ -73,10 +74,10 @@ export default function AdminUsers() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className={`${TH} w-full`}>User</th>
-              <th className={TH}>Access</th>
-              <th className={TH}>Role</th>
-              <th className={`${TH} hidden md:table-cell`}>Created</th>
+              <th className={`${TH} w-full`}>{t('users.colUser')}</th>
+              <th className={TH}>{t('users.colAccess')}</th>
+              <th className={TH}>{t('users.colRole')}</th>
+              <th className={`${TH} hidden md:table-cell`}>{t('users.colCreated')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
@@ -91,7 +92,7 @@ export default function AdminUsers() {
             {!members.isLoading && users.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
-                  No users match.
+                  {t('users.noMatch')}
                 </td>
               </tr>
             )}
@@ -118,20 +119,20 @@ export default function AdminUsers() {
                         onChange={(e) => void save(u, { access: e.target.checked })}
                         className="rounded border-gray-300"
                       />
-                      Author Identification
+                      {t('common.toolName')}
                     </label>
                   </td>
                   <td className={`${TD} whitespace-nowrap`}>
                     <select
                       value={u.role}
                       disabled={update.isPending || !u.access || isMe}
-                      title={isMe ? "You can't change your own role" : u.access ? undefined : 'Give access first'}
+                      title={isMe ? t('users.ownRole') : u.access ? undefined : t('users.giveAccessFirst')}
                       onChange={(e) => void save(u, { role: e.target.value as AuthorIdRole })}
                       className="rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
                     >
                       {ROLES.map((r) => (
                         <option key={r} value={r}>
-                          {ROLE_LABEL[r]}
+                          {t(`roles.${r}`)}
                         </option>
                       ))}
                     </select>

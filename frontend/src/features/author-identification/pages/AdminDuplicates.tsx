@@ -9,16 +9,18 @@ import { useDecideDuplicate, useDuplicates } from '../hooks';
 import SampleNotice from '../sample/SampleNotice';
 import type { BdrcPerson, DuplicateDecision, DuplicateReport } from '../types';
 import { bdrcPage, dateOf, FIELD } from '../utils';
+import { useT } from '../i18n';
 
 type Tab = 'open' | 'checked';
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'open', label: 'To check' },
-  { key: 'checked', label: 'Checked' },
+  { key: 'open', label: 'dups.toCheck' },
+  { key: 'checked', label: 'dups.checked' },
 ];
 
 /** People reported to have two BDRC ids, to be checked one by one. Nothing here changes BDRC. */
 export default function AdminDuplicates() {
+  const t = useT();
   const duplicates = useDuplicates();
   const [tab, setTab] = useState<Tab>('open');
   const reports = duplicates.data ?? [];
@@ -30,11 +32,11 @@ export default function AdminDuplicates() {
   return (
     <div className="py-6">
       <p className="mb-4 text-sm text-gray-600">
-        People reported to have two BDRC IDs. Check each case, then mark it here. Nothing changes in BDRC.
+        {t('dups.intro')}
       </p>
       <SampleNotice kind="reports" canClear={reports.length > 1 || lists.checked.length > 0} />
 
-      <div className="mb-3 inline-flex rounded-md bg-gray-100 p-1" role="tablist" aria-label="Duplicates">
+      <div className="mb-3 inline-flex rounded-md bg-gray-100 p-1" role="tablist" aria-label={t('admin.nav.duplicates')}>
         {TABS.map(({ key, label }) => (
           <button
             key={key}
@@ -46,20 +48,20 @@ export default function AdminDuplicates() {
               tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            {label} <span className="tabular-nums text-gray-500">{lists[key].length}</span>
+            {t(label)} <span className="tabular-nums text-gray-500">{lists[key].length}</span>
           </button>
         ))}
       </div>
 
       {duplicates.error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          Could not load the reports: {duplicates.error.message}
+          {t('dups.loadFailed', { error: duplicates.error.message })}
         </div>
       )}
       {duplicates.isLoading && <div className="h-40 animate-pulse rounded-lg bg-gray-100" />}
       {duplicates.isSuccess && lists[tab].length === 0 && (
         <p className="rounded-lg border border-gray-200 bg-white py-12 text-center text-sm text-gray-500">
-          {tab === 'open' ? 'No reports to check.' : 'No reports checked yet.'}
+          {t(tab === 'open' ? 'dups.noneToCheck' : 'dups.noneChecked')}
         </p>
       )}
       <ul className="space-y-4">
@@ -72,17 +74,18 @@ export default function AdminDuplicates() {
 }
 
 function Report({ report }: Readonly<{ report: DuplicateReport }>) {
+  const t = useT();
   const { user } = useUser();
   const decide = useDecideDuplicate();
   const [note, setNote] = useState('');
   const { decision } = report;
 
   const save = async (kind: DuplicateDecision | null) => {
-    const by = user?.name || user?.email || 'Unknown';
+    const by = user?.name || user?.email || t('dups.unknown');
     try {
       await decide.mutateAsync({ id: report.id, decision: kind && { kind, note: note.trim(), by } });
     } catch {
-      toast.error('Could not save. Try again.');
+      toast.error(t('dups.saveFailed'));
     }
   };
 
@@ -96,7 +99,7 @@ function Report({ report }: Readonly<{ report: DuplicateReport }>) {
       <div className="border-t border-gray-200 px-5 py-3 text-sm">
         <p className="whitespace-pre-wrap break-words text-gray-900">{report.reason}</p>
         <p className="mt-1 text-xs text-gray-500">
-          {report.reportedBy} · {dateOf(report.reportedAt)} · from{' '}
+          {report.reportedBy} · {dateOf(report.reportedAt)} · {t('dups.from')}{' '}
           <Link to={`/author-identification/${report.text.id}`} className="font-monlam text-sm text-blue-600 hover:underline">
             {report.text.title}
           </Link>
@@ -110,14 +113,14 @@ function Report({ report }: Readonly<{ report: DuplicateReport }>) {
                 decision.kind === 'same' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
               }`}
             >
-              {decision.kind === 'same' ? 'Same person' : 'Different people'}
+              {t(decision.kind === 'same' ? 'dups.same' : 'dups.different')}
             </span>
             <span className="min-w-0 flex-1 break-words text-sm text-gray-600">
               {decision.by} · {dateOf(decision.at)}
               {decision.note && ` · ${decision.note}`}
             </span>
             <Button variant="outline" size="sm" className="cursor-pointer bg-white" disabled={decide.isPending} onClick={() => save(null)}>
-              Check again
+              {t('dups.checkAgain')}
             </Button>
           </>
         ) : (
@@ -125,15 +128,15 @@ function Report({ report }: Readonly<{ report: DuplicateReport }>) {
             <Input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              aria-label="Note"
-              placeholder="Note (optional)"
+              aria-label={t('dups.note')}
+              placeholder={t('dups.noteOptional')}
               className={`h-9 min-w-48 flex-1 ${FIELD}`}
             />
             <Button variant="outline" className="cursor-pointer bg-white" disabled={decide.isPending} onClick={() => save('different')}>
-              <X /> Different people
+              <X /> {t('dups.different')}
             </Button>
             <Button className="cursor-pointer bg-green-600 text-white hover:bg-green-700" disabled={decide.isPending} onClick={() => save('same')}>
-              <Check /> Same person
+              <Check /> {t('dups.same')}
             </Button>
           </>
         )}
@@ -143,6 +146,7 @@ function Report({ report }: Readonly<{ report: DuplicateReport }>) {
 }
 
 function Person({ person }: Readonly<{ person: BdrcPerson }>) {
+  const t = useT();
   return (
     <div className="min-w-0 px-5 py-4">
       <div className="break-words font-monlam text-lg leading-loose text-gray-900">{person.nameBo}</div>
@@ -155,7 +159,7 @@ function Person({ person }: Readonly<{ person: BdrcPerson }>) {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline"
         >
-          Open on BDRC <ExternalLink className="h-3.5 w-3.5" />
+          {t('dups.openOnBdrc')} <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
     </div>

@@ -4,19 +4,20 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { CONFIDENCE, SKIP_REASONS, type SkipReason } from '../guidelines';
+import { CONFIDENCE, confidenceHint, skipLabel, SKIP_REASONS, type SkipReason } from '../guidelines';
 import { useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
 import { answerLabel, cleanName, FIELD, sameName } from '../utils';
 import GuidelinesLink from './GuidelinesLink';
 import PersonSearch from './PersonSearch';
+import { useT } from '../i18n';
 
 export type AnswerKind = AuthorAnswer['kind'];
 
 const KINDS: { kind: AnswerKind; label: string }[] = [
-  { kind: 'person', label: 'In BDRC' },
-  { kind: 'not_in_bdrc', label: 'Not in BDRC' },
-  { kind: 'skipped', label: 'Skip' },
+  { kind: 'person', label: 'answer.inBdrc' },
+  { kind: 'not_in_bdrc', label: 'answer.notInBdrc' },
+  { kind: 'skipped', label: 'answer.skip' },
 ];
 
 const LINK = 'cursor-pointer font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline';
@@ -75,6 +76,7 @@ export default function AuthorPanel({
   /** To the next text; undefined on the last. */
   onNext?: () => void;
 }>) {
+  const t = useT();
   const save = useSaveAnswer();
   const [person, setPerson] = useState<BdrcPerson | null>(savedPerson(saved));
   const [name, setName] = useState(saved?.kind === 'not_in_bdrc' ? saved.name : '');
@@ -105,22 +107,22 @@ export default function AuthorPanel({
   const answer = draft();
   // What is still missing, said on the button's hover.
   let missing = '';
-  if (kind === 'skipped' && !reason) missing = 'Choose a reason';
-  else if (kind === 'person' && !person) missing = 'Choose a person';
-  else if (kind === 'not_in_bdrc' && !cleanName(name)) missing = 'Write the name';
-  else if (kind !== 'skipped' && confidence == null) missing = 'Choose how sure you are';
+  if (kind === 'skipped' && !reason) missing = t('panel.missingReason');
+  else if (kind === 'person' && !person) missing = t('panel.missingPerson');
+  else if (kind === 'not_in_bdrc' && !cleanName(name)) missing = t('panel.missingName');
+  else if (kind !== 'skipped' && confidence == null) missing = t('panel.missingConfidence');
 
   const submit = async () => {
     if (!answer) return;
     try {
       await save.mutateAsync({ taskId, editionId, answer });
     } catch (e) {
-      toast.error(`Could not save the answer: ${e instanceof Error ? e.message : 'try again'}`, { position: 'top-center' });
+      toast.error(t('panel.saveFailed', { error: e instanceof Error ? e.message : t('panel.tryAgain') }), { position: 'top-center' });
       return;
     }
     if (saved) {
       onEditingChange(false);
-      toast.success('Answer changed', { position: 'top-center' });
+      toast.success(t('panel.changed'), { position: 'top-center' });
     } else {
       onSaved();
     }
@@ -129,28 +131,28 @@ export default function AuthorPanel({
   if (saved && !editing) {
     const sure = savedConfidence(saved);
     return (
-      <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
+      <section aria-label={t('panel.author')} className="flex h-full min-h-0 flex-col bg-white">
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
           <div className="flex items-center gap-2 text-sm font-medium text-green-700">
-            <Check className="h-4 w-4" /> Answer saved
+            <Check className="h-4 w-4" /> {t('panel.saved')}
           </div>
           <div>
             <div className="break-words font-monlam text-lg leading-loose text-gray-900">{answerLabel(saved)}</div>
-            {sure && <p className="mt-1 text-sm text-gray-600">Confidence: {sure} of 5</p>}
+            {sure && <p className="mt-1 text-sm text-gray-600">{t('panel.confidenceOf', { n: sure })}</p>}
             {saved.note && (
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
-                <span className="font-medium text-gray-700">Note:</span> {saved.note}
+                <span className="font-medium text-gray-700">{t('panel.noteLabel')}</span> {saved.note}
               </p>
             )}
           </div>
         </div>
         <div className="flex gap-2 border-t border-gray-200 px-4 py-2.5">
           <Button variant="outline" className="h-10 flex-1 cursor-pointer bg-white" onClick={() => onEditingChange(true)}>
-            Change answer
+            {t('panel.changeAnswer')}
           </Button>
           {onNext && (
             <Button variant="outline" className="h-10 flex-1 cursor-pointer bg-white" onClick={onNext}>
-              Next text <ArrowRight />
+              {t('panel.nextText')} <ArrowRight />
             </Button>
           )}
         </div>
@@ -159,7 +161,7 @@ export default function AuthorPanel({
   }
 
   return (
-    <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
+    <section aria-label={t('panel.author')} className="flex h-full min-h-0 flex-col bg-white">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
         <NamesFound
           candidates={candidates}
@@ -173,10 +175,10 @@ export default function AuthorPanel({
 
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-gray-900">Author</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{t('panel.author')}</h2>
             <GuidelinesLink />
           </div>
-          <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Author">
+          <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label={t('panel.author')}>
             {KINDS.map((k) => (
               <button
                 key={k.kind}
@@ -188,7 +190,7 @@ export default function AuthorPanel({
                   kind === k.kind ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                {k.label}
+                {t(k.label)}
               </button>
             ))}
           </div>
@@ -208,17 +210,17 @@ export default function AuthorPanel({
           {kind === 'not_in_bdrc' && (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
-                For an author who is not in BDRC. Try other spellings in the search first. In the note, add anything that could help: dates, teacher, monastery, other names.
+                {t('panel.notInBdrcHelp')}
               </p>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-gray-700">Author’s name in Tibetan</span>
+                <span className="mb-1 block font-medium text-gray-700">{t('panel.nameInTibetan')}</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-10 font-monlam text-base md:text-base ${FIELD}`} />
               </label>
             </div>
           )}
           {kind === 'skipped' && (
             <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm text-gray-600">Why are you skipping this text?</legend>
+              <legend className="mb-2 text-sm text-gray-600">{t('panel.whySkip')}</legend>
               {SKIP_REASONS.map((r) => (
                 <label
                   key={r.id}
@@ -233,7 +235,7 @@ export default function AuthorPanel({
                     onChange={() => setReason(r.id)}
                     className="h-4 w-4 shrink-0 accent-blue-600"
                   />
-                  {r.label}
+                  {skipLabel(r.id)}
                 </label>
               ))}
             </fieldset>
@@ -247,13 +249,13 @@ export default function AuthorPanel({
           <div className="text-sm">
             <div className="mb-1 flex items-center justify-between">
               <label htmlFor="author-note" className="font-medium text-gray-700">
-                Note <span className="font-normal text-gray-500">(optional)</span>
+                {t('panel.note')} <span className="font-normal text-gray-500">{t('panel.optional')}</span>
               </label>
               <button
                 type="button"
                 onClick={closeNote}
-                aria-label="Remove the note"
-                title="Remove the note"
+                aria-label={t('panel.removeNote')}
+                title={t('panel.removeNote')}
                 className="cursor-pointer rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
               >
                 <X className="h-4 w-4" />
@@ -264,19 +266,19 @@ export default function AuthorPanel({
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Only about the author: other possible authors, “Duplicate of this author: P…”, dates…"
+              placeholder={t('panel.notePlaceholder')}
               className={FIELD}
             />
           </div>
         ) : (
           <button type="button" onClick={() => setNoteOpen(true)} className={`inline-flex items-center gap-1 text-sm ${LINK}`}>
-            <Plus className="h-3.5 w-3.5" aria-hidden /> Add a note
+            <Plus className="h-3.5 w-3.5" aria-hidden /> {t('panel.addNote')}
           </button>
         )}
         <div className="flex gap-2">
           {saved && (
             <Button variant="outline" className="h-10 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
-              Cancel
+              {t('panel.cancel')}
             </Button>
           )}
           <Button
@@ -285,7 +287,7 @@ export default function AuthorPanel({
             title={missing || undefined}
             onClick={submit}
           >
-            {save.isPending ? 'Saving…' : kind === 'skipped' ? 'Skip this text' : 'Submit'}
+            {save.isPending ? t('panel.saving') : t(kind === 'skipped' ? 'panel.skipText' : 'panel.submit')}
           </Button>
         </div>
       </div>
@@ -295,33 +297,34 @@ export default function AuthorPanel({
 
 /** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. One slim row. */
 function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; onChange: (value: number) => void }>) {
-  const hint = CONFIDENCE.find((c) => c.value === value)?.hint;
+  const t = useT();
+  const hint = value == null ? '' : confidenceHint(value);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span id="confidence-label" className="text-sm font-medium text-gray-700">
-        How sure are you?
+        {t('panel.howSure')}
       </span>
       <div role="radiogroup" aria-labelledby="confidence-label" className="inline-flex overflow-hidden rounded-md border border-gray-300">
-        {CONFIDENCE.map((c) => {
-          const on = value === c.value;
+        {CONFIDENCE.map((level) => {
+          const on = value === level;
           return (
             <button
-              key={c.value}
+              key={level}
               type="button"
               role="radio"
               aria-checked={on}
-              title={c.hint || undefined}
-              onClick={() => onChange(c.value)}
+              title={confidenceHint(level) || undefined}
+              onClick={() => onChange(level)}
               className={`h-7 w-8 cursor-pointer border-l border-gray-300 text-xs font-semibold tabular-nums transition-colors first:border-l-0 ${
                 on ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700'
               }`}
             >
-              {c.value}
+              {level}
             </button>
           );
         })}
       </div>
-      <span className="min-w-0 text-xs text-gray-500">{value == null ? '1 only clues · 5 clearly written' : hint || `${value} of 5`}</span>
+      <span className="min-w-0 text-xs text-gray-500">{value == null ? t('panel.scaleHint') : hint || t('panel.levelOf', { n: value })}</span>
     </div>
   );
 }
@@ -344,13 +347,14 @@ function NamesFound({
   onShowVersion: (versionId: string) => void;
   onShowVersions: () => void;
 }>) {
+  const t = useT();
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
       <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
         <ScrollText className="h-4 w-4 text-gray-500" aria-hidden />
-        <h2 className="text-sm font-semibold text-gray-900">Names found in the texts</h2>
+        <h2 className="text-sm font-semibold text-gray-900">{t('names.title')}</h2>
         {candidates.length > 1 && (
-          <span className="ml-auto rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">{candidates.length} different names</span>
+          <span className="ml-auto rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">{t('names.different', { count: candidates.length })}</span>
         )}
       </div>
       {candidates.length > 0 ? (
@@ -368,13 +372,13 @@ function NamesFound({
               />
             ))}
           </ul>
-          <p className="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500">A name found is not always the author. Please check.</p>
+          <p className="border-t border-gray-100 px-3 py-1.5 text-xs text-gray-500">{t('names.caution')}</p>
         </>
       ) : (
         <p className="px-3 py-2.5 text-sm text-gray-600">
-          No name was found. Look for one at the end of the text, or{' '}
+          {t('names.none')}{' '}
           <button type="button" onClick={onShowVersions} className={LINK}>
-            check the versions
+            {t('names.checkVersions')}
           </button>
           .
         </p>
@@ -403,6 +407,7 @@ function Candidate({
   onShowEvidence: (evidence: string) => void;
   onShowVersion: (versionId: string) => void;
 }>) {
+  const t = useT();
   const { name, found } = candidate;
   // A quote around the name; not the name itself again.
   const evidence = found.find((f) => f.evidence && !sameName(f.evidence, name))?.evidence;
@@ -416,8 +421,8 @@ function Candidate({
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 break-words font-monlam text-lg leading-loose text-gray-900">{name}</span>
         {!searched && (
-          <Button variant="outline" size="sm" className="mt-1 h-7 shrink-0 cursor-pointer bg-white text-xs" aria-label={`Search ${name}`} onClick={onSearch}>
-            <Search /> Search
+          <Button variant="outline" size="sm" className="mt-1 h-7 shrink-0 cursor-pointer bg-white text-xs" aria-label={t('names.searchName', { name })} onClick={onSearch}>
+            <Search /> {t('names.search')}
           </Button>
         )}
       </div>
@@ -428,17 +433,17 @@ function Candidate({
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {inText && (
-          <button type="button" className={IN_TEXT} title="Show it in the text" onClick={() => onShowEvidence(inText.evidence ?? '')}>
-            In the text
+          <button type="button" className={IN_TEXT} title={t('names.showInText')} onClick={() => onShowEvidence(inText.evidence ?? '')}>
+            {t('names.inText')}
           </button>
         )}
-        {inVersions.length > 0 && <span className="text-xs text-gray-500">{inText ? 'and written in' : 'Written in'}</span>}
+        {inVersions.length > 0 && <span className="text-xs text-gray-500">{t(inText ? 'names.andWrittenIn' : 'names.writtenIn')}</span>}
         {inVersions.map((v) => (
-          <button key={v.id} type="button" className={IN_VERSION} title="Open this version" onClick={() => onShowVersion(v.id)}>
-            Version {v.number}
+          <button key={v.id} type="button" className={IN_VERSION} title={t('names.openVersion')} onClick={() => onShowVersion(v.id)}>
+            {t('names.version', { n: v.number })}
           </button>
         ))}
-        {!inText && inVersions.length > 0 && <span className="text-xs text-gray-500">(not in the text itself)</span>}
+        {!inText && inVersions.length > 0 && <span className="text-xs text-gray-500">{t('names.notInText')}</span>}
       </div>
     </li>
   );

@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Check, Copy } from 'lucide-react';
 import RequireAccess from '../access/RequireAccess';
-import { CONFIDENCE, SKIP_REASONS } from '../guidelines';
+import { CONFIDENCE, skipLabel, SKIP_REASONS } from '../guidelines';
+import { Trans } from 'react-i18next';
+import { useT } from '../i18n';
 
 const ROOT = '/author-identification';
 
@@ -18,6 +20,7 @@ function useFrom(): string | null {
  * its own tab from a text; "Back to the text" closes that tab so the text is as it was left.
  */
 export default function Guidelines() {
+  const t = useT();
   const from = useFrom();
   // Opened from the tool in a new tab: closing it returns to the text, as it was left.
   const canClose = from != null && window.opener != null;
@@ -26,52 +29,51 @@ export default function Guidelines() {
       <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         {canClose ? (
           <button type="button" onClick={() => window.close()} className="inline-flex cursor-pointer items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="h-4 w-4" /> Back to the text
+            <ArrowLeft className="h-4 w-4" /> {t('guide.backToText')}
           </button>
         ) : (
           <Link to={from ?? ROOT} className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="h-4 w-4" /> {from ? 'Back to the text' : 'My texts'}
+            <ArrowLeft className="h-4 w-4" /> {t(from ? 'guide.backToText' : 'common.myTexts')}
           </Link>
         )}
-        <h1 className="mt-3 text-2xl font-semibold text-gray-900">Annotation guideline</h1>
-        <p className="mt-1 text-sm text-gray-500">Author Identification · 25 November 2026 · Kaldan</p>
+        <h1 className="mt-3 text-2xl font-semibold text-gray-900">{t('guide.title')}</h1>
+        <p className="mt-1 text-sm text-gray-500">{t('guide.byline')}</p>
 
-        <Section title="Who is the author">
+        <Section title={t('guide.section.who')}>
           <Rule n={1}>
-            Choose <b>only one</b> author for each text.
+            <Trans t={t} i18nKey="guide.r1" components={{ b: <b /> }} />
           </Rule>
           <Rule n={2}>
-            <b>Commentary:</b> the author is the person who wrote the commentary, not the author of the original text.
+            <Trans t={t} i18nKey="guide.r2" components={{ b: <b /> }} />
           </Rule>
           <Rule n={3}>
-            <b>Terma:</b> the author is the tertön.
+            <Trans t={t} i18nKey="guide.r3" components={{ b: <b /> }} />
           </Rule>
           <Rule n={4}>
-            <b>No author, only a scribe (transcriber) named:</b> if you think the scribe is the author, choose them. In the note, write:
+            <Trans t={t} i18nKey="guide.r4" components={{ b: <b /> }} />
             <Phrase>This person is named as the transcriber.</Phrase>
           </Rule>
-          <Rule n={5}>Choose the author from the BDRC list.</Rule>
+          <Rule n={5}>{t('guide.r5')}</Rule>
           <Rule n={6}>
-            <b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:
+            <Trans t={t} i18nKey="guide.r6" components={{ b: <b /> }} />
             <Phrase>Duplicate of this author: [person ID]</Phrase>
           </Rule>
           <Rule n={7}>
-            <b>Author not in the list:</b> type the name yourself. In the note, add anything that could help, such as dates, teacher, monastery, or
-            other names.
+            <Trans t={t} i18nKey="guide.r7" components={{ b: <b /> }} />
           </Rule>
           <Rule n={8}>
-            <b>More than one possible author:</b> choose only the one you are 100% sure of. Write the other names in the note.
+            <Trans t={t} i18nKey="guide.r8" components={{ b: <b /> }} />
           </Rule>
         </Section>
 
-        <Section title="Confidence and notes">
+        <Section title={t('guide.section.confidence')}>
           <Rule n={9}>
-            Every time, give a <b>confidence rating</b>. In the tool it is 1 to 5:
+            <Trans t={t} i18nKey="guide.r9" components={{ b: <b /> }} />
             <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
               {[
-                { level: 'High', value: 5, text: 'The name is clearly written in the text.' },
-                { level: 'Medium', value: 3, text: 'You are fairly sure.' },
-                { level: 'Low', value: 1, text: 'You only have clues.' },
+                { level: t('guide.high'), value: 5, text: t('guide.highText') },
+                { level: t('guide.medium'), value: 3, text: t('guide.mediumText') },
+                { level: t('guide.low'), value: 1, text: t('guide.lowText') },
               ].map((c) => (
                 <div key={c.level} className="rounded-md border border-gray-200 bg-white px-3 py-2">
                   <div className="flex items-center gap-2">
@@ -82,18 +84,18 @@ export default function Guidelines() {
                 </div>
               ))}
             </div>
-            <p className="mt-1.5 text-xs text-gray-500">In the tool, 2 and 4 are in between ({CONFIDENCE.length} levels in all).</p>
+            <p className="mt-1.5 text-xs text-gray-500">{t('guide.between', { count: CONFIDENCE.length })}</p>
           </Rule>
-          <Rule n={10}>You can leave the note box empty. Only use it for information about the author.</Rule>
+          <Rule n={10}>{t('guide.r10')}</Rule>
         </Section>
 
-        <Section title="Can’t decide?">
+        <Section title={t('guide.section.skip')}>
           <Rule n={11}>
-            Press <b>Skip</b> and choose a reason:
+            <Trans t={t} i18nKey="guide.r11" components={{ b: <b /> }} />
             <ul className="mt-2 space-y-1">
               {SKIP_REASONS.map((r) => (
                 <li key={r.id} className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800">
-                  {r.label}
+                  {skipLabel(r.id)}
                 </li>
               ))}
             </ul>
@@ -126,6 +128,7 @@ function Rule({ n, children }: Readonly<{ n: number; children: ReactNode }>) {
 
 /** A note wording to use as is, with a button to copy it. */
 function Phrase({ children }: Readonly<{ children: string }>) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -144,7 +147,7 @@ function Phrase({ children }: Readonly<{ children: string }>) {
         onClick={() => void copy()}
         className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
       >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? 'Copied' : 'Copy'}
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {t(copied ? 'common.copied' : 'common.copy')}
       </button>
     </span>
   );

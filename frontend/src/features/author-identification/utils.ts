@@ -1,6 +1,7 @@
 import { fromWylie } from 'jsewts';
 import { getBdrclink } from '@/lib/bdrclink';
 import { skipLabel } from './guidelines';
+import { tr } from './i18n';
 import type { AuthorAnswer, DuplicateReport, ExtractedName, NameCandidate, TextVersion } from './types';
 
 const TIBETAN = /[ༀ-࿿]/;
@@ -65,9 +66,9 @@ export function nameParts(name: string): string[] {
 }
 
 export function answerLabel(answer: AuthorAnswer): string {
-  if (answer.kind === 'person') return `${answer.name} · ${answer.personId}`;
-  if (answer.kind === 'not_in_bdrc') return `${answer.name} · not in BDRC`;
-  return `Skipped: ${skipLabel(answer.reason)}`;
+  if (answer.kind === 'person') return tr('answer.personLabel', { name: answer.name, id: answer.personId });
+  if (answer.kind === 'not_in_bdrc') return tr('answer.notInBdrcLabel', { name: answer.name });
+  return tr('answer.skippedLabel', { reason: skipLabel(answer.reason) });
 }
 
 export const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });

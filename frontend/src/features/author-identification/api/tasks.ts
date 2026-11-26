@@ -6,6 +6,7 @@ import { fetchWithAccessToken } from '@/lib/fetchWithAccessToken';
 import type { AuthorAnswer, AuthorTask, ExtractedName, SavedAnswer, TaskSummary, TextVersion } from '../types';
 import { isSkipReason } from '../guidelines';
 import { cleanName, findName, hasTibetan, wylieToTibetan } from '../utils';
+import { tr } from '../i18n';
 
 const BASE = `${API_URL}/author-identification`;
 
@@ -52,8 +53,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* not JSON */
     }
-    if (res.status === 404) detail = 'Text not found';
-    if (res.status === 410) detail = 'This text was replaced by a newer one at BDRC';
+    if (res.status === 404) detail = tr('errors.notFound');
+    if (res.status === 410) detail = tr('errors.replaced');
     throw new Error(detail || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
@@ -135,7 +136,7 @@ export async function claimTexts(): Promise<{ claimed: number }> {
 /** One text of the batch, with its whole text and its versions. */
 export async function fetchTask(id: string, known?: Pick<TaskSummary, 'editionId' | 'title' | 'authorNames'>): Promise<AuthorTask> {
   const [, batchId, itemId] = /^([A-Za-z0-9._-]{1,80})\/(\d+)$/.exec(id) ?? [];
-  if (!batchId) throw new Error('Text not found');
+  if (!batchId) throw new Error(tr('errors.notFound'));
   // From "My texts" the text's BDRC id is known: one request (of about 4 s) less.
   const item: Pick<ApiItem, 'edition_id' | 'author_names'> & { title?: string | null } = known
     ? { edition_id: known.editionId, author_names: known.authorNames, title: known.title }

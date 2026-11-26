@@ -10,6 +10,7 @@ import TextView from '../components/TextView';
 import { usePrefetchTasks, useTask, useTasks } from '../hooks';
 import type { AuthorTask, TaskSummary } from '../types';
 import { cleanName, nameCandidates } from '../utils';
+import { useT } from '../i18n';
 
 const ROOT = '/author-identification';
 
@@ -23,6 +24,7 @@ export default function Workspace() {
 
 function TextPage() {
   // A text is a BDRC batch item: /author-identification/<batch>/<item>.
+  const t = useT();
   const { batchId = '', itemId = '' } = useParams<{ batchId: string; itemId: string }>();
   const textId = `${batchId}/${itemId}`;
   const tasks = useTasks();
@@ -34,20 +36,20 @@ function TextPage() {
   if (error) {
     return (
       <div className="p-8 text-sm text-red-700">
-        Could not load this text: {error.message}.{' '}
+        {t('workspace.loadFailed', { error: error.message })}{' '}
         <Link to={ROOT} className="underline">
-          Back to my texts
+          {t('workspace.backToList')}
         </Link>
       </div>
     );
   }
   if (!tasks.data || !task.data) return <LoadingSkeleton />;
-  if (!tasks.data.some((t) => t.id === textId)) {
+  if (!tasks.data.some((x) => x.id === textId)) {
     return (
       <div className="p-8 text-sm text-gray-700">
-        This text is not in your list.{' '}
+        {t('workspace.notYours')}{' '}
         <Link to={ROOT} className="text-blue-600 underline">
-          Back to my texts
+          {t('workspace.backToList')}
         </Link>
       </div>
     );
@@ -58,8 +60,9 @@ function TextPage() {
 }
 
 function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: TaskSummary[] }>) {
+  const t = useT();
   const navigate = useNavigate();
-  const index = tasks.findIndex((t) => t.id === task.id);
+  const index = tasks.findIndex((x) => x.id === task.id);
   const saved = tasks[index]?.answer ?? null;
   const candidates = useMemo(() => nameCandidates(task.extractedNames), [task.extractedNames]);
   const predicted = candidates[0]?.name ?? '';
@@ -112,10 +115,10 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   // On to the next text without an answer, from here and then from the top; the list when
   // that was the last one.
   const afterFirstAnswer = () => {
-    const open = [...tasks.slice(index + 1), ...tasks.slice(0, index)].find((t) => !t.answer && !t.completed);
+    const open = [...tasks.slice(index + 1), ...tasks.slice(0, index)].find((x) => !x.answer && !x.completed);
     if (open) goTo(open.id);
     else navigate(ROOT);
-    toast.success(open ? 'Answer saved' : 'Answer saved. That was your last text.', {
+    toast.success(t(open ? 'workspace.saved' : 'workspace.savedLast'), {
       // Not at the bottom right, where it would cover Submit on the next text.
       position: 'top-center',
     });
@@ -126,24 +129,24 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
     <div className="flex min-h-[calc(100dvh-65px)] flex-col bg-white text-base lg:h-[calc(100dvh-65px)]">
       <header className={focused ? 'hidden' : 'flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-200 px-4 py-2'}>
         <Link to={ROOT} className="inline-flex shrink-0 items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
-          <ArrowLeft className="h-4 w-4" /> My texts
+          <ArrowLeft className="h-4 w-4" /> {t('common.myTexts')}
         </Link>
         <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
           <h1 className="truncate font-monlam text-base leading-loose text-gray-900" title={task.title}>
             {task.title}
           </h1>
-          <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600" title="BDRC id of this text">
+          <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600" title={t('workspace.bdrcId')}>
             {task.editionId}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-sm tabular-nums text-gray-500">
-            {index + 1} of {tasks.length}
+            {t('workspace.position', { n: index + 1, total: tasks.length })}
           </span>
-          <Button variant="outline" size="icon-sm" aria-label="Previous text" title="Previous text" className="cursor-pointer bg-white" disabled={!prevId} onClick={() => goTo(prevId)}>
+          <Button variant="outline" size="icon-sm" aria-label={t('workspace.previous')} title={t('workspace.previous')} className="cursor-pointer bg-white" disabled={!prevId} onClick={() => goTo(prevId)}>
             <ChevronLeft />
           </Button>
-          <Button variant="outline" size="icon-sm" aria-label="Next text" title="Next text" className="cursor-pointer bg-white" disabled={!nextId} onClick={() => goTo(nextId)}>
+          <Button variant="outline" size="icon-sm" aria-label={t('workspace.next')} title={t('workspace.next')} className="cursor-pointer bg-white" disabled={!nextId} onClick={() => goTo(nextId)}>
             <ChevronRight />
           </Button>
         </div>
@@ -199,9 +202,10 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
 
 /** The page's shape while a text loads (a long text takes a few seconds the first time). */
 function LoadingSkeleton() {
+  const t = useT();
   const bar = 'animate-pulse rounded bg-gray-200';
   return (
-    <div role="status" aria-label="Loading text" className="flex min-h-[calc(100dvh-65px)] flex-col bg-white lg:h-[calc(100dvh-65px)]">
+    <div role="status" aria-label={t('workspace.loading')} className="flex min-h-[calc(100dvh-65px)] flex-col bg-white lg:h-[calc(100dvh-65px)]">
       <div className="flex items-center gap-4 border-b border-gray-200 px-4 py-3">
         <div className={`${bar} h-4 w-20`} />
         <div className={`${bar} h-5 max-w-md flex-1`} />
@@ -221,7 +225,7 @@ function LoadingSkeleton() {
           <div className={`${bar} h-24 w-full`} />
         </div>
       </div>
-      <span className="sr-only">Loading text…</span>
+      <span className="sr-only">{t('workspace.loadingDots')}</span>
     </div>
   );
 }

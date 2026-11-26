@@ -7,6 +7,7 @@ import type { AuthorTask, TextVersion, VersionDetails } from '../types';
 import { hasTibetan, isOnBdrc, wylieToTibetan } from '../utils';
 import { BO } from '../labels';
 import BdrcFrame from './BdrcFrame';
+import { tr, useT } from '../i18n';
 
 /** Which BDRC page of a version is shown: its own, or that of the collection it is in. */
 type BdrcPage = 'version' | 'collection';
@@ -17,7 +18,7 @@ const firstPage = (version: TextVersion): BdrcPage => (version.bdrcId ? 'version
 const tibetan = (name: string) => (hasTibetan(name) ? name : wylieToTibetan(name));
 
 const nameOf = (version: TextVersion) =>
-  version.collection ? tibetan(version.collection.name) : (version.bdrcId ?? 'Not on BDRC');
+  version.collection ? tibetan(version.collection.name) : (version.bdrcId ?? tr('versions.notOnBdrc'));
 
 /** What tells versions of the same name apart. */
 const summaryOf = (details?: VersionDetails) =>
@@ -41,6 +42,7 @@ export default function Versions({
   focus: boolean;
   onFocusChange: (focus: boolean) => void;
 }>) {
+  const t = useT();
   const { versions } = task;
   const details = useVersionDetails(task);
   const version = versions.find((v) => v.id === versionId && isOnBdrc(v)) ?? versions.find(isOnBdrc);
@@ -49,7 +51,7 @@ export default function Versions({
   const [open, setOpen] = useDetailsOpen();
 
   if (!version) {
-    return <p className="p-8 text-center text-sm text-gray-500">No version of this text is on BDRC.</p>;
+    return <p className="p-8 text-center text-sm text-gray-500">{t('versions.none')}</p>;
   }
 
   const page = wanted === 'collection' && version.collection ? 'collection' : firstPage(version);
@@ -84,15 +86,15 @@ export default function Versions({
           <div className={`flex items-center gap-2 p-2 ${open ? 'border-b border-gray-100' : ''}`}>
             <Select value={version.id} onValueChange={(id) => pick(versions.find((v) => v.id === id) ?? version)}>
               <SelectTrigger
-                aria-label="Choose a version"
+                aria-label={t('versions.choose')}
                 className="min-w-0 flex-1 cursor-pointer border-gray-300 bg-white px-2 py-1 text-left hover:border-blue-400 hover:bg-blue-50/50 data-[size=default]:h-auto"
               >
                 <span className="flex min-w-0 flex-1 items-center gap-3">
                   <span className="shrink-0 rounded-md bg-blue-50 px-2.5 py-1 text-sm font-semibold tabular-nums text-blue-700">
-                    Version {number(version)} of {versions.length}
+                    {t('versions.versionOf', { n: number(version), count: versions.length })}
                   </span>
                   <span className="min-w-0 flex-1 truncate font-monlam text-base leading-loose text-gray-900">{nameOf(version)}</span>
-                  <span className="hidden shrink-0 font-medium text-blue-700 sm:inline">Change</span>
+                  <span className="hidden shrink-0 font-medium text-blue-700 sm:inline">{t('versions.change')}</span>
                 </span>
               </SelectTrigger>
               <SelectContent align="start" className="w-(--radix-select-trigger-width) bg-white">
@@ -116,7 +118,7 @@ export default function Versions({
                       <span className="min-w-0 flex-1">
                         <span className={`block text-base leading-loose ${isOnBdrc(v) ? 'font-monlam' : ''}`}>{nameOf(v)}</span>
                         <span className={`block text-gray-500 ${isOnBdrc(v) ? 'font-monlam text-sm' : 'text-xs'}`}>
-                          {isOnBdrc(v) ? summaryOf(details.data?.[v.id]) : 'This copy has no BDRC page to open'}
+                          {isOnBdrc(v) ? summaryOf(details.data?.[v.id]) : t('versions.noPage')}
                         </span>
                       </span>
                     </SelectItem>
@@ -124,10 +126,10 @@ export default function Versions({
                 })}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon-sm" aria-label="Previous version" title="Previous version" className="cursor-pointer bg-white" disabled={!previous} onClick={() => pick(previous)}>
+            <Button variant="outline" size="icon-sm" aria-label={t('versions.previous')} title={t('versions.previous')} className="cursor-pointer bg-white" disabled={!previous} onClick={() => pick(previous)}>
               <ChevronLeft />
             </Button>
-            <Button variant="outline" size="icon-sm" aria-label="Next version" title="Next version" className="cursor-pointer bg-white" disabled={!next} onClick={() => pick(next)}>
+            <Button variant="outline" size="icon-sm" aria-label={t('versions.next')} title={t('versions.next')} className="cursor-pointer bg-white" disabled={!next} onClick={() => pick(next)}>
               <ChevronRight />
             </Button>
             <Button
@@ -135,11 +137,11 @@ export default function Versions({
               size="sm"
               aria-expanded={open}
               aria-controls="version-details"
-              title={open ? 'Hide the details, for more room for the BDRC page' : 'Show the details of this version'}
+              title={open ? t('versions.hideDetails') : t('versions.showDetails')}
               className="cursor-pointer bg-white text-gray-700"
               onClick={() => setOpen(!open)}
             >
-              {open ? <ChevronUp /> : <ChevronDown />} <span className="hidden sm:inline">Details</span>
+              {open ? <ChevronUp /> : <ChevronDown />} <span className="hidden sm:inline">{t('versions.details')}</span>
             </Button>
           </div>
           {open && (
@@ -158,10 +160,10 @@ export default function Versions({
 
       <PullBar focus={focus} onFocusChange={onFocusChange} />
       <div className="min-h-0 flex-1">
-        <BdrcFrame bdrcId={bdrcId} title={`BDRC page ${bdrcId}`}>
+        <BdrcFrame bdrcId={bdrcId} title={t('bdrcFrame.frameTitle', { id: bdrcId })}>
           <div className="inline-flex gap-1 rounded-lg border border-gray-200 bg-white p-0.5">
-            {pageButton('version', 'This version', Boolean(version.bdrcId), 'This version has no BDRC page of its own')}
-            {pageButton('collection', 'Its collection', Boolean(version.collection), 'This version is in no BDRC collection')}
+            {pageButton('version', t('versions.thisVersion'), Boolean(version.bdrcId), t('versions.noOwnPage'))}
+            {pageButton('collection', t('versions.itsCollection'), Boolean(version.collection), t('versions.noCollection'))}
           </div>
         </BdrcFrame>
       </div>
@@ -185,18 +187,19 @@ function Details({
   failed: boolean;
   onSearchName: (name: string) => void;
 }>) {
+  const t = useT();
   const author = details?.author;
   const found = version.nameInVersion;
   return (
     <dl className="flex flex-wrap items-start gap-x-6 gap-y-2 px-3 py-2">
       {version.title && (
         // A long title has a line of its own, in full; a short one sits in the row with the rest.
-        <Detail icon={BookOpen} label="Title" wide={version.title.length > LONG_TITLE}>
+        <Detail icon={BookOpen} label={t('versions.title')} wide={version.title.length > LONG_TITLE}>
           <span className="font-monlam text-base">{version.title}</span>
         </Detail>
       )}
       {found && (
-        <Detail icon={User} label="Name in this version">
+        <Detail icon={User} label={t('versions.nameInVersion')}>
           <span className="flex items-center gap-2">
             <span className="min-w-0 break-words font-monlam text-base">{found}</span>
             <SearchButton onClick={() => onSearchName(found)} />
@@ -248,31 +251,32 @@ function Details({
         <span className="tabular-nums">{version.bdrcId ?? version.collection?.bdrcId}</span>
       </Detail>
       {version.scansUrl && (
-        <Detail icon={Images} label="Scans">
+        <Detail icon={Images} label={t('versions.scans')}>
           <a
             href={version.scansUrl}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline"
           >
-            Open scans <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            {t('versions.openScans')} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
         </Detail>
       )}
-      {loading && <span className="self-center text-sm text-gray-500">Loading details…</span>}
-      {failed && <span className="self-center text-sm text-gray-500">Could not load the other details.</span>}
+      {loading && <span className="self-center text-sm text-gray-500">{t('versions.loadingDetails')}</span>}
+      {failed && <span className="self-center text-sm text-gray-500">{t('versions.detailsFailed')}</span>}
     </dl>
   );
 }
 
 function SearchButton({ onClick }: Readonly<{ onClick: () => void }>) {
+  const t = useT();
   return (
     <button
       type="button"
       onClick={onClick}
       className="shrink-0 cursor-pointer rounded-full bg-blue-50 px-2.5 font-sans text-xs font-medium leading-5 text-blue-700 hover:bg-blue-100"
     >
-      Search
+      {t('versions.search')}
     </button>
   );
 }
@@ -325,6 +329,7 @@ const PULL = 24;
  * Our page cannot see scrolling inside BDRC's page, so this is done by hand.
  */
 function PullBar({ focus, onFocusChange }: Readonly<{ focus: boolean; onFocusChange: (focus: boolean) => void }>) {
+  const t = useT();
   const from = useRef<number | null>(null);
   const [pull, setPull] = useState(0);
 
@@ -350,16 +355,16 @@ function PullBar({ focus, onFocusChange }: Readonly<{ focus: boolean; onFocusCha
     onFocusChange(next);
   };
   // Says what letting go will do, while dragging.
-  let hint = focus ? 'Drag down or press Esc to show the details again' : 'Drag up for more room';
-  if (pull < -PULL && !focus) hint = 'Let go for focus mode';
-  if (pull > PULL && focus) hint = 'Let go to show the details';
+  let hint = focus ? t('focus.dragDown') : t('focus.dragUp');
+  if (pull < -PULL && !focus) hint = t('focus.letGoOn');
+  if (pull > PULL && focus) hint = t('focus.letGoOff');
 
   return (
     <div
       role="button"
       tabIndex={0}
       aria-pressed={focus}
-      aria-label={focus ? 'Leave focus mode' : 'Focus mode: give the BDRC page all the room'}
+      aria-label={focus ? t('focus.leave') : t('focus.enter')}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
@@ -380,7 +385,7 @@ function PullBar({ focus, onFocusChange }: Readonly<{ focus: boolean; onFocusCha
           onClick={() => onFocusChange(false)}
           className="absolute right-3 cursor-pointer rounded border border-gray-300 bg-white px-2 py-0.5 font-medium text-gray-700 hover:border-blue-400 hover:text-blue-700"
         >
-          Exit focus
+          {t('focus.exit')}
         </button>
       )}
     </div>
