@@ -10,6 +10,7 @@ import { useDuplicates, usePersonSearch, useRemoveDuplicate, useReportDuplicate 
 import type { BdrcPerson } from '../types';
 import { cleanName, FIELD, reportOfPair } from '../utils';
 import { useT } from '../i18n';
+import { useToolScope } from '../tibetan';
 
 /** Report that a person has a second BDRC id. It is only reported: nothing changes in BDRC. */
 export default function DuplicateDialog({
@@ -25,6 +26,7 @@ export default function DuplicateDialog({
   onClose: () => void;
 }>) {
   const t = useT();
+  const scope = useToolScope();
   const { user } = useUser();
   const duplicates = useDuplicates();
   const report = useReportDuplicate();
@@ -65,7 +67,7 @@ export default function DuplicateDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-xl">
+      <DialogContent className={`${scope} flex max-h-[90dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-xl`}>
         <div className="border-b border-gray-200 px-5 py-4 pr-12">
           <DialogTitle className="text-base font-semibold">{t('duplicate.title')}</DialogTitle>
           <DialogDescription className="mt-1 text-sm text-gray-600">

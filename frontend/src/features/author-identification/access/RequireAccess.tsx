@@ -3,10 +3,12 @@ import { useUser } from '@/hooks/useUser';
 import { hasAuthorIdAccess } from './utils';
 import { Trans } from 'react-i18next';
 import { useT } from '../i18n';
+import { useToolScope } from '../tibetan';
 
 /** Shows its children to people with access to Author Identification only. */
 export default function RequireAccess({ children }: { readonly children: ReactNode }) {
   const t = useT();
+  const scope = useToolScope();
   const { user, isLoading, error } = useUser();
 
   if (error) return <div className="p-8 text-sm text-red-700">{t('access.checkFailed', { error: error.message })}</div>;
@@ -18,5 +20,5 @@ export default function RequireAccess({ children }: { readonly children: ReactNo
       </div>
     );
   }
-  return children;
+  return <div className={`${scope} contents`}>{children}</div>;
 }

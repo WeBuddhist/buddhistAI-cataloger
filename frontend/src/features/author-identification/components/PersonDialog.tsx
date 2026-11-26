@@ -7,6 +7,7 @@ import type { BdrcPerson } from '../types';
 import PersonInfobox from './PersonInfobox';
 import { bdrcPage } from '../utils';
 import { useT } from '../i18n';
+import { useToolScope } from '../tibetan';
 
 /** What BDRC knows about a person, with the other results one step away. */
 export default function PersonDialog({
@@ -36,6 +37,7 @@ export default function PersonDialog({
   onClose: () => void;
 }>) {
   const t = useT();
+  const scope = useToolScope();
   const person = index == null ? undefined : persons[index];
   const selected = person != null && person.id === selectedId;
 
@@ -51,7 +53,7 @@ export default function PersonDialog({
     <Dialog open={person != null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[90dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-3xl"
+        className={`${scope} flex h-[90dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-3xl`}
       >
         {person && index != null && (
           <>

@@ -4,7 +4,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import RequireAccess from '../access/RequireAccess';
-import AuthorPanel, { type AnswerKind } from '../components/AuthorPanel';
+import AuthorPanel, { type PanelStep } from '../components/AuthorPanel';
+import GuidelinesLink from '../components/GuidelinesLink';
 import SourceViewer, { type SourceTab } from '../components/SourceViewer';
 import TextView from '../components/TextView';
 import { usePrefetchTasks, useTask, useTasks } from '../hooks';
@@ -87,7 +88,8 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   const [query, setQuery] = useState(predicted);
   // The first name is searched straight away; nobody is picked for the annotator.
   const [searched, setSearched] = useState(predicted);
-  const [kind, setKind] = useState<AnswerKind>(saved?.kind ?? 'person');
+  // A saved "not in BDRC" or skip opens on step 2, where it was given.
+  const [kind, setKind] = useState<PanelStep>(saved?.kind ?? 'person');
   const [editing, setEditing] = useState(saved == null);
 
   const prevId = tasks[index - 1]?.id;
@@ -140,6 +142,9 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* In sight at every step, and in one place only. */}
+          <GuidelinesLink />
+          <span className="mx-1 h-5 w-px bg-gray-200" aria-hidden />
           <span className="text-sm tabular-nums text-gray-500">
             {t('workspace.position', { n: index + 1, total: tasks.length })}
           </span>

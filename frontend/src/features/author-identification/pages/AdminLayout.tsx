@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useAuthorIdMe } from '../access/hooks';
 import { isAuthorIdAdmin } from '../access/utils';
 import { useT } from '../i18n';
+import { useToolScope } from '../tibetan';
 
 const TABS = [
   { to: '/author-identification-admin/users', label: 'admin.nav.users' },
@@ -13,12 +14,13 @@ const TABS = [
 /** Admin pages of Author Identification: open to its own admins (users.author_identification_role). */
 export default function AdminLayout({ children }: { readonly children: ReactNode }) {
   const t = useT();
+  const scope = useToolScope();
   const me = useAuthorIdMe();
   if (me.isLoading) return <div className="p-8 text-sm text-gray-500">{t('common.loading')}</div>;
   if (!isAuthorIdAdmin(me.data)) return <Navigate to="/author-identification" replace />;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+    <div className={`${scope} mx-auto w-full max-w-7xl px-4 pt-6 sm:px-6 lg:px-8`}>
       <Link to="/author-identification" className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
         <ArrowLeft className="h-4 w-4" /> {t('common.toolName')}
       </Link>

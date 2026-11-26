@@ -1,24 +1,28 @@
 import { useState } from 'react';
-import { ArrowRight, Check, Plus, ScrollText, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Plus, ScrollText, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CONFIDENCE, confidenceHint, skipLabel, SKIP_REASONS, type SkipReason } from '../guidelines';
-import { useSaveAnswer } from '../hooks';
+import { usePersonSearch, useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
 import { answerLabel, cleanName, FIELD, sameName } from '../utils';
-import GuidelinesLink from './GuidelinesLink';
 import PersonSearch from './PersonSearch';
 import { useT } from '../i18n';
 
 export type AnswerKind = AuthorAnswer['kind'];
 
-const KINDS: { kind: AnswerKind; label: string }[] = [
-  { kind: 'person', label: 'answer.inBdrc' },
-  { kind: 'not_in_bdrc', label: 'answer.notInBdrc' },
-  { kind: 'skipped', label: 'answer.skip' },
-];
+/**
+ * Where the annotator is. Step 1 is the search in BDRC ('person'). Only from there, once
+ * they can't find the author, comes step 2: 'other' until "not in BDRC" or "skip" is chosen.
+ */
+export type PanelStep = AnswerKind | 'other';
+
+const OTHER_KINDS = [
+  { kind: 'not_in_bdrc', label: 'answer.notInBdrc', hint: 'panel.notInBdrcHint' },
+  { kind: 'skipped', label: 'panel.skipText', hint: 'panel.skipHint' },
+] as const;
 
 const LINK = 'cursor-pointer font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline';
 
@@ -59,8 +63,8 @@ export default function AuthorPanel({
   candidates: NameCandidate[];
   versions: TextVersion[];
   saved: SavedAnswer | null;
-  kind: AnswerKind;
-  onKindChange: (kind: AnswerKind) => void;
+  kind: PanelStep;
+  onKindChange: (kind: PanelStep) => void;
   /** Off: the saved answer is shown instead of the form. */
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
@@ -85,7 +89,7 @@ export default function AuthorPanel({
   const [note, setNote] = useState(saved?.note ?? '');
   const [noteOpen, setNoteOpen] = useState(Boolean(saved?.note));
 
-  const chooseKind = (next: AnswerKind) => {
+  const chooseKind = (next: PanelStep) => {
     onKindChange(next);
     // What was searched is most likely the author's name; it can still be changed.
     if (next === 'not_in_bdrc' && !name) setName(cleanName(query));
@@ -99,12 +103,21 @@ export default function AuthorPanel({
 
   const draft = (): AuthorAnswer | null => {
     const noted = { note: note.trim() };
+    if (kind === 'other') return null;
     if (kind === 'skipped') return reason ? { kind, reason, ...noted } : null;
     if (confidence == null) return null;
     if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), confidence, ...noted } : null;
     return person ? { kind, personId: person.id, name: person.nameBo, confidence, ...noted } : null;
   };
   const answer = draft();
+  // How sure they are is asked once there is an author to be sure of.
+  const asksConfidence = kind === 'not_in_bdrc' || (kind === 'person' && person != null);
+  // Step 2 only once they have looked: after a search, or when there is no name to search.
+  const canLeaveSearch = searched !== '' || candidates.length === 0;
+  // The same search as the results below (shared cache): nobody found, or how many.
+  const results = usePersonSearch(searched);
+  const total = results.data?.pages[0]?.total ?? 0;
+  const nobody = results.isSuccess && total === 0;
   // What is still missing, said on the button's hover.
   let missing = '';
   if (kind === 'skipped' && !reason) missing = t('panel.missingReason');
@@ -173,29 +186,9 @@ export default function AuthorPanel({
           onShowVersions={onShowVersions}
         />
 
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-gray-900">{t('panel.author')}</h2>
-            <GuidelinesLink />
-          </div>
-          <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label={t('panel.author')}>
-            {KINDS.map((k) => (
-              <button
-                key={k.kind}
-                type="button"
-                role="tab"
-                aria-selected={kind === k.kind}
-                onClick={() => chooseKind(k.kind)}
-                className={`cursor-pointer rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
-                  kind === k.kind ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {t(k.label)}
-              </button>
-            ))}
-          </div>
-
-          {kind === 'person' && (
+        {kind === 'person' ? (
+          <div>
+            <h2 className="mb-2 text-sm font-semibold text-gray-900">{t('panel.findInBdrc')}</h2>
             <PersonSearch
               text={{ id: taskId, title: taskTitle }}
               query={query}
@@ -206,92 +199,196 @@ export default function AuthorPanel({
               selected={person}
               onSelect={pick}
             />
-          )}
-          {kind === 'not_in_bdrc' && (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                {t('panel.notInBdrcHelp')}
-              </p>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-gray-700">{t('panel.nameInTibetan')}</span>
-                <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-10 font-monlam text-base md:text-base ${FIELD}`} />
-              </label>
-            </div>
-          )}
-          {kind === 'skipped' && (
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm text-gray-600">{t('panel.whySkip')}</legend>
-              {SKIP_REASONS.map((r) => (
-                <label
-                  key={r.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
-                    reason === r.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="skip-reason"
-                    checked={reason === r.id}
-                    onChange={() => setReason(r.id)}
-                    className="h-4 w-4 shrink-0 accent-blue-600"
-                  />
-                  {skipLabel(r.id)}
-                </label>
-              ))}
-            </fieldset>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-2.5 border-t border-gray-200 px-4 py-2.5">
-        {kind !== 'skipped' && <ConfidencePicker value={confidence} onChange={setConfidence} />}
-        {noteOpen ? (
-          <div className="text-sm">
-            <div className="mb-1 flex items-center justify-between">
-              <label htmlFor="author-note" className="font-medium text-gray-700">
-                {t('panel.note')} <span className="font-normal text-gray-500">{t('panel.optional')}</span>
-              </label>
-              <button
-                type="button"
-                onClick={closeNote}
-                aria-label={t('panel.removeNote')}
-                title={t('panel.removeNote')}
-                className="cursor-pointer rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <Textarea
-              id="author-note"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('panel.notePlaceholder')}
-              className={FIELD}
-            />
+            {/* Nobody found: step 2 is the next thing to do, right here. */}
+            {nobody && (
+              <div className="mt-4">
+                <h3 className="mb-2 text-sm font-semibold text-gray-900">{t('panel.stillNotFound')}</h3>
+                <OtherChoices onChoose={chooseKind} />
+              </div>
+            )}
           </div>
         ) : (
-          <button type="button" onClick={() => setNoteOpen(true)} className={`inline-flex items-center gap-1 text-sm ${LINK}`}>
-            <Plus className="h-3.5 w-3.5" aria-hidden /> {t('panel.addNote')}
-          </button>
+          <OtherStep
+            kind={kind}
+            onKindChange={chooseKind}
+            name={name}
+            onNameChange={setName}
+            reason={reason}
+            onReasonChange={setReason}
+          />
         )}
-        <div className="flex gap-2">
-          {saved && (
-            <Button variant="outline" className="h-10 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
-              {t('panel.cancel')}
-            </Button>
-          )}
-          <Button
-            className="h-10 flex-1 cursor-pointer bg-green-600 text-white hover:bg-green-700"
-            disabled={!answer || save.isPending}
-            title={missing || undefined}
-            onClick={submit}
-          >
-            {save.isPending ? t('panel.saving') : t(kind === 'skipped' ? 'panel.skipText' : 'panel.submit')}
+      </div>
+
+      {/* The way to step 2: kept in sight under the results, however many there are, and set
+          apart from them. Not once a person is picked. */}
+      {kind === 'person' && canLeaveSearch && !person && !nobody && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-gray-200 bg-gray-50 px-4 py-2.5">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-800">{t(total > 0 ? 'panel.noneOfThese' : 'panel.cantFind')}</p>
+            <p className="text-xs text-gray-500">{t('panel.cantFindHelp')}</p>
+          </div>
+          <Button variant="outline" size="sm" className="shrink-0 cursor-pointer bg-white" onClick={() => chooseKind('other')}>
+            {t('panel.otherAnswers')} <ArrowRight aria-hidden />
           </Button>
         </div>
-      </div>
+      )}
+
+      {kind !== 'other' && (
+        <div className="space-y-2.5 border-t border-gray-200 px-4 py-2.5">
+          {asksConfidence && <ConfidencePicker value={confidence} onChange={setConfidence} />}
+          {noteOpen ? (
+            <div className="text-sm">
+              <div className="mb-1 flex items-center justify-between">
+                <label htmlFor="author-note" className="font-medium text-gray-700">
+                  {t('panel.note')} <span className="font-normal text-gray-500">{t('panel.optional')}</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={closeNote}
+                  aria-label={t('panel.removeNote')}
+                  title={t('panel.removeNote')}
+                  className="cursor-pointer rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <Textarea
+                id="author-note"
+                rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t('panel.notePlaceholder')}
+                className={FIELD}
+              />
+            </div>
+          ) : (
+            <button type="button" onClick={() => setNoteOpen(true)} className={`inline-flex items-center gap-1 text-sm ${LINK}`}>
+              <Plus className="h-3.5 w-3.5" aria-hidden /> {t('panel.addNote')}
+            </button>
+          )}
+          <div className="flex gap-2">
+            {saved && (
+              <Button variant="outline" className="h-10 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
+                {t('panel.cancel')}
+              </Button>
+            )}
+            <Button
+              className="h-10 flex-1 cursor-pointer bg-green-600 text-white hover:bg-green-700"
+              disabled={!answer || save.isPending}
+              title={missing || undefined}
+              onClick={submit}
+            >
+              {save.isPending ? t('panel.saving') : t(kind === 'skipped' ? 'panel.skipText' : 'panel.submit')}
+            </Button>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+/** Step 2, when the author can't be found in BDRC: not in BDRC, or skip the text. */
+function OtherStep({
+  kind,
+  onKindChange,
+  name,
+  onNameChange,
+  reason,
+  onReasonChange,
+}: Readonly<{
+  kind: Exclude<PanelStep, 'person'>;
+  onKindChange: (kind: PanelStep) => void;
+  name: string;
+  onNameChange: (name: string) => void;
+  reason: SkipReason | null;
+  onReasonChange: (reason: SkipReason) => void;
+}>) {
+  const t = useT();
+  const chosen = OTHER_KINDS.find((k) => k.kind === kind);
+  const toSkip = kind === 'not_in_bdrc';
+  return (
+    <div>
+      <button type="button" onClick={() => onKindChange('person')} className={`mb-2 inline-flex items-center gap-1 text-sm ${LINK}`}>
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {t('panel.backToSearch')}
+      </button>
+      <h2 className="mb-2 text-sm font-semibold text-gray-900">{t('panel.otherTitle')}</h2>
+
+      {/* First the choice; once made, only that answer, with what it needs right under it. */}
+      {chosen ? (
+        <>
+          <div className="overflow-hidden rounded-lg border border-blue-600">
+            <div className="bg-blue-50 px-3 py-2 text-sm">
+              <span className="block font-medium text-gray-900">{t(chosen.label)}</span>
+              <span className="block text-xs text-gray-600">{t(chosen.hint)}</span>
+            </div>
+            <div className="border-t border-blue-100 bg-white px-3 py-3">
+              {chosen.kind === 'not_in_bdrc' ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">{t('panel.notInBdrcHelp')}</p>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-gray-700">{t('panel.nameInTibetan')}</span>
+                    <Input value={name} onChange={(e) => onNameChange(e.target.value)} lang="bo" className={`h-10 font-monlam text-base md:text-base ${FIELD}`} />
+                  </label>
+                </div>
+              ) : (
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-sm text-gray-600">{t('panel.whySkip')}</legend>
+                  {SKIP_REASONS.map((r) => (
+                    <label
+                      key={r.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
+                        reason === r.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="skip-reason"
+                        checked={reason === r.id}
+                        onChange={() => onReasonChange(r.id)}
+                        className="h-4 w-4 shrink-0 accent-blue-600"
+                      />
+                      {skipLabel(r.id)}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+            </div>
+          </div>
+          {/* The other answer, said in plain words, instead of a bare "Change". */}
+          <p className="mt-3 text-sm text-gray-600">
+            {t(toSkip ? 'panel.switchToSkipQuestion' : 'panel.switchToNotInBdrcQuestion')}{' '}
+            <button type="button" onClick={() => onKindChange(toSkip ? 'skipped' : 'not_in_bdrc')} className={LINK}>
+              {t(toSkip ? 'panel.switchToSkip' : 'panel.switchToNotInBdrc')}
+            </button>
+          </p>
+        </>
+      ) : (
+        <OtherChoices onChoose={onKindChange} />
+      )}
+    </div>
+  );
+}
+
+/** The two answers when the author isn't found: each a plain button with what it means. */
+function OtherChoices({ onChoose }: Readonly<{ onChoose: (kind: PanelStep) => void }>) {
+  const t = useT();
+  return (
+    <div className="space-y-2">
+      {OTHER_KINDS.map((k) => (
+        <button
+          key={k.kind}
+          type="button"
+          onClick={() => onChoose(k.kind)}
+          className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm hover:border-blue-400 hover:bg-blue-50/50"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-gray-900">{t(k.label)}</span>
+            <span className="block text-xs text-gray-500">{t(k.hint)}</span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+        </button>
+      ))}
+    </div>
   );
 }
 
