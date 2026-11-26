@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Eye, Settings } from 'lucide-react';
+import { ArrowRight, Eye, Inbox, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthorIdMe } from '../access/hooks';
 import RequireAccess from '../access/RequireAccess';
 import { isAuthorIdAdmin } from '../access/utils';
 import { skipLabel } from '../guidelines';
-import { useTasks } from '../hooks';
-import SampleNotice from '../sample/SampleNotice';
+import { useClaimTexts, useTasks } from '../hooks';
 import type { ExtractedName, SavedAnswer, TaskSummary } from '../types';
 import { dateOf, FIELD, nameCandidates } from '../utils';
 
@@ -55,14 +55,14 @@ function MyTexts() {
 
   // Numbered over all my texts, so a text keeps its number when it is done.
   const all = useMemo<Row[]>(() => (tasks.data ?? []).map((task, i) => ({ ...task, number: i + 1 })), [tasks.data]);
-  const lists: Record<Tab, Row[]> = { todo: all.filter((t) => !t.answer), done: all.filter((t) => t.answer) };
+  const lists: Record<Tab, Row[]> = { todo: all.filter((t) => !isDone(t)), done: all.filter(isDone) };
   const needle = q.trim().toLowerCase();
   const rows = needle ? lists[tab].filter((row) => matches(row, needle)) : lists[tab];
   const next = lists.todo[0];
   const done = lists.done.length;
 
-  let emptyText = tab === 'todo' ? 'All your texts are done.' : 'No texts done yet.';
-  if (tab === 'todo' && all.length === 0) emptyText = 'You have no texts yet.';
+  let emptyText = tab === 'todo' ? 'All your texts are done. Press “Assign work” for 5 more.' : 'No texts done yet.';
+  if (tab === 'todo' && all.length === 0) emptyText = 'You have no texts yet. Press “Assign work” to get 5.';
   if (needle) emptyText = `Nothing matches “${q.trim()}”.`;
 
   return (
@@ -80,6 +80,7 @@ function MyTexts() {
               </Link>
             </Button>
           )}
+          <AssignWork waiting={lists.todo.length} disabled={tasks.isLoading || tasks.isError} />
           {next && (
             <Button asChild className="flex-1 bg-blue-600 text-white hover:bg-blue-700 sm:flex-none">
               <Link to={pathOf(next)}>
@@ -89,8 +90,6 @@ function MyTexts() {
           )}
         </div>
       </div>
-
-      <SampleNotice kind="answers" canClear={done > 0} />
 
       {all.length > 0 && <Progress done={done} total={all.length} />}
 
@@ -134,6 +133,34 @@ function MyTexts() {
         </>
       )}
     </div>
+  );
+}
+
+const isDone = (t: TaskSummary) => t.answer != null || t.completed;
+
+/** Gives me 5 more texts, as the Deduplicator does; only once mine are all done. */
+function AssignWork({ waiting, disabled }: Readonly<{ waiting: number; disabled: boolean }>) {
+  const claim = useClaimTexts();
+  const assign = async () => {
+    try {
+      const { claimed } = await claim.mutateAsync();
+      if (claimed > 0) toast.success(`${claimed} ${claimed === 1 ? 'text' : 'texts'} added to your list`);
+      else toast.info('No texts left to hand out for now.');
+    } catch (e) {
+      toast.error(`Could not get texts: ${e instanceof Error ? e.message : 'try again'}`);
+    }
+  };
+  const busy = waiting > 0;
+  return (
+    <Button
+      variant={busy ? 'outline' : 'default'}
+      className={`flex-1 cursor-pointer sm:flex-none ${busy ? 'bg-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+      disabled={disabled || busy || claim.isPending}
+      title={busy ? 'Finish your texts first' : undefined}
+      onClick={() => void assign()}
+    >
+      <Inbox /> {claim.isPending ? 'Assigning…' : 'Assign work'}
+    </Button>
   );
 }
 
@@ -183,7 +210,7 @@ function Table({ rows, tab }: Readonly<{ rows: Row[]; tab: Tab }>) {
                 </div>
                 <div className="text-xs text-gray-500">{versionsLabel(row.versionCount)}</div>
               </td>
-              <td className="px-4 py-4">{row.answer ? <Answer answer={row.answer} /> : <NamesFound names={row.extractedNames} />}</td>
+              <td className="px-4 py-4"><RowStatus row={row} /></td>
               {tab === 'done' && (
                 <td className="hidden whitespace-nowrap px-4 py-4 text-gray-600 lg:table-cell">{row.answer && dateOf(row.answer.savedAt)}</td>
               )}
@@ -192,11 +219,11 @@ function Table({ rows, tab }: Readonly<{ rows: Row[]; tab: Tab }>) {
                   asChild
                   variant="outline"
                   size="sm"
-                  className={row.answer ? 'border-gray-300 bg-white text-gray-600' : 'border-blue-300 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800'}
+                  className={isDone(row) ? 'border-gray-300 bg-white text-gray-600' : 'border-blue-300 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800'}
                 >
                   {/* The row opens the text too; once is enough. */}
-                  <Link to={pathOf(row)} aria-label={`${row.answer ? 'View' : 'Open'} ${row.title}`} onClick={(e) => e.stopPropagation()}>
-                    <OpenLabel done={row.answer != null} />
+                  <Link to={pathOf(row)} aria-label={`${isDone(row) ? 'View' : 'Open'} ${row.title}`} onClick={(e) => e.stopPropagation()}>
+                    <OpenLabel done={isDone(row)} />
                   </Link>
                 </Button>
               </td>
@@ -222,9 +249,9 @@ function Cards({ rows }: Readonly<{ rows: Row[] }>) {
             </span>
             <span className="mt-1 block break-words font-monlam text-base leading-loose text-gray-900">{row.title}</span>
             <span className="mt-2 flex items-end justify-between gap-3">
-              <span className="min-w-0">{row.answer ? <Answer answer={row.answer} /> : <NamesFound names={row.extractedNames} />}</span>
-              <span className={`inline-flex shrink-0 items-center gap-1 text-sm font-medium ${row.answer ? 'text-gray-600' : 'text-blue-700'}`}>
-                <OpenLabel done={row.answer != null} />
+              <span className="min-w-0"><RowStatus row={row} /></span>
+              <span className={`inline-flex shrink-0 items-center gap-1 text-sm font-medium ${isDone(row) ? 'text-gray-600' : 'text-blue-700'}`}>
+                <OpenLabel done={isDone(row)} />
               </span>
             </span>
           </Link>
@@ -258,6 +285,12 @@ function NamesFound({ names }: Readonly<{ names: ExtractedName[] }>) {
       )}
     </span>
   );
+}
+
+function RowStatus({ row }: Readonly<{ row: Row }>) {
+  if (row.answer) return <Answer answer={row.answer} />;
+  if (row.completed) return <span className="inline-block rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">Answered</span>;
+  return <NamesFound names={row.extractedNames} />;
 }
 
 function Answer({ answer }: Readonly<{ answer: SavedAnswer }>) {

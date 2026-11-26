@@ -228,7 +228,9 @@ function App() {
               <AuthorIdentificationGuidelinesLazy />
             </ProtectedRoute>
           } />
-          <Route path="/author-identification/:textId" element={
+          {/* Old one-part text addresses (before batches): back to the list. */}
+          <Route path="/author-identification/:oldTextId" element={<Navigate to="/author-identification" replace />} />
+          <Route path="/author-identification/:batchId/:itemId" element={
             <ProtectedRoute>
               <AuthorIdentificationWorkspaceLazy />
             </ProtectedRoute>

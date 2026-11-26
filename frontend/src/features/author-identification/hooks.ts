@@ -11,7 +11,7 @@ import { decideDuplicate, fetchDuplicates, removeDuplicate, reportDuplicate } fr
 import { fetchNames, fetchPersonImage, fetchPersonRecord, fetchTerms, isTerm, termFallback } from './api/personRecord';
 import { fetchPersonWorks } from './api/personWorks';
 import { searchPersons, suggestNames } from './api/persons';
-import { fetchTask, fetchTasks, removeAnswer, saveAnswer } from './api/tasks';
+import { claimTexts, fetchTask, fetchTasks, saveAnswer } from './api/tasks';
 import { fetchVersionDetails } from './api/versions';
 import type { AuthorAnswer, AuthorTask } from './types';
 
@@ -46,16 +46,18 @@ export const useVersionDetails = (task: Pick<AuthorTask, 'id' | 'versions'>) =>
 export function useSaveAnswer() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, answer }: { taskId: string; answer: AuthorAnswer }) => saveAnswer(taskId, answer),
+    mutationFn: ({ taskId, editionId, answer }: { taskId: string; editionId: string; answer: AuthorAnswer }) =>
+      saveAnswer(taskId, editionId, answer),
     // Awaited, so the next page opens on the list as it is now.
     onSuccess: () => client.invalidateQueries({ queryKey: keys.tasks }),
   });
 }
 
-export function useRemoveAnswer() {
+/** "Assign work": my next texts. */
+export function useClaimTexts() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) => removeAnswer(taskId),
+    mutationFn: claimTexts,
     onSuccess: () => client.invalidateQueries({ queryKey: keys.tasks }),
   });
 }

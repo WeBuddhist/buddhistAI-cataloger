@@ -2,6 +2,7 @@
 
 * ``author_identification_answers``      every answer, append-only, each with its own sync state
 * ``author_identification_active_time``  time each person spent on each text
+* ``author_identification_assignments``  which person each text was handed to
 
 Answers are saved here first, then the latest answer of each text is sent to BDRC's
 editions API by ``author_identification.sync_worker``, which retries while BDRC is
@@ -76,6 +77,20 @@ class AuthorAnswer(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class AuthorAssignment(Base):
+    """A text handed to one person ("Assign work"); one person per text. Finished when that
+    person saves an answer on it."""
+
+    __tablename__ = "author_identification_assignments"
+
+    batch_id: Mapped[str] = mapped_column(String, primary_key=True)
+    item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+    edition_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class AuthorActiveTime(Base):

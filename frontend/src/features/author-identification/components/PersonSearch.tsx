@@ -166,7 +166,8 @@ export default function PersonSearch({
         loadFailed={search.isFetchNextPageError}
         onIndexChange={(i) => void view(i)}
         onSelect={(p) => {
-          onSelect(p);
+          // "Selected" in the dialog stays selected; only the card's radio takes it back.
+          if (selected?.id !== p.id) onSelect(p);
           setViewing(null);
         }}
         onReport={(p) => {

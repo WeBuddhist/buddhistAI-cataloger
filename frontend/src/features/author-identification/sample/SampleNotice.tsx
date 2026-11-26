@@ -1,16 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { clearSampleReports } from '../api/duplicates';
-import { clearSampleAnswers } from '../api/tasks';
 
 const KINDS = {
-  answers: {
-    title: 'Trying out.',
-    text: 'The texts are BDRC’s, but your answers stay in this browser for now and are not sent anywhere.',
-    clearLabel: 'Clear my answers',
-    clear: clearSampleAnswers,
-    queryKey: ['author-identification', 'tasks'],
-  },
   reports: {
     title: 'Sample reports.',
     text: 'For trying the tool only. You see one sample and the reports made in this browser, not those of other people.',

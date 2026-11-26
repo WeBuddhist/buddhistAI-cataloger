@@ -107,3 +107,18 @@ class ActiveTimeIn(BaseModel):
 class SyncHealthOut(BaseModel):
     counts: dict[str, int]
     failed: list[AnswerOut]
+
+
+class MyTextOut(BaseModel):
+    """One of my texts: who holds it here, and BDRC's item (null if BDRC no longer lists it)."""
+
+    batch_id: str
+    item_id: int
+    assigned_at: datetime
+    completed_at: datetime | None
+    item: dict | None
+    answer: AnswerOut | None = None
+
+
+class ClaimOut(BaseModel):
+    claimed: int

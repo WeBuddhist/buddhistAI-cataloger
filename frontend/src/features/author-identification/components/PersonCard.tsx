@@ -25,7 +25,17 @@ export default function PersonCard({
   return (
     <li className={`rounded-lg border ${selected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
       <label className="flex cursor-pointer gap-3 px-3 pt-2.5">
-        <input type="radio" name="bdrc-person" checked={selected} onChange={onSelect} className="mt-2.5 h-4 w-4 shrink-0 accent-blue-600" />
+        <input
+          type="radio"
+          name="bdrc-person"
+          checked={selected}
+          onChange={onSelect}
+          // A chosen radio sends no change when clicked again: clicking it then takes it back.
+          onClick={() => {
+            if (selected) onSelect();
+          }}
+          className="mt-2.5 h-4 w-4 shrink-0 accent-blue-600"
+        />
         <span className="min-w-0 flex-1">
           <span className="block break-words font-monlam text-base leading-loose text-gray-900">{person.nameBo}</span>
           {person.matchedName && (

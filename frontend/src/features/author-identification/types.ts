@@ -76,10 +76,11 @@ export interface NameSuggestion {
   total: number;
 }
 
-/** The note can name a co-author, as a text has one author here. */
+/** One author per text; the note holds anything else about the author. Confidence is 1 to
+ * 5, given with an author (not when skipping). */
 export type AuthorAnswer = { note: string } & (
-  | { kind: 'person'; personId: string; name: string }
-  | { kind: 'not_in_bdrc'; name: string }
+  | { kind: 'person'; personId: string; name: string; confidence: number }
+  | { kind: 'not_in_bdrc'; name: string; confidence: number }
   | { kind: 'skipped'; reason: SkipReason }
 );
 
@@ -93,6 +94,8 @@ export interface TaskSummary {
   extractedNames: ExtractedName[];
   /** Null while it is to do. */
   answer: SavedAnswer | null;
+  /** Our backend has my answer on it. */
+  completed: boolean;
 }
 
 export type DuplicateDecision = 'same' | 'different';

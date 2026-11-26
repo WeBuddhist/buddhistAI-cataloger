@@ -1,17 +1,13 @@
 // Texts are BDRC's (batch items and editions, read through our backend, which holds the
-// BDRC password). Answers stay in this browser until the answer form saves them.
+// BDRC password); my texts are those "Assign work" handed me. Answers are saved in our
+// backend, which sends them on to BDRC.
 import { API_URL } from '@/config/api';
 import { fetchWithAccessToken } from '@/lib/fetchWithAccessToken';
 import type { AuthorAnswer, AuthorTask, ExtractedName, SavedAnswer, TaskSummary, TextVersion } from '../types';
+import { isSkipReason } from '../guidelines';
 import { cleanName, findName, hasTibetan, wylieToTibetan } from '../utils';
 
 const BASE = `${API_URL}/author-identification`;
-
-/** The batch handed out to annotators. Batch 1 is the first. */
-export const BATCH_ID = '1';
-
-// BDRC caps a page of items at 500.
-const PAGE = 500;
 
 /** A name in the texts, as BDRC's editions API gives it, with the versions it is in. */
 interface ApiPerson {
@@ -46,8 +42,8 @@ interface ApiEdition {
   versions?: ApiVersion[];
 }
 
-async function request<T>(path: string): Promise<T> {
-  const res = await fetchWithAccessToken(`${BASE}${path}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetchWithAccessToken(`${BASE}${path}`, init);
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -100,33 +96,45 @@ function versionOf(v: ApiVersion): TextVersion {
   };
 }
 
-/** My texts, in batch order. */
+/** One of my texts, as our backend lists it, with BDRC's item. */
+interface ApiMyText {
+  batch_id: string;
+  item_id: number;
+  assigned_at: string;
+  completed_at: string | null;
+  item: ApiItem | null;
+  answer: ApiAnswer | null;
+}
+
+/** A text's id here: its BDRC batch and item ("1/5"), as in its address. */
+const textIdOf = (batchId: string, itemId: number | string) => `${batchId}/${itemId}`;
+
+/** My texts (handed to me by "Assign work"), in the order they were given. */
 export async function fetchTasks(): Promise<TaskSummary[]> {
-  const items: ApiItem[] = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const page = await request<{ total: number; items: ApiItem[] }>(
-      `/batches/${BATCH_ID}/items?offset=${offset}&limit=${PAGE}`,
-    );
-    items.push(...page.items);
-    if (page.items.length === 0 || items.length >= page.total) break;
-  }
-  const answers = readAnswers();
-  return items.map((item) => {
-    const id = String(item.item_id);
+  const mine = await request<ApiMyText[]>('/my-texts');
+  return mine.map(({ batch_id, item_id, completed_at, item, answer }) => {
+    const id = textIdOf(batch_id, item_id);
     return {
       id,
-      title: tibetan(item.edition?.title_bo) ?? item.edition_id,
-      versionCount: item.edition?.n_witnesses ?? 0,
-      extractedNames: namesOf(item.edition?.persons, item.author_names),
-      answer: answers[id] ?? null,
+      title: tibetan(item?.edition?.title_bo) ?? item?.edition_id ?? id,
+      versionCount: item?.edition?.n_witnesses ?? 0,
+      extractedNames: namesOf(item?.edition?.persons, item?.author_names),
+      answer: savedOf(answer),
+      completed: completed_at != null,
     };
   });
 }
 
+/** Give me my next texts (5); none while I still have texts to finish. */
+export async function claimTexts(): Promise<{ claimed: number }> {
+  return request<{ claimed: number }>('/claim', { method: 'POST' });
+}
+
 /** One text of the batch, with its whole text and its versions. */
 export async function fetchTask(id: string): Promise<AuthorTask> {
-  if (!/^\d+$/.test(id)) throw new Error('Text not found');
-  const item = await request<ApiItem>(`/batches/${BATCH_ID}/items/${id}`);
+  const [, batchId, itemId] = /^([A-Za-z0-9._-]{1,80})\/(\d+)$/.exec(id) ?? [];
+  if (!batchId) throw new Error('Text not found');
+  const item = await request<ApiItem>(`/batches/${encodeURIComponent(batchId)}/items/${itemId}`);
   const edition = await request<ApiEdition>(`/editions/${encodeURIComponent(item.edition_id)}`);
   const content = edition.text_bo ?? '';
   const versions = (edition.versions ?? []).map(versionOf);
@@ -146,36 +154,56 @@ export async function fetchTask(id: string): Promise<AuthorTask> {
   };
 }
 
-// --- answers: in this browser until the answer form sends them --------------------
+// --- answers: saved in our backend, which sends them on to BDRC ----------------------
 
-const STORE = `author-identification:answers-batch-${BATCH_ID}`;
+/** An answer as our backend saved it. */
+interface ApiAnswer {
+  person_answer: 'bdrc' | 'not_in_bdrc' | 'unknown' | null;
+  p_id: string | null;
+  name_bo: string | null;
+  confidence: number | null;
+  note: string | null;
+  text_rejected: boolean;
+  reject_reason: string | null;
+  data: { person_name?: string } | null;
+  decided_at: string;
+}
 
-type Answers = Record<string, SavedAnswer | undefined>;
-
-function readAnswers(): Answers {
-  try {
-    return JSON.parse(localStorage.getItem(STORE) ?? '{}');
-  } catch {
-    return {};
+/** Back to the form's shape; null for an answer this tool does not know how to show. */
+function savedOf(a: ApiAnswer | null | undefined): SavedAnswer | null {
+  if (!a) return null;
+  const base = { note: a.note ?? '', savedAt: a.decided_at.endsWith('Z') ? a.decided_at : `${a.decided_at}Z` };
+  if (a.text_rejected) return isSkipReason(a.reject_reason) ? { ...base, kind: 'skipped', reason: a.reject_reason } : null;
+  if (a.person_answer === 'unknown') return { ...base, kind: 'skipped', reason: 'author_unknown' };
+  if (a.person_answer === 'bdrc' && a.p_id) {
+    return { ...base, kind: 'person', personId: a.p_id, name: a.data?.person_name ?? a.p_id, confidence: a.confidence ?? 0 };
   }
+  if (a.person_answer === 'not_in_bdrc') return { ...base, kind: 'not_in_bdrc', name: a.name_bo ?? '', confidence: a.confidence ?? 0 };
+  return null;
 }
 
-const writeAnswers = (answers: Answers) => localStorage.setItem(STORE, JSON.stringify(answers));
-
-export async function saveAnswer(taskId: string, answer: AuthorAnswer): Promise<SavedAnswer> {
-  const saved: SavedAnswer = { ...answer, savedAt: new Date().toISOString() };
-  writeAnswers({ ...readAnswers(), [taskId]: saved });
-  return saved;
+/** The answer as BDRC's editions API takes it (our backend adds who answered). */
+function bodyOf(answer: AuthorAnswer, editionId: string) {
+  const note = answer.note.trim() || null;
+  if (answer.kind === 'skipped') {
+    return answer.reason === 'author_unknown'
+      ? { edition_id: editionId, person_answer: 'unknown', note }
+      : { edition_id: editionId, text_rejected: true, reject_reason: answer.reason, note };
+  }
+  if (answer.kind === 'person') {
+    // The person's name is kept with the answer so it shows without asking BDRC again.
+    return { edition_id: editionId, person_answer: 'bdrc', p_id: answer.personId, confidence: answer.confidence, note, data: { person_name: answer.name } };
+  }
+  return { edition_id: editionId, person_answer: 'not_in_bdrc', name_bo: answer.name, confidence: answer.confidence, note };
 }
 
-/** Take an answer back: the text is to do again. */
-export async function removeAnswer(taskId: string): Promise<void> {
-  const answers = readAnswers();
-  delete answers[taskId];
-  writeAnswers(answers);
-}
-
-/** Only while answers stay in this browser: every text is to do again. */
-export async function clearSampleAnswers(): Promise<void> {
-  localStorage.removeItem(STORE);
+/** Save my answer on a text ("1/5"). Our backend keeps it and sends it to BDRC. */
+export async function saveAnswer(taskId: string, editionId: string, answer: AuthorAnswer): Promise<SavedAnswer> {
+  const [batchId, itemId] = taskId.split('/');
+  const saved = await request<ApiAnswer>(`/batches/${encodeURIComponent(batchId)}/items/${itemId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyOf(answer, editionId)),
+  });
+  return savedOf(saved) ?? { ...answer, savedAt: new Date().toISOString() };
 }

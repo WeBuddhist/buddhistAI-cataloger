@@ -7,7 +7,7 @@ import RequireAccess from '../access/RequireAccess';
 import AuthorPanel, { type AnswerKind } from '../components/AuthorPanel';
 import SourceViewer, { type SourceTab } from '../components/SourceViewer';
 import TextView from '../components/TextView';
-import { useRemoveAnswer, useTask, useTasks } from '../hooks';
+import { useTask, useTasks } from '../hooks';
 import type { AuthorTask, TaskSummary } from '../types';
 import { cleanName, nameCandidates } from '../utils';
 
@@ -22,7 +22,9 @@ export default function Workspace() {
 }
 
 function TextPage() {
-  const { textId = '' } = useParams<{ textId: string }>();
+  // A text is a BDRC batch item: /author-identification/<batch>/<item>.
+  const { batchId = '', itemId = '' } = useParams<{ batchId: string; itemId: string }>();
+  const textId = `${batchId}/${itemId}`;
   const tasks = useTasks();
   const task = useTask(textId);
 
@@ -38,6 +40,16 @@ function TextPage() {
     );
   }
   if (!tasks.data || !task.data) return <div className="p-8 text-sm text-gray-500">Loading text…</div>;
+  if (!tasks.data.some((t) => t.id === textId)) {
+    return (
+      <div className="p-8 text-sm text-gray-700">
+        This text is not in your list.{' '}
+        <Link to={ROOT} className="text-blue-600 underline">
+          Back to my texts
+        </Link>
+      </div>
+    );
+  }
 
   // Keyed so another text starts from fresh state.
   return <WorkspaceView key={task.data.id} task={task.data} tasks={tasks.data} />;
@@ -45,7 +57,6 @@ function TextPage() {
 
 function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: TaskSummary[] }>) {
   const navigate = useNavigate();
-  const undo = useRemoveAnswer();
   const index = tasks.findIndex((t) => t.id === task.id);
   const saved = tasks[index]?.answer ?? null;
   const candidates = useMemo(() => nameCandidates(task.extractedNames), [task.extractedNames]);
@@ -85,24 +96,15 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
     setFocusEvidence((n) => n + 1);
   };
 
-  const takeBack = async () => {
-    try {
-      await undo.mutateAsync(task.id);
-      goTo(task.id);
-    } catch {
-      toast.error('Could not undo. Open the text again to change the answer.');
-    }
-  };
   // On to the next text without an answer, from here and then from the top; the list when
   // that was the last one.
   const afterFirstAnswer = () => {
-    const open = [...tasks.slice(index + 1), ...tasks.slice(0, index)].find((t) => !t.answer);
+    const open = [...tasks.slice(index + 1), ...tasks.slice(0, index)].find((t) => !t.answer && !t.completed);
     if (open) goTo(open.id);
     else navigate(ROOT);
     toast.success(open ? 'Answer saved' : 'Answer saved. That was your last text.', {
       // Not at the bottom right, where it would cover Submit on the next text.
       position: 'top-center',
-      action: { label: 'Undo', onClick: () => void takeBack() },
     });
   };
 
@@ -155,6 +157,7 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
         <div className="min-h-0 border-t border-gray-200 lg:border-l lg:border-t-0">
           <AuthorPanel
             taskId={task.id}
+            editionId={task.editionId}
             taskTitle={task.title}
             candidates={candidates}
             versions={task.versions}

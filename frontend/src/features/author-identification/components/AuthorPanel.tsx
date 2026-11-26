@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { ArrowRight, Check, Plus, Search } from 'lucide-react';
+import { ArrowRight, Check, Plus, ScrollText, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { needsNote, SKIP_REASONS, type SkipReason } from '../guidelines';
+import { CONFIDENCE, SKIP_REASONS, type SkipReason } from '../guidelines';
 import { useSaveAnswer } from '../hooks';
 import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
 import { answerLabel, cleanName, FIELD, sameName } from '../utils';
@@ -27,8 +27,11 @@ const savedPerson = (saved: SavedAnswer | null): BdrcPerson | null =>
     ? { id: saved.personId, nameBo: saved.name, matchedName: null, dates: null }
     : null;
 
+const savedConfidence = (saved: SavedAnswer | null) => (saved && saved.kind !== 'skipped' && saved.confidence > 0 ? saved.confidence : null);
+
 export default function AuthorPanel({
   taskId,
+  editionId,
   taskTitle,
   candidates,
   versions,
@@ -48,6 +51,8 @@ export default function AuthorPanel({
   onNext,
 }: Readonly<{
   taskId: string;
+  /** BDRC's id of the text, kept with the answer. */
+  editionId: string;
   taskTitle: string;
   /** The names found in the text and its versions. */
   candidates: NameCandidate[];
@@ -74,30 +79,43 @@ export default function AuthorPanel({
   const [person, setPerson] = useState<BdrcPerson | null>(savedPerson(saved));
   const [name, setName] = useState(saved?.kind === 'not_in_bdrc' ? saved.name : '');
   const [reason, setReason] = useState<SkipReason | null>(saved?.kind === 'skipped' ? saved.reason : null);
+  const [confidence, setConfidence] = useState<number | null>(savedConfidence(saved));
   const [note, setNote] = useState(saved?.note ?? '');
   const [noteOpen, setNoteOpen] = useState(Boolean(saved?.note));
-  const noteNeeded = kind === 'skipped' && reason != null && needsNote(reason);
 
   const chooseKind = (next: AnswerKind) => {
     onKindChange(next);
     // What was searched is most likely the author's name; it can still be changed.
     if (next === 'not_in_bdrc' && !name) setName(cleanName(query));
   };
+  // Picking the chosen person again takes them back.
+  const pick = (p: BdrcPerson) => setPerson((current) => (current?.id === p.id ? null : p));
+  const closeNote = () => {
+    setNote('');
+    setNoteOpen(false);
+  };
 
   const draft = (): AuthorAnswer | null => {
     const noted = { note: note.trim() };
-    if (kind === 'skipped') return reason && !(noteNeeded && !noted.note) ? { kind, reason, ...noted } : null;
-    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), ...noted } : null;
-    return person ? { kind, personId: person.id, name: person.nameBo, ...noted } : null;
+    if (kind === 'skipped') return reason ? { kind, reason, ...noted } : null;
+    if (confidence == null) return null;
+    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), confidence, ...noted } : null;
+    return person ? { kind, personId: person.id, name: person.nameBo, confidence, ...noted } : null;
   };
   const answer = draft();
+  // What is still missing, said on the button's hover.
+  let missing = '';
+  if (kind === 'skipped' && !reason) missing = 'Choose a reason';
+  else if (kind === 'person' && !person) missing = 'Choose a person';
+  else if (kind === 'not_in_bdrc' && !cleanName(name)) missing = 'Write the name';
+  else if (kind !== 'skipped' && confidence == null) missing = 'Choose how sure you are';
 
   const submit = async () => {
     if (!answer) return;
     try {
-      await save.mutateAsync({ taskId, answer });
-    } catch {
-      toast.error('Could not save the answer. Try again.', { position: 'top-center' });
+      await save.mutateAsync({ taskId, editionId, answer });
+    } catch (e) {
+      toast.error(`Could not save the answer: ${e instanceof Error ? e.message : 'try again'}`, { position: 'top-center' });
       return;
     }
     if (saved) {
@@ -109,6 +127,7 @@ export default function AuthorPanel({
   };
 
   if (saved && !editing) {
+    const sure = savedConfidence(saved);
     return (
       <section aria-label="Author" className="flex h-full min-h-0 flex-col bg-white">
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
@@ -117,6 +136,7 @@ export default function AuthorPanel({
           </div>
           <div>
             <div className="break-words font-monlam text-lg leading-loose text-gray-900">{answerLabel(saved)}</div>
+            {sure && <p className="mt-1 text-sm text-gray-600">Confidence: {sure} of 5</p>}
             {saved.note && (
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
                 <span className="font-medium text-gray-700">Note:</span> {saved.note}
@@ -182,12 +202,14 @@ export default function AuthorPanel({
               onSearch={onSearch}
               onShowVersions={onShowVersions}
               selected={person}
-              onSelect={setPerson}
+              onSelect={pick}
             />
           )}
           {kind === 'not_in_bdrc' && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">For an author you can name who is not in BDRC. Try other spellings in the search first.</p>
+              <p className="text-sm text-gray-600">
+                For an author who is not in BDRC. Try other spellings in the search first. In the note, add anything that could help: dates, teacher, monastery, other names.
+              </p>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Author’s name in Tibetan</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} lang="bo" className={`h-11 font-monlam text-base md:text-base ${FIELD}`} />
@@ -219,27 +241,38 @@ export default function AuthorPanel({
         </div>
       </div>
 
-      <div className="space-y-2.5 border-t border-gray-200 px-5 py-3">
-        {noteOpen || noteNeeded ? (
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-gray-700">{noteNeeded ? 'Write the reason' : 'Note (optional)'}</span>
+      <div className="space-y-3 border-t border-gray-200 px-5 py-3">
+        {kind !== 'skipped' && <ConfidencePicker value={confidence} onChange={setConfidence} />}
+        {noteOpen ? (
+          <div className="text-sm">
+            <div className="mb-1 flex items-center justify-between">
+              <label htmlFor="author-note" className="font-medium text-gray-700">
+                Note <span className="font-normal text-gray-500">(optional)</span>
+              </label>
+              <button
+                type="button"
+                onClick={closeNote}
+                aria-label="Remove the note"
+                title="Remove the note"
+                className="cursor-pointer rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
             <Textarea
+              id="author-note"
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={noteNeeded ? undefined : 'For example, the name of a co-author'}
+              placeholder="Only about the author: other possible authors, “Duplicate of this author: P…”, dates…"
               className={FIELD}
             />
-          </label>
+          </div>
         ) : (
           <button type="button" onClick={() => setNoteOpen(true)} className={`inline-flex items-center gap-1 text-sm ${LINK}`}>
             <Plus className="h-3.5 w-3.5" aria-hidden /> Add a note
           </button>
         )}
-        <p className="truncate text-sm text-gray-600">
-          Your answer:{' '}
-          {answer ? <span className="font-monlam text-gray-900">{answerLabel(answer)}</span> : 'none yet'}
-        </p>
         <div className="flex gap-2">
           {saved && (
             <Button variant="outline" className="h-11 cursor-pointer bg-white" onClick={() => onEditingChange(false)}>
@@ -249,6 +282,7 @@ export default function AuthorPanel({
           <Button
             className="h-11 flex-1 cursor-pointer bg-green-600 text-base text-white hover:bg-green-700"
             disabled={!answer || save.isPending}
+            title={missing || undefined}
             onClick={submit}
           >
             {save.isPending ? 'Saving…' : kind === 'skipped' ? 'Skip this text' : 'Submit'}
@@ -256,6 +290,41 @@ export default function AuthorPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+/** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. */
+function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; onChange: (value: number) => void }>) {
+  const hint = CONFIDENCE.find((c) => c.value === value)?.hint;
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
+        <span id="confidence-label" className="font-medium text-gray-700">
+          How sure are you?
+        </span>
+        <span className="text-xs text-gray-500">{value == null ? '1 = only clues · 5 = name clearly written' : hint || `${value} of 5`}</span>
+      </div>
+      <div role="radiogroup" aria-labelledby="confidence-label" className="grid grid-cols-5 gap-1">
+        {CONFIDENCE.map((c) => {
+          const on = value === c.value;
+          return (
+            <button
+              key={c.value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              title={c.hint || undefined}
+              onClick={() => onChange(c.value)}
+              className={`h-9 cursor-pointer rounded-md border text-sm font-semibold tabular-nums transition-colors ${
+                on ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              {c.value}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -278,16 +347,17 @@ function NamesFound({
   onShowVersions: () => void;
 }>) {
   return (
-    <div className="rounded-md border border-sky-200 bg-sky-50/60 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-sky-900">Names found in the texts</h2>
+    <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5">
+        <ScrollText className="h-4 w-4 text-gray-500" aria-hidden />
+        <h2 className="text-sm font-semibold text-gray-900">Names found in the texts</h2>
         {candidates.length > 1 && (
           <span className="ml-auto rounded-full bg-amber-100 px-2 text-xs font-medium leading-5 text-amber-900">{candidates.length} different names</span>
         )}
       </div>
       {candidates.length > 0 ? (
         <>
-          <ul className="divide-y divide-sky-100">
+          <ul className="divide-y divide-gray-100 px-4">
             {candidates.map((c) => (
               <Candidate
                 key={c.name}
@@ -300,10 +370,10 @@ function NamesFound({
               />
             ))}
           </ul>
-          <p className="mt-1 text-xs text-gray-500">A name found is not always the author. Please check.</p>
+          <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">A name found is not always the author. Please check.</p>
         </>
       ) : (
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="px-4 py-3 text-sm text-gray-600">
           No name was found. Look for one at the end of the text, or{' '}
           <button type="button" onClick={onShowVersions} className={LINK}>
             check the versions
@@ -315,7 +385,9 @@ function NamesFound({
   );
 }
 
-const PLACE = 'cursor-pointer rounded-full border border-sky-200 bg-white px-2 text-xs font-medium leading-5 text-blue-700 hover:border-blue-400 hover:bg-blue-50';
+const CHIP = 'cursor-pointer rounded-md border px-2 text-xs font-medium leading-6 transition-colors';
+const IN_TEXT = `${CHIP} border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-400`;
+const IN_VERSION = `${CHIP} border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700`;
 
 function Candidate({
   candidate,
@@ -336,10 +408,20 @@ function Candidate({
   const { name, found } = candidate;
   // A quote around the name; not the name itself again.
   const evidence = found.find((f) => f.evidence && !sameName(f.evidence, name))?.evidence;
+  const inText = found.find((f) => f.versionId == null);
+  const inVersions = found.flatMap((f) => {
+    const index = f.versionId == null ? -1 : versions.findIndex((v) => v.id === f.versionId);
+    return index < 0 ? [] : [{ id: versions[index].id, number: index + 1 }];
+  });
   return (
-    <li className="py-2 first:pt-1">
+    <li className="py-2.5">
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 break-words font-monlam text-xl leading-loose text-gray-900">{name}</span>
+        {!searched && (
+          <Button variant="outline" size="sm" className="mt-1 h-7 shrink-0 cursor-pointer bg-white" aria-label={`Search ${name}`} onClick={onSearch}>
+            <Search /> Search
+          </Button>
+        )}
       </div>
       {evidence && (
         <p className="break-words text-sm">
@@ -347,29 +429,18 @@ function Candidate({
         </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-gray-600">Found in</span>
-        {found.map((f) => {
-          if (f.versionId == null) {
-            return (
-              <button key="text" type="button" className={PLACE} title="Show in text" onClick={() => onShowEvidence(f.evidence ?? '')}>
-                Text
-              </button>
-            );
-          }
-          const { versionId } = f;
-          const index = versions.findIndex((v) => v.id === versionId);
-          if (index < 0) return null;
-          return (
-            <button key={versionId} type="button" className={PLACE} title="Open this version" onClick={() => onShowVersion(versionId)}>
-              Version {index + 1}
-            </button>
-          );
-        })}
-        {!searched && (
-          <Button variant="outline" size="sm" className="ml-auto h-7 cursor-pointer bg-white" aria-label={`Search ${name}`} onClick={onSearch}>
-            <Search /> Search
-          </Button>
+        {inText && (
+          <button type="button" className={IN_TEXT} title="Show it in the text" onClick={() => onShowEvidence(inText.evidence ?? '')}>
+            In the text
+          </button>
         )}
+        {inVersions.length > 0 && <span className="text-xs text-gray-500">{inText ? 'and written in' : 'Written in'}</span>}
+        {inVersions.map((v) => (
+          <button key={v.id} type="button" className={IN_VERSION} title="Open this version" onClick={() => onShowVersion(v.id)}>
+            Version {v.number}
+          </button>
+        ))}
+        {!inText && inVersions.length > 0 && <span className="text-xs text-gray-500">(not in the text itself)</span>}
       </div>
     </li>
   );

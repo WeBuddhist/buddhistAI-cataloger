@@ -20,6 +20,9 @@ DEDUP_SYNC_ENABLED = os.getenv("DEDUP_SYNC", "on").strip().lower() not in ("off"
 EDITIONS_TOOL_USER = os.getenv("EDITIONS_TOOL_USER", "").strip()
 EDITIONS_TOOL_PASSWORD = os.getenv("EDITIONS_TOOL_PASSWORD", "").strip()
 
+# The BDRC batch "Assign work" hands texts out from (BDRC's first batch is "1").
+AUTHOR_IDENTIFICATION_BATCH_ID = os.getenv("AUTHOR_IDENTIFICATION_BATCH_ID", "1").strip() or "1"
+
 # Sending Author Identification answers to BDRC. On unless AUTHOR_IDENTIFICATION_SYNC=off:
 # set that on a local machine, so test answers never reach BDRC (they stay queued in the
 # local database instead).

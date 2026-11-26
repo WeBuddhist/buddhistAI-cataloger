@@ -17,6 +17,7 @@ from author_identification.models import (
     SYNC_SUPERSEDED,
     AuthorActiveTime,
     AuthorAnswer,
+    AuthorAssignment,
 )
 
 _NEWEST_FIRST = (AuthorAnswer.decided_at.desc(), AuthorAnswer.created_at.desc())
@@ -53,6 +54,49 @@ def answer_history(db: Session, batch_id: str, item_id: int) -> list[AuthorAnswe
         .where(AuthorAnswer.batch_id == batch_id, AuthorAnswer.item_id == item_id)
         .order_by(*_NEWEST_FIRST)
     ).scalars().all())
+
+
+# --- assignments ("Assign work") ---------------------------------------------------
+
+def user_assignments(db: Session, user_id: str, *, open_only: bool = False) -> list[AuthorAssignment]:
+    """My texts, in the order they were handed out (then batch order)."""
+    q = select(AuthorAssignment).where(AuthorAssignment.user_id == user_id)
+    if open_only:
+        q = q.where(AuthorAssignment.completed_at.is_(None))
+    return list(db.execute(
+        q.order_by(AuthorAssignment.assigned_at, AuthorAssignment.batch_id, AuthorAssignment.item_id)
+    ).scalars().all())
+
+
+def get_assignment(db: Session, batch_id: str, item_id: int) -> Optional[AuthorAssignment]:
+    return db.get(AuthorAssignment, (batch_id, item_id))
+
+
+def assigned_item_ids(db: Session, batch_id: str, item_ids: list[int]) -> set[int]:
+    """Those of ``item_ids`` someone already holds."""
+    if not item_ids:
+        return set()
+    return set(db.execute(
+        select(AuthorAssignment.item_id).where(
+            AuthorAssignment.batch_id == batch_id, AuthorAssignment.item_id.in_(item_ids)
+        )
+    ).scalars().all())
+
+
+def try_assign(db: Session, *, batch_id: str, item_id: int, user_id: str, edition_id: Optional[str]) -> bool:
+    """Give the text to this person unless someone holds it (also when two people ask at
+    the same moment). Not committed."""
+    stmt = insert(AuthorAssignment).values(
+        batch_id=batch_id, item_id=item_id, user_id=user_id, edition_id=edition_id, assigned_at=datetime.utcnow()
+    ).on_conflict_do_nothing(index_elements=[AuthorAssignment.batch_id, AuthorAssignment.item_id])
+    return db.execute(stmt.returning(AuthorAssignment.item_id)).first() is not None
+
+
+def complete_assignment(db: Session, batch_id: str, item_id: int) -> None:
+    """The text has an answer: its holder is done with it. Not committed."""
+    a = db.get(AuthorAssignment, (batch_id, item_id))
+    if a is not None and a.completed_at is None:
+        a.completed_at = datetime.utcnow()
 
 
 # --- time spent ------------------------------------------------------------------
