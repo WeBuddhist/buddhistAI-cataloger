@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cleanName, hasTibetan } from '../utils';
+import { useT } from '../i18n';
 
 // Longer than any name: a selection past this is someone reading, not picking a name.
 const MAX_SELECTION = 80;
@@ -19,6 +20,7 @@ export default function TextView({
   focusEvidence: number;
   onSearchName: (name: string) => void;
 }>) {
+  const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLElement>(null);
@@ -58,21 +60,21 @@ export default function TextView({
             onClick={() => onSearchName(picked)}
             className="h-7 min-w-0 cursor-pointer bg-blue-600 text-white hover:bg-blue-700"
           >
-            <Search /> Search <span className="truncate font-monlam">{picked}</span>
+            <Search /> {t('textView.search')} <span className="truncate font-monlam">{picked}</span>
           </Button>
         ) : (
-          <span>Select a name in the text to search for it</span>
+          <span>{t('textView.selectHint')}</span>
         )}
         <button
           type="button"
           onClick={toEnd}
           className="inline-flex shrink-0 cursor-pointer items-center gap-1 font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline"
         >
-          <ArrowDownToLine className="h-3.5 w-3.5" /> Go to end
+          <ArrowDownToLine className="h-3.5 w-3.5" /> {t('textView.toEnd')}
         </button>
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8">
-        <div ref={textRef} lang="bo" className="mx-auto max-w-3xl whitespace-pre-wrap break-words font-monlam text-lg leading-[2.2] text-gray-900">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div ref={textRef} lang="bo" className="mx-auto max-w-3xl whitespace-pre-wrap break-words font-monlam text-base leading-[2.1] text-gray-900 xl:text-lg xl:leading-[2.2]">
           {at < 0 || !evidence ? (
             content
           ) : (

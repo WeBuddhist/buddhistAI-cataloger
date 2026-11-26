@@ -1,9 +1,19 @@
+import type { PersonRole, SkipReason } from './guidelines';
+
 /** One copy of a text. `bdrcId` is null when the copy has no page of its own on BDRC. */
 export interface TextVersion {
   id: string;
   bdrcId: string | null;
   /** Null when the copy is not in any BDRC collection (e.g. a local upload). */
   collection: { name: string; bdrcId: string } | null;
+  /** Its title, as BDRC has it. */
+  title: string | null;
+  /** The author's name as written in this version, when one was found. */
+  nameInVersion: string | null;
+  /** Its scans on BDRC. */
+  scansUrl: string | null;
+  /** The version the text comes from. */
+  base: boolean;
 }
 
 /** What BDRC's records say about a version; null where they say nothing. */
@@ -17,10 +27,10 @@ export interface VersionDetails {
   script: string | null;
 }
 
-/** A name the model found at the end of the text or of one of its versions. */
+/** A name found in the text or in one of its versions. */
 export interface ExtractedName {
   name: string;
-  /** 0 to 1. */
+  /** 0 to 1; BDRC gives none for now. */
   confidence: number | null;
   /** The version it was found in; null for the text itself. */
   versionId: string | null;
@@ -35,9 +45,11 @@ export interface NameCandidate {
   found: { versionId: string | null; evidence: string | null }[];
 }
 
-/** One deduplicated text to find the author of. */
+/** One deduplicated text to find the author of. `id` is its place in the batch. */
 export interface AuthorTask {
   id: string;
+  /** BDRC's id of the text (edition). */
+  editionId: string;
   title: string;
   content: string;
   versions: TextVersion[];
@@ -64,21 +76,30 @@ export interface NameSuggestion {
   total: number;
 }
 
-export type AuthorAnswer =
-  | { kind: 'person'; personId: string; name: string }
-  | { kind: 'not_in_bdrc'; name: string; note: string }
-  | { kind: 'unknown'; note: string };
+/** One author per text; the note holds anything else about the author. Confidence is 1 to
+ * 5, given with an author (not when skipping). */
+export type AuthorAnswer = { note: string } & (
+  | { kind: 'person'; personId: string; name: string; role: PersonRole; roleOther?: string; confidence: number }
+  | { kind: 'not_in_bdrc'; name: string; role: PersonRole; roleOther?: string; confidence: number }
+  | { kind: 'skipped'; reason: SkipReason }
+);
 
 export type SavedAnswer = AuthorAnswer & { savedAt: string };
 
 /** One of my texts, as listed. */
 export interface TaskSummary {
   id: string;
+  /** BDRC's id of the text (edition); empty if BDRC no longer lists it. */
+  editionId: string;
+  /** The author names BDRC found, as listed. */
+  authorNames: string[];
   title: string;
   versionCount: number;
   extractedNames: ExtractedName[];
   /** Null while it is to do. */
   answer: SavedAnswer | null;
+  /** Our backend has my answer on it. */
+  completed: boolean;
 }
 
 export type DuplicateDecision = 'same' | 'different';

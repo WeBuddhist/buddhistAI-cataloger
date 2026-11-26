@@ -1,5 +1,7 @@
 import { fromWylie } from 'jsewts';
 import { getBdrclink } from '@/lib/bdrclink';
+import { skipLabel } from './guidelines';
+import { tr } from './i18n';
 import type { AuthorAnswer, DuplicateReport, ExtractedName, NameCandidate, TextVersion } from './types';
 
 const TIBETAN = /[ༀ-࿿]/;
@@ -25,6 +27,22 @@ export function wylieToTibetan(wylie: string): string {
 export const cleanName = (name: string) =>
   name.replace(/\s+/g, ' ').trim().replace(/[་།༎༔\s]+$/, '').replace(/^[་།༎༔\s]+/, '');
 
+const BREAK = /[་།\s]+/;
+
+/** Its syllables (Tibetan) or words, without tsheg, shad and spaces. */
+export const syllablesOf = (text: string) => text.split(BREAK).filter(Boolean);
+
+/** The same name, however its syllables are broken across lines. */
+export const sameName = (a: string, b: string) => syllablesOf(a).join('་') === syllablesOf(b).join('་');
+
+/** Where a name is in a text, as written there: its syllables may be broken across lines. */
+export function findName(text: string, name: string): string | null {
+  const syllables = syllablesOf(name);
+  if (syllables.length === 0) return null;
+  const escaped = syllables.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(escaped.join('[་།\\s]+')).exec(text)?.[0] ?? null;
+}
+
 // Enough to get past a title in front or an ending behind, without a long wait: each part
 // is a search of its own.
 const MAX_PARTS = 12;
@@ -47,10 +65,11 @@ export function nameParts(name: string): string[] {
   return [...parts].slice(0, MAX_PARTS);
 }
 
+/** Who was answered; the role is shown on a line of its own. */
 export function answerLabel(answer: AuthorAnswer): string {
-  if (answer.kind === 'person') return `${answer.name} · ${answer.personId}`;
-  if (answer.kind === 'not_in_bdrc') return `${answer.name} · not in BDRC`;
-  return 'I don’t know';
+  if (answer.kind === 'person') return tr('answer.personLabel', { name: answer.name, id: answer.personId });
+  if (answer.kind === 'not_in_bdrc') return tr('answer.notInBdrcLabel', { name: answer.name });
+  return tr('answer.skippedLabel', { reason: skipLabel(answer.reason) });
 }
 
 export const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });

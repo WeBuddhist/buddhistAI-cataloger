@@ -8,6 +8,8 @@ import { cleanName, FIELD, reportOf } from '../utils';
 import DuplicateDialog from './DuplicateDialog';
 import PersonCard from './PersonCard';
 import PersonDialog from './PersonDialog';
+import { Trans } from 'react-i18next';
+import { useT } from '../i18n';
 
 const BOX = 'rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-600';
 
@@ -33,6 +35,7 @@ export default function PersonSearch({
   selected: BdrcPerson | null;
   onSelect: (person: BdrcPerson) => void;
 }>) {
+  const t = useT();
   const search = usePersonSearch(searched);
   const persons = search.data?.pages.flatMap((p) => p.persons) ?? [];
   const total = search.data?.pages[0]?.total ?? 0;
@@ -42,6 +45,17 @@ export default function PersonSearch({
   const prefetch = usePrefetchPerson();
   const duplicates = useDuplicates();
   const [reporting, setReporting] = useState<BdrcPerson | null>(null);
+
+  /** The results come a page at a time; past the last one, the next page is loaded first. */
+  const view = async (index: number) => {
+    if (index >= persons.length) {
+      const { data } = await search.fetchNextPage();
+      const loaded = data?.pages.reduce((n, p) => n + p.persons.length, 0) ?? 0;
+      if (index >= loaded) return;
+    }
+    // Not when it was closed meanwhile.
+    setViewing((current) => (current == null ? null : index));
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -54,25 +68,25 @@ export default function PersonSearch({
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          aria-label="Author name"
-          placeholder="Tibetan, Wylie or English"
+          aria-label={t('search.nameLabel')}
+          placeholder={t('search.placeholder')}
           className={`h-10 flex-1 font-monlam text-base md:text-base ${FIELD}`}
         />
         <Button type="submit" className="h-10 cursor-pointer bg-blue-600 text-white hover:bg-blue-700" disabled={!cleanName(query)}>
-          <Search /> Find
+          <Search /> {t('search.find')}
         </Button>
       </form>
 
       {search.isLoading && (
         <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Searching BDRC…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t('search.searching')}
         </div>
       )}
       {search.isError && persons.length === 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">
-          Could not search BDRC.{' '}
+          {t('search.failed')}{' '}
           <button type="button" className="cursor-pointer font-medium underline" onClick={() => search.refetch()}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       )}
@@ -80,16 +94,16 @@ export default function PersonSearch({
       {nobody && (
         <div className={`${BOX} space-y-2`}>
           <p>
-            Nobody found for <span className="font-monlam text-gray-900">{searched}</span>.
+            <Trans t={t} i18nKey="search.nobody" values={{ name: searched }} components={{ name: <span className="font-monlam text-gray-900" /> }} />
           </p>
           {suggestions.isLoading && (
             <p className="flex items-center gap-2 text-xs text-gray-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Trying shorter forms of the name…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('search.tryingShorter')}
             </p>
           )}
           {suggestions.data && suggestions.data.length > 0 && (
             <>
-              <p>These shorter names do find someone:</p>
+              <p>{t('search.shorterFound')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {suggestions.data.map((s) => (
                   <button
@@ -105,9 +119,9 @@ export default function PersonSearch({
             </>
           )}
           <p>
-            The name may be written differently, or given in another version.{' '}
+            {t('search.writtenDifferently')}{' '}
             <button type="button" onClick={onShowVersions} className="cursor-pointer font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline">
-              Check the versions
+              {t('search.checkVersions')}
             </button>
           </p>
         </div>
@@ -116,7 +130,7 @@ export default function PersonSearch({
       {persons.length > 0 && (
         <>
           <p className="text-sm text-gray-500">
-            {total} {total === 1 ? 'person' : 'people'} for <span className="font-monlam text-sm text-gray-800">{searched}</span>
+            <Trans t={t} i18nKey="search.resultsFor" count={total} values={{ name: searched }} components={{ name: <span className="font-monlam text-sm text-gray-800" /> }} />
           </p>
           <ul className="space-y-2">
             {persons.map((p, i) => (
@@ -132,7 +146,7 @@ export default function PersonSearch({
               />
             ))}
           </ul>
-          {search.isFetchNextPageError && <p className="text-xs text-red-700">Could not load more. Try again.</p>}
+          {search.isFetchNextPageError && <p className="text-xs text-red-700">{t('search.loadMoreFailed')}</p>}
           {search.hasNextPage && (
             <Button
               variant="outline"
@@ -140,7 +154,7 @@ export default function PersonSearch({
               disabled={search.isFetchingNextPage}
               onClick={() => search.fetchNextPage()}
             >
-              {search.isFetchingNextPage ? 'Loading…' : `Show more (${persons.length} of ${total})`}
+              {search.isFetchingNextPage ? t('common.loading') : t('search.showMore', { n: persons.length, total })}
             </Button>
           )}
         </>
@@ -151,9 +165,12 @@ export default function PersonSearch({
         index={viewing}
         total={total}
         selectedId={selected?.id ?? null}
-        onIndexChange={setViewing}
+        loadingMore={search.isFetchingNextPage}
+        loadFailed={search.isFetchNextPageError}
+        onIndexChange={(i) => void view(i)}
         onSelect={(p) => {
-          onSelect(p);
+          // "Selected" in the dialog stays selected; only the card's radio takes it back.
+          if (selected?.id !== p.id) onSelect(p);
           setViewing(null);
         }}
         onReport={(p) => {

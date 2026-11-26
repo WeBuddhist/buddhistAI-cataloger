@@ -1,0 +1,47 @@
+/*
+ * Author Identification in Tibetan (the class ai-bo, see tibetan.ts), and only this tool.
+ *
+ * The site's font has no Tibetan letters; they come from a fallback with one weight, at sizes made for Latin
+ * letters: small labels come out tiny, and bold shows no different. Here the sizes go one
+ * step up, and what is bold (headings, buttons, links, choice titles) is set in Monlam
+ * Uchen with thicker strokes. Text of BDRC and of the texts keeps
+ * its own font (font-monlam).
+ */
+
+.ai-bo .text-xs:not(.font-monlam) {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.ai-bo .text-sm:not(.font-monlam) {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.ai-bo .text-base:not(.font-monlam) {
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+.ai-bo :is(h1, h2, h3, h4, b, strong, button, a, [role='tab'], .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
+  font-family: 'monlam', 'jomo', sans-serif;
+}
+/* Monlam has one weight, and the browser doesn't draw it bold: the strokes are thickened
+   with an outline of the text's own color instead. */
+.ai-bo :is(h1, h2, h3, h4, b, strong, .font-medium, .font-semibold, .font-bold):not(.font-monlam) {
+  -webkit-text-stroke: 0.45px currentColor;
+}
+.ai-bo :is(button, a, [role='tab']):not(.font-monlam) {
+  -webkit-text-stroke: 0.3px currentColor;
+}
+/* Headings one size above the text under them. */
+.ai-bo :is(h1, h2, h3).text-sm:not(.font-monlam) {
+  font-size: 1.0625rem;
+}
+
+/* The site's rule for every Tibetan label (18px, with a margin under it) is for forms
+   elsewhere; here labels are choice cards and field titles, sized above. */
+.ai-bo label {
+  margin-bottom: 0 !important;
+}
+.ai-bo label:not([class*='text-']) {
+  font-size: inherit;
+}

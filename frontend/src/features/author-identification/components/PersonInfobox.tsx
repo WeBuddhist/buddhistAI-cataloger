@@ -5,6 +5,7 @@ import { useNames, usePersonImage, usePersonRecord, usePersonWorks } from '../ho
 import { BO } from '../labels';
 import type { BdrcPerson, BdrcWork, RecordRow, RecordValue } from '../types';
 import { bdrcPage, boDigits, hasTibetan } from '../utils';
+import { useT } from '../i18n';
 
 const LINK = 'text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline';
 /** Longer lists start folded. */
@@ -14,6 +15,7 @@ const fontOf = (text: string) => (hasTibetan(text) ? 'font-monlam' : '');
 
 /** A person's BDRC record as a name card, like the box beside a Wikipedia article. */
 export default function PersonInfobox({ person }: Readonly<{ person: BdrcPerson }>) {
+  const t = useT();
   const record = usePersonRecord(person.id);
   const { life = [], relations = [], links = [] } = record.data ?? {};
   const ids = [...life, ...relations].flatMap((r) => r.values.flatMap((v) => ('id' in v.value ? [v.value.id] : [])));
@@ -31,10 +33,10 @@ export default function PersonInfobox({ person }: Readonly<{ person: BdrcPerson 
       <dl className="divide-y divide-gray-100">
         {record.isLoading && <Loading />}
         {record.isError && (
-          <div className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" lang="en">
-            Could not load the details from BDRC.{' '}
+          <div className="m-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {t('infobox.failed')}{' '}
             <button type="button" className="cursor-pointer font-medium underline" onClick={() => record.refetch()}>
-              Try again
+              {t('common.tryAgain')}
             </button>
           </div>
         )}
@@ -58,8 +60,9 @@ export default function PersonInfobox({ person }: Readonly<{ person: BdrcPerson 
 }
 
 function Loading() {
+  const t = useT();
   return (
-    <div className="space-y-3 p-4" role="status" aria-label="Loading from BDRC">
+    <div className="space-y-3 p-4" role="status" aria-label={t('infobox.loading')}>
       {[1, 2, 3, 4, 5, 6].map((n) => (
         <div key={n} className="h-5 animate-pulse rounded bg-gray-100" />
       ))}
@@ -157,6 +160,7 @@ function Value({ value, nameOf }: Readonly<{ value: RecordValue; nameOf: NameOf 
 
 /** What BDRC has by them. */
 function WorksRow({ personId }: Readonly<{ personId: string }>) {
+  const t = useT();
   const query = usePersonWorks(personId);
   const pages = query.data?.pages ?? [];
   const total = pages[0]?.total ?? 0;
@@ -174,10 +178,10 @@ function WorksRow({ personId }: Readonly<{ personId: string }>) {
     >
       {query.isLoading && <NamePlaceholder />}
       {query.isError && loaded === 0 && (
-        <span className="text-sm text-red-700" lang="en">
-          Could not load these from BDRC.{' '}
+        <span className="text-sm text-red-700">
+          {t('infobox.worksFailed')}{' '}
           <button type="button" className="cursor-pointer font-medium underline" onClick={() => query.refetch()}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </span>
       )}
@@ -192,8 +196,8 @@ function WorksRow({ personId }: Readonly<{ personId: string }>) {
         </SeeMore>
       )}
       {query.isFetchNextPageError && (
-        <span className="ml-2 text-xs text-red-700" lang="en">
-          Could not load more. Try again.
+        <span className="ml-2 text-xs text-red-700">
+          {t('search.loadMoreFailed')}
         </span>
       )}
     </Row>

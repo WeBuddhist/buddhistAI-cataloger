@@ -24,6 +24,7 @@ from user.routers import user_router
 from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mangum import Mangum
@@ -83,6 +84,23 @@ async def add_utf8_charset(request, call_next):
             response.headers["content-type"] = f"{content_type}; charset=utf-8"
 
     return response
+
+class AuthorIdentificationGZip:
+    """Gzip for Author Identification's responses only: a text from BDRC can be over 1 MB of
+    JSON (about 0.2 MB gzipped). Other tools' responses (images, streams) pass untouched."""
+
+    def __init__(self, app):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/author-identification/"):
+            await self.gzip(scope, receive, send)
+        else:
+            await self.app(scope, receive, send)
+
+
+app.add_middleware(AuthorIdentificationGZip)
 
 # CORS middleware
 app.add_middleware(
@@ -150,6 +168,21 @@ def _start_dedup_sync_worker():
 @app.on_event("shutdown")
 def _stop_dedup_sync_worker():
     from dedup.sync_worker import stop_worker
+
+    stop_worker()
+
+
+@app.on_event("startup")
+def _start_author_identification_sync_worker():
+    """Send saved Author Identification answers to BDRC in the background."""
+    from author_identification.sync_worker import start_worker
+
+    start_worker()
+
+
+@app.on_event("shutdown")
+def _stop_author_identification_sync_worker():
+    from author_identification.sync_worker import stop_worker
 
     stop_worker()
 

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { AuthorTask } from '../types';
 import { isOnBdrc } from '../utils';
 import Versions from './Versions';
+import { useT } from '../i18n';
 
 export type SourceTab = 'text' | 'versions';
 
@@ -15,6 +16,8 @@ export default function SourceViewer({
   versionId,
   onVersionChange,
   onSearchName,
+  focus,
+  onFocusChange,
   children,
 }: Readonly<{
   tab: SourceTab;
@@ -24,11 +27,15 @@ export default function SourceViewer({
   versionId: string | null;
   onVersionChange: (versionId: string) => void;
   onSearchName: (name: string) => void;
+  /** Focus mode of the versions: the BDRC page takes all the room. */
+  focus: boolean;
+  onFocusChange: (focus: boolean) => void;
   /** The text. */
   children: ReactNode;
 }>) {
   // BDRC is loaded the first time it is asked for, then kept, so going to the text and
   // back does not load the page again or lose the place in it.
+  const t = useT();
   const [opened, setOpened] = useState(tab === 'versions');
   if (tab === 'versions' && !opened) setOpened(true);
 
@@ -39,10 +46,10 @@ export default function SourceViewer({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex shrink-0 items-center border-b border-gray-200 px-2">
-        <div role="tablist" aria-label="Where to look" className="flex shrink-0">
+      <div className={focus && tab === 'versions' ? 'hidden' : 'flex shrink-0 items-center border-b border-gray-200 px-2'}>
+        <div role="tablist" aria-label={t('source.whereToLook')} className="flex shrink-0">
           <button type="button" role="tab" aria-selected={tab === 'text'} onClick={() => onTabChange('text')} className={tabClass(tab === 'text')}>
-            Text
+            {t('source.text')}
           </button>
           <button
             type="button"
@@ -51,12 +58,12 @@ export default function SourceViewer({
             onClick={() => onTabChange('versions')}
             className={`inline-flex items-center gap-2 ${tabClass(tab === 'versions')}`}
           >
-            Versions
+            {t('source.versions')}
             <span className="rounded-full bg-blue-100 px-2 text-xs font-semibold tabular-nums text-blue-800">{count}</span>
           </button>
         </div>
         <span className="ml-auto truncate px-2 text-sm tabular-nums text-gray-500">
-          {onBdrc} of {count} on BDRC
+          {t('source.onBdrc', { n: onBdrc, count })}
         </span>
       </div>
 
@@ -64,7 +71,14 @@ export default function SourceViewer({
       <div className={tab === 'text' ? 'min-h-0 flex-1' : 'hidden'}>{children}</div>
       {opened && (
         <div className={tab === 'versions' ? 'min-h-0 flex-1' : 'hidden'}>
-          <Versions task={task} versionId={versionId} onVersionChange={onVersionChange} onSearchName={onSearchName} />
+          <Versions
+            task={task}
+            versionId={versionId}
+            onVersionChange={onVersionChange}
+            onSearchName={onSearchName}
+            focus={focus}
+            onFocusChange={onFocusChange}
+          />
         </div>
       )}
     </div>

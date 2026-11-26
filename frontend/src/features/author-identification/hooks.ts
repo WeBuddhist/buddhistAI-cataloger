@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   infiniteQueryOptions,
   queryOptions,
@@ -11,9 +11,9 @@ import { decideDuplicate, fetchDuplicates, removeDuplicate, reportDuplicate } fr
 import { fetchNames, fetchPersonImage, fetchPersonRecord, fetchTerms, isTerm, termFallback } from './api/personRecord';
 import { fetchPersonWorks } from './api/personWorks';
 import { searchPersons, suggestNames } from './api/persons';
-import { fetchTask, fetchTasks, removeAnswer, saveAnswer } from './api/tasks';
+import { claimTexts, fetchTask, fetchTasks, saveAnswer } from './api/tasks';
 import { fetchVersionDetails } from './api/versions';
-import type { AuthorAnswer, AuthorTask } from './types';
+import type { AuthorAnswer, AuthorTask, TaskSummary } from './types';
 
 const root = ['author-identification'] as const;
 
@@ -34,7 +34,33 @@ const keys = {
 /** My texts with their answers. */
 export const useTasks = () => useQuery({ queryKey: keys.tasks, queryFn: fetchTasks });
 
-export const useTask = (id: string) => useQuery({ queryKey: keys.task(id), queryFn: () => fetchTask(id), retry: false });
+// A text is big (up to 1 MB) and hardly changes while it is being worked on.
+const TASK_STALE_MS = 30 * 60 * 1000;
+
+const taskOptions = (id: string, known?: TaskSummary) =>
+  queryOptions({
+    queryKey: keys.task(id),
+    queryFn: () => fetchTask(id, known?.editionId ? known : undefined),
+    staleTime: TASK_STALE_MS,
+    retry: false,
+  });
+
+/** One text; with what "My texts" knows of it, one request less. */
+export function useTask(id: string) {
+  const client = useQueryClient();
+  const known = client.getQueryData<TaskSummary[]>(keys.tasks)?.find((t) => t.id === id);
+  return useQuery(taskOptions(id, known));
+}
+
+/** Loads my texts still to do in the background, so opening one is at once. */
+export function usePrefetchTasks(tasks: TaskSummary[] | undefined) {
+  const client = useQueryClient();
+  useEffect(() => {
+    for (const t of tasks ?? []) {
+      if (!t.answer && !t.completed && t.editionId) void client.prefetchQuery(taskOptions(t.id, t));
+    }
+  }, [client, tasks]);
+}
 
 /** BDRC's details of a text's versions, by version id. */
 export const useVersionDetails = (task: Pick<AuthorTask, 'id' | 'versions'>) =>
@@ -46,16 +72,18 @@ export const useVersionDetails = (task: Pick<AuthorTask, 'id' | 'versions'>) =>
 export function useSaveAnswer() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, answer }: { taskId: string; answer: AuthorAnswer }) => saveAnswer(taskId, answer),
+    mutationFn: ({ taskId, editionId, answer }: { taskId: string; editionId: string; answer: AuthorAnswer }) =>
+      saveAnswer(taskId, editionId, answer),
     // Awaited, so the next page opens on the list as it is now.
     onSuccess: () => client.invalidateQueries({ queryKey: keys.tasks }),
   });
 }
 
-export function useRemoveAnswer() {
+/** "Assign work": my next texts. */
+export function useClaimTexts() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) => removeAnswer(taskId),
+    mutationFn: claimTexts,
     onSuccess: () => client.invalidateQueries({ queryKey: keys.tasks }),
   });
 }
