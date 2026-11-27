@@ -239,3 +239,57 @@ class DuplicateOut(BaseModel):
     created_at: datetime
     # Reported by the person asking: they may take it back while it is not decided.
     mine: bool = False
+
+
+class BatchProgressOut(BaseModel):
+    """One batch: BDRC's counts (total, and done = annotated or reviewed there), and the
+    texts this tool has handed out of it."""
+
+    batch_id: str
+    note: str | None = None
+    created_at: datetime | None = None
+    total: int
+    done: int
+    handed_out: int
+
+
+class WorkTotalsOut(BaseModel):
+    """Our own counts, over all batches: texts handed out and how far they are."""
+
+    handed_out: int
+    in_progress: int
+    answered: int
+    skipped: int
+    minutes: int
+
+
+class PersonProgressOut(BaseModel):
+    """One person's work, over all batches."""
+
+    user_id: str
+    name: str | None
+    email: str
+    picture: str | None
+    role: str
+    # Texts handed out to them (all time), and those not answered yet.
+    given: int
+    in_progress: int
+    # Their current answers: with persons, or skipped ("I don't know" or a rejected text).
+    answered: int
+    skipped: int
+    minutes: int
+    last_activity: datetime | None
+
+
+class OverviewOut(BaseModel):
+    # Oldest first. Empty, with the reason in batch_error, when BDRC can't be reached.
+    batches: list[BatchProgressOut]
+    batch_error: str | None = None
+    # Current answers skipped, per reason: author_unknown, text_not_clean, text_not_cropped.
+    skipped_by_reason: dict[str, int]
+    # Duplicate reports: to_check (no decision yet), same, different.
+    duplicates: dict[str, int]
+    totals: WorkTotalsOut
+    # People with access or work, and those of them who have started.
+    people: int
+    working: int

@@ -1856,7 +1856,9 @@
     "admin": {
       "nav": {
         "duplicates": "Duplicates",
-        "users": "Users"
+        "users": "Users",
+        "overview": "Overview",
+        "annotators": "Annotators"
       },
       "title": "Author Identification admin"
     },
@@ -1993,6 +1995,62 @@
       "title": "Names found in the texts",
       "version": "Version {{n}}",
       "writtenIn": "Written in"
+    },
+    "overview": {
+      "allBatches": "All batches",
+      "answered": "Answered",
+      "answeredTip": "Texts answered with one or more persons.",
+      "batchFailed": "BDRC’s counts could not be loaded: {{error}}",
+      "batches": "Batches",
+      "batchesEyebrow": "From BDRC",
+      "batchesTip": "The batches BDRC prepared. Total and Done come from BDRC; Available and In progress from the texts handed out here.",
+      "col": {
+        "batch": "Batch",
+        "total": "Total",
+        "totalTip": "Texts in the batch.",
+        "available": "Available",
+        "availableTip": "Texts not handed out yet.",
+        "inProgress": "In progress",
+        "inProgressTip": "Handed out, without an answer at BDRC yet.",
+        "done": "Done",
+        "doneTip": "Texts with an answer at BDRC, skipped ones included."
+      },
+      "created": "created {{date}}",
+      "dup": {
+        "to_check": "To check",
+        "same": "Same person",
+        "different": "Different persons"
+      },
+      "duplicates": "Duplicates reported",
+      "duplicatesTip": "Two BDRC persons reported to be the same person, all batches.",
+      "given": "Given",
+      "handedOut": "Handed out",
+      "handedOutTip": "Texts given to annotators with “Assign work”, in all batches.",
+      "hours": "{{h}} h {{m}} min",
+      "inProgress": "In progress",
+      "inProgressTip": "Texts given out and not answered yet.",
+      "intro": "How far each batch is, and each person’s work. Updated every minute.",
+      "lastActivity": "Last activity",
+      "loadFailed": "Could not load the overview: {{error}}",
+      "minutes": "{{m}} min",
+      "noBatches": "BDRC has no batches yet.",
+      "nobody": "Nobody has access yet. Give it on the Users tab.",
+      "noneLeft": "Every text has been handed out. BDRC needs to prepare a new batch.",
+      "noneSoFar": "None so far.",
+      "notStarted": "Not started",
+      "people": "People",
+      "peopleTip": "Everyone with access. The Annotators tab has each person’s numbers, with filters.",
+      "person": "Person",
+      "seeDuplicates": "See the reports",
+      "skipped": "Skipped",
+      "skippedTip": "Texts skipped: author unknown, or a problem with the text.",
+      "skippedWhy": "Skipped, by reason",
+      "skippedWhyTip": "Why texts were skipped. Skipped texts are sent to BDRC too, so they count as Done there.",
+      "time": "Time",
+      "timeSpent": "Time on texts",
+      "timeSpentTip": "Time spent with a text open, all annotators together.",
+      "working": "{{working}} of {{people}} people with access have started.",
+      "seeAnnotators": "See each person’s work"
     },
     "panel": {
       "addAnotherHint": "To add another person, tick them in the search results.",
@@ -2214,6 +2272,38 @@
       "previous": "Previous text",
       "saved": "Answer saved",
       "savedLast": "Answer saved. That was your last text."
+    },
+    "annotators": {
+      "intro": "Each person’s work. Filter by role, status or period; click a column to sort. Updated every minute.",
+      "role": "Role",
+      "status": "Status",
+      "search": "Search by name or email",
+      "roles": {
+        "all": "Everyone",
+        "annotator": "Annotators",
+        "admin": "Admins"
+      },
+      "statuses": {
+        "all": "All",
+        "working": "Started",
+        "notStarted": "Not started"
+      },
+      "periodHint": "In a period: texts handed out in it, answers given in it, and time on texts worked on in it. In progress is always what they hold now.",
+      "noMatch": "Nobody matches these filters.",
+      "col": {
+        "name": "Person",
+        "given": "Given",
+        "givenTip": "Texts handed out with “Assign work”.",
+        "in_progress": "In progress",
+        "in_progressTip": "Texts they hold now without an answer.",
+        "answered": "Answered",
+        "skipped": "Skipped",
+        "minutes": "Total time",
+        "minutesTip": "Time spent with a text open.",
+        "perText": "Average per text",
+        "perTextTip": "Time divided by texts answered or skipped.",
+        "last_activity": "Last activity"
+      }
     }
   }
 }

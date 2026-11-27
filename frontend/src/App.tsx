@@ -51,6 +51,8 @@ const AuthorIdentificationQueueLazy = lazy(() => import('@/features/author-ident
 const AuthorIdentificationWorkspaceLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Workspace })));
 const AuthorIdentificationGuidelinesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Guidelines })));
 const AuthorIdentificationAdminLayoutLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminLayout })));
+const AuthorIdentificationAdminOverviewLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminOverview })));
+const AuthorIdentificationAdminAnnotatorsLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminAnnotators })));
 const AuthorIdentificationAdminUsersLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminUsers })));
 const AuthorIdentificationAdminDuplicatesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminDuplicates })));
 const OutlinerWorkspaceLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.Workspace })));
@@ -235,7 +237,21 @@ function App() {
               <AuthorIdentificationWorkspaceLazy />
             </ProtectedRoute>
           } />
-          <Route path="/author-identification-admin" element={<Navigate to="/author-identification-admin/users" replace />} />
+          <Route path="/author-identification-admin" element={<Navigate to="/author-identification-admin/overview" replace />} />
+          <Route path="/author-identification-admin/overview" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminOverviewLazy />
+              </AuthorIdentificationAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification-admin/annotators" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminAnnotatorsLazy />
+              </AuthorIdentificationAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
           <Route path="/author-identification-admin/users" element={
             <ProtectedRoute>
               <AuthorIdentificationAdminLayoutLazy>
