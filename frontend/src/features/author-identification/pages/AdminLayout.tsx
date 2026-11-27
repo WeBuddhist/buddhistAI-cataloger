@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import { useToolScope } from '../tibetan';
 
 const TABS = [
+  { to: '/author-identification-admin/overview', label: 'admin.nav.overview' },
   { to: '/author-identification-admin/users', label: 'admin.nav.users' },
   { to: '/author-identification-admin/duplicates', label: 'admin.nav.duplicates' },
 ];

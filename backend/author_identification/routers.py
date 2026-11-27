@@ -14,7 +14,7 @@ from typing import Any, Literal, NoReturn
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
-from author_identification import client, service, work
+from author_identification import client, overview, service, work
 from author_identification import repository as repo
 from author_identification.client import EditionsApiError
 from author_identification.models import AuthorAnswer, AuthorDuplicateReport
@@ -39,8 +39,10 @@ from author_identification.schemas import (
     MemberUpdateIn,
     MeOut,
     MyTextOut,
+    OverviewOut,
     SyncHealthOut,
 )
+from core.config import AUTHOR_IDENTIFICATION_BATCH_ID
 from core.database import get_db
 from user.models.user import User
 
@@ -220,6 +222,14 @@ def add_active_time(
     """Add one visit's active time (seconds on screen and in use) to my time on this text."""
     repo.add_active_time(db, batch_id, item_id, user.id, body.seconds)
     db.commit()
+
+
+@router.get("/admin/overview", response_model=OverviewOut,
+            dependencies=[Depends(require_author_identification_admin)])
+def admin_overview(db: Session = Depends(get_db)):
+    """How far the batch being handed out is (BDRC's counts and ours), and each person's
+    work: texts given, answered, skipped, still open, time spent, last activity."""
+    return overview.overview(db, AUTHOR_IDENTIFICATION_BATCH_ID)
 
 
 @router.get("/admin/sync", response_model=SyncHealthOut,

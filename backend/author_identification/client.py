@@ -62,6 +62,11 @@ def _request(method: str, path: str, *, params: dict | None = None, json: Any = 
         raise EditionsApiError(f"BDRC {method} {path} returned non-JSON") from exc
 
 
+def list_batches() -> list[dict[str, Any]]:
+    """Every batch, with its counts per status."""
+    return _request("GET", "/batches")
+
+
 def get_batch(batch_id: str) -> dict[str, Any]:
     """The batch with its counts per status."""
     return _request("GET", f"/batches/{batch_id}")
