@@ -4,9 +4,7 @@ import { Check, ExternalLink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useUser } from '@/hooks/useUser';
 import { useDecideDuplicate, useDuplicates } from '../hooks';
-import SampleNotice from '../sample/SampleNotice';
 import type { BdrcPerson, DuplicateDecision, DuplicateReport } from '../types';
 import { bdrcPage, dateOf, FIELD } from '../utils';
 import { useT } from '../i18n';
@@ -34,7 +32,6 @@ export default function AdminDuplicates() {
       <p className="mb-4 text-sm text-gray-600">
         {t('dups.intro')}
       </p>
-      <SampleNotice kind="reports" canClear={reports.length > 1 || lists.checked.length > 0} />
 
       <div className="mb-3 inline-flex rounded-md bg-gray-100 p-1" role="tablist" aria-label={t('admin.nav.duplicates')}>
         {TABS.map(({ key, label }) => (
@@ -75,15 +72,14 @@ export default function AdminDuplicates() {
 
 function Report({ report }: Readonly<{ report: DuplicateReport }>) {
   const t = useT();
-  const { user } = useUser();
   const decide = useDecideDuplicate();
   const [note, setNote] = useState('');
   const { decision } = report;
 
+  // Who decides is the admin logged in: the backend records it.
   const save = async (kind: DuplicateDecision | null) => {
-    const by = user?.name || user?.email || t('dups.unknown');
     try {
-      await decide.mutateAsync({ id: report.id, decision: kind && { kind, note: note.trim(), by } });
+      await decide.mutateAsync({ id: report.id, decision: kind && { kind, note: note.trim() } });
     } catch {
       toast.error(t('dups.saveFailed'));
     }

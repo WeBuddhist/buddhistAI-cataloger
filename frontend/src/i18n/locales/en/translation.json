@@ -1867,8 +1867,6 @@
     },
     "common": {
       "close": "Close",
-      "copied": "Copied",
-      "copy": "Copy",
       "loading": "Loading…",
       "myTexts": "My texts",
       "toolName": "Author Identification",
@@ -1914,7 +1912,7 @@
       "checked": "Checked",
       "different": "Different people",
       "from": "from",
-      "intro": "People reported to have two BDRC IDs. Check each case, then mark it here. Nothing changes in BDRC.",
+      "intro": "People reported to have two BDRC IDs. The second ID is sent to BDRC with the text’s answer; marking “Different people” takes it back. Check each case, then mark it here.",
       "loadFailed": "Could not load the reports: {{error}}",
       "noneChecked": "No reports checked yet.",
       "noneToCheck": "No reports to check.",
@@ -1923,8 +1921,7 @@
       "openOnBdrc": "Open on BDRC",
       "same": "Same person",
       "saveFailed": "Could not save. Try again.",
-      "toCheck": "To check",
-      "unknown": "Unknown"
+      "toCheck": "To check"
     },
     "errors": {
       "notFound": "Text not found",
@@ -1956,7 +1953,7 @@
       "r3": "<b>Terma:</b> choose the tertön, with the role <b>Tertön</b>.",
       "r4": "<b>No author, only the one who wrote it down (transcriber) named:</b> choose them, with the role <b>Transcriber</b>.",
       "r5": "Choose the author from the BDRC list.",
-      "r6": "<b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:",
+      "r6": "<b>Same person listed twice in BDRC:</b> choose one, then press <b>Report duplicate</b> on it and pick the other. The other ID is sent with your answer.",
       "r7": "<b>Author not in the list:</b> type the name yourself. In the note, add anything that could help, such as dates, teacher, monastery, or other names.",
       "r8": "<b>More than one possible author:</b> choose only the one you are 100% sure of. Write the other names in the note.",
       "r9": "Every time, give a <b>confidence rating</b>. In the tool it is 1 to 5:",
@@ -2019,7 +2016,7 @@
       "notInBdrcHint": "You know the author’s name, but BDRC has no record of them.",
       "note": "Note",
       "noteLabel": "Note:",
-      "notePlaceholder": "Only about the author: other possible authors, “Duplicate of this author: P…”, dates…",
+      "notePlaceholder": "Only about the author: other possible authors, dates…",
       "optional": "(optional)",
       "otherAnswers": "Not in BDRC, or skip",
       "otherTitle": "The author is not found in BDRC",
@@ -2048,8 +2045,11 @@
       "whySkip": "Why are you skipping this text?"
     },
     "person": {
+      "removeFailed": "Could not remove the report",
+      "removeReport": "Remove report",
       "reportDuplicate": "Report duplicate",
       "reportDuplicateOf": "Report a duplicate of {{name}} {{id}}",
+      "reportRemoved": "Report removed",
       "reportedTitle": "Reported as a duplicate of {{id}}",
       "reportedWith": "Reported with {{id}}",
       "sameAs": "Same as {{id}}",
@@ -2120,13 +2120,6 @@
       "admin": "Admin",
       "annotator": "Annotator",
       "reviewer": "Reviewer"
-    },
-    "sample": {
-      "reports": {
-        "clear": "Clear reports",
-        "text": "For trying the tool only. You see one sample and the reports made in this browser, not those of other people.",
-        "title": "Sample reports."
-      }
     },
     "search": {
       "checkVersions": "Check the versions",

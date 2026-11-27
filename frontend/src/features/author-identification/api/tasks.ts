@@ -43,7 +43,8 @@ interface ApiEdition {
   versions?: ApiVersion[];
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** A call to our backend's Author Identification API; its error message when it fails. */
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetchWithAccessToken(`${BASE}${path}`, init);
   if (!res.ok) {
     let detail = res.statusText;
@@ -57,6 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 410) detail = tr('errors.replaced');
     throw new Error(detail || `Request failed (${res.status})`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useUser } from '@/hooks/useUser';
 import { useDuplicates, usePersonSearch, useRemoveDuplicate, useReportDuplicate } from '../hooks';
 import type { BdrcPerson } from '../types';
 import { cleanName, FIELD, reportOfPair } from '../utils';
@@ -27,7 +26,6 @@ export default function DuplicateDialog({
 }>) {
   const t = useT();
   const scope = useToolScope();
-  const { user } = useUser();
   const duplicates = useDuplicates();
   const report = useReportDuplicate();
   const undo = useRemoveDuplicate();
@@ -53,15 +51,14 @@ export default function DuplicateDialog({
         persons: [person, other],
         reason: reason.trim(),
         text,
-        reportedBy: user?.name || user?.email || 'Unknown',
       });
       onClose();
       toast.success(t('duplicate.sent'), {
         position: 'top-center',
         action: { label: t('duplicate.undo'), onClick: () => undo.mutate(saved.id) },
       });
-    } catch {
-      toast.error(t('duplicate.sendFailed'), { position: 'top-center' });
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? `${t('duplicate.sendFailed')} ${e.message}` : t('duplicate.sendFailed'), { position: 'top-center' });
     }
   };
 

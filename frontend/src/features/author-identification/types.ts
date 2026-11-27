@@ -120,6 +120,8 @@ export interface DuplicateReport {
   reportedAt: string;
   /** Null while it is to be checked. */
   decision: { kind: DuplicateDecision; note: string; by: string; at: string } | null;
+  /** Reported by me: I may take it back while it is not decided. */
+  mine: boolean;
 }
 
 /** One value of a person's record: words, or another record, shown by its name. */

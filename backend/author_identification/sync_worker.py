@@ -34,9 +34,10 @@ _NOT_SENT_DATA = ("role", "role_other", "person_name")
 _NOT_SENT_PERSON = ("person_name",)
 
 
-def bdrc_body(a: AuthorAnswer) -> dict[str, Any]:
+def bdrc_body(a: AuthorAnswer, duplicate_p_ids: list[str] | None = None) -> dict[str, Any]:
     """The answer as BDRC's PUT /editions/batches/{batch}/items/{item} takes it: the persons
-    of the text, each in a role, in ``persons``; "I don't know" as ``person_answer``."""
+    of the text, each in a role, in ``persons``; "I don't know" as ``person_answer``; the
+    other BDRC ids of a person reported twice in ``data.duplicate_p_ids``."""
     body: dict[str, Any] = {
         "annotator_id": a.user_id,
         # Each person carries their own; the column keeps the first one's, to list answers here.
@@ -48,6 +49,9 @@ def bdrc_body(a: AuthorAnswer) -> dict[str, Any]:
         # When the person answered, not when it reached BDRC.
         "decided_at": a.decided_at.isoformat() + "Z",
     }
+    # A person of the answer reported with a second BDRC id: the others, as BDRC asks.
+    if duplicate_p_ids:
+        body["data"]["duplicate_p_ids"] = duplicate_p_ids
     if a.person_answer == "unknown":
         body["person_answer"] = "unknown"
     else:
@@ -75,7 +79,7 @@ def _process_available() -> int:
                 return processed
             processed += 1
             try:
-                client.put_answer(answer.batch_id, answer.item_id, bdrc_body(answer))
+                client.put_answer(answer.batch_id, answer.item_id, bdrc_body(answer, repo.duplicate_ids(db, answer)))
                 repo.mark_synced(db, answer.id)
                 logger.info(
                     "author identification sync ok answer=%s batch=%s item=%s attempts=%s",

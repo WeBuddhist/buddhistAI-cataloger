@@ -70,9 +70,9 @@ export const personLabel = (p: AnswerPerson): string =>
 
 export const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** A person's report, leaving out those found to be two different people. */
-export const reportOf = (personId: string, reports: DuplicateReport[] = []) =>
-  reports.find((r) => r.decision?.kind !== 'different' && r.persons.some((p) => p.id === personId)) ?? null;
+/** A person's reports, leaving out those found to be two different people. */
+export const reportsOf = (personId: string, reports: DuplicateReport[] = []) =>
+  reports.filter((r) => r.decision?.kind !== 'different' && r.persons.some((p) => p.id === personId));
 
 /** The report of these two persons, whatever was decided. */
 export const reportOfPair = (a: string, b: string, reports: DuplicateReport[] = []) =>

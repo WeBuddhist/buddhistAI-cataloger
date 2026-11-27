@@ -175,3 +175,67 @@ class MyTextOut(BaseModel):
 
 class ClaimOut(BaseModel):
     claimed: int
+
+
+class ReportedPerson(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^P[A-Za-z0-9_]{1,40}$")
+    name: str | None = Field(None, max_length=500)
+    dates: str | None = Field(None, max_length=200)
+
+
+class DuplicateIn(BaseModel):
+    """A report that two BDRC persons are one, noticed on a text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,80}$")
+    item_id: int = Field(ge=1)
+    text_title: str | None = Field(None, max_length=2000)
+    person: ReportedPerson
+    other: ReportedPerson
+    reason: str = Field(min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def _two_persons(self) -> "DuplicateIn":
+        if self.person.id == self.other.id:
+            raise ValueError("Report two different persons.")
+        if _blank(self.reason):
+            raise ValueError("Say why they are the same person.")
+        return self
+
+
+class DecisionIn(BaseModel):
+    """An admin's decision on a report; null opens it again."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["same", "different"] | None
+    note: str = Field("", max_length=4000)
+
+
+class DuplicateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    batch_id: str
+    item_id: int
+    text_title: str | None
+    user_id: str
+    reporter_name: str | None = None
+    person_id: str
+    person_name: str | None
+    person_dates: str | None
+    other_id: str
+    other_name: str | None
+    other_dates: str | None
+    reason: str
+    decision: str | None
+    decision_note: str | None
+    decided_by: str | None
+    decided_by_name: str | None = None
+    decided_at: datetime | None
+    created_at: datetime
+    # Reported by the person asking: they may take it back while it is not decided.
+    mine: bool = False
