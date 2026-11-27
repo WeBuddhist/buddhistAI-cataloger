@@ -5,6 +5,7 @@ import { useUser } from '@/hooks/useUser';
 import CopyPairLink from '../components/CopyPairLink';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
 import PairEvidence from '../components/PairEvidence';
+import { containedPlace } from '../containedPlace';
 import type { ScanTag } from '../components/ScanPanel';
 import { useBatchName, useMyItems, usePair } from '../hooks/useReview';
 import { dedupRole, hasDedupAccess } from '../utils';
@@ -63,7 +64,7 @@ export default function PairView() {
       <PairEvidence itemId={p.item_id} evidence={p.evidence} cardA={cardA} cardB={cardB} onFullText={setFullText} scan={scan} onScanChange={setScan} />
 
       {fullText && (
-        <FullTextDialog a={cardA} b={cardB} itemId={p.item_id} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} />
+        <FullTextDialog a={cardA} b={cardB} itemId={p.item_id} view={fullText} onViewChange={setFullText} onClose={() => setFullText(null)} located={containedPlace(p.evidence?.diff_indicators)} />
       )}
     </div>
   );

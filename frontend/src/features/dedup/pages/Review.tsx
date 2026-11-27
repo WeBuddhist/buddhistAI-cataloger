@@ -10,6 +10,7 @@ import AnnotatorAnswers from '../components/AnnotatorAnswers';
 import CantAnswerDialog, { type CantAnswerStart } from '../components/CantAnswerDialog';
 import DifferentReasonDialog from '../components/DifferentReasonDialog';
 import FullTextDialog, { type FullTextView } from '../components/FullTextDialog';
+import { containedPlace } from '../containedPlace';
 import NotesMenu from '../components/NotesMenu';
 import PreferredCopyDialog, { type PreferredChoice } from '../components/PreferredCopyDialog';
 import CopyPairLink from '../components/CopyPairLink';
@@ -739,6 +740,7 @@ export default function Review({ mode = 'annotate' }: Readonly<{ mode?: ReviewMo
           onViewChange={setFullText}
           onClose={() => setFullText(null)}
           onAddNote={canWriteNotes ? addNote : undefined}
+          located={containedPlace(ev.diff_indicators)}
         />
       )}
 

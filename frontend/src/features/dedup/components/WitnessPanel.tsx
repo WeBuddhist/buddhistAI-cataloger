@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { WitnessCard } from '../api/review';
+import { syllableChars } from '../containedPlace';
 import { selectionIn, useScrollToMark, type Marks, type Picked } from '../hooks/useCrossSelection';
 import { useFullText } from '../hooks/useReview';
 import { textEnds } from '../textPlace';
@@ -29,6 +30,8 @@ export default function WitnessPanel({
   onPointAt,
   marks,
   onSelect,
+  located,
+  openWith = 0,
 }: Readonly<{
   tag: 'A' | 'B';
   card: WitnessCard;
@@ -38,19 +41,49 @@ export default function WitnessPanel({
   /** A selection, or the matches of one on the other side, to mark in the full text. */
   marks?: Marks;
   onSelect?: (side: 'A' | 'B', picked: Picked | null) => void;
+  /** Where the other, much shorter text matches in this one, in BDRC's syllables. It is
+   * marked lightly whenever the full text shows; each new `jump` opens it and scrolls there. */
+  located?: { start: number; end: number; total: number; jump: number };
+  /** Each new value opens the full text: the shorter text, when its place in the longer one
+   * is shown, so the two can be read side by side. */
+  openWith?: number;
 }>) {
   const { t } = useTranslation();
   const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    if (openWith > 0) setOpened(true);
+  }, [openWith]);
+  const sectionRef = useRef<HTMLElement>(null);
+  const jump = located?.jump ?? 0;
+  useEffect(() => {
+    if (jump === 0) return;
+    setOpened(true);
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [jump]);
   // A match can be anywhere in the text, not only in the opening and ending shown here.
   const expanded = opened || Boolean(marks?.ranges.length);
-  const scrollRef = useScrollToMark(marks?.ranges[marks.active]?.start, Boolean(marks?.follow));
   const full = useFullText(card.mw_id, expanded || !card.head);
+  const shownFull = useMemo(() => (full.data ? displayText(full.data.text_bo) : ''), [full.data]);
+  const placeRange = useMemo(
+    () => (located && shownFull ? syllableChars(shownFull, located.start, located.end, located.total) : null),
+    [located?.start, located?.end, located?.total, shownFull], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // A selection's marks come first; otherwise the located passage, marked lightly.
+  const selecting = Boolean(marks?.ranges.length);
+  const shownMarks: Marks = selecting || !placeRange ? (marks ?? { ranges: [], active: 0, follow: false }) : { ranges: [placeRange], active: 0, follow: jump > 0 };
+  // Scroll to the selection's active match, or, after a jump, to the located passage.
+  let scrollKey: unknown;
+  if (selecting) scrollKey = marks?.ranges[marks.active]?.start;
+  // Waits for the full text to show: a jump from the closed panel opens it first, and the
+  // box to scroll is only there once it has rendered.
+  else if (placeRange && jump > 0 && expanded) scrollKey = `place-${jump}-${placeRange.start}`;
+  const scrollRef = useScrollToMark(scrollKey, selecting ? Boolean(marks?.follow) : jump > 0);
   const ends = full.data ? textEnds(full.data.text_bo) : null;
   const head = card.head ?? ends?.head ?? '';
   const tail = card.tail ?? ends?.tail ?? '';
   const length = card.text_length ?? 0;
   const unseen = Math.max(0, length - head.length - tail.length);
-  const wholeText = () => (full.data ? displayText(full.data.text_bo) : '');
+  const wholeText = () => shownFull;
   /** About where `offset` (in the opening-and-ending box's text) is in the full text: from
    * the start in the opening, from the end in the ending. */
   const nearInText = (box: HTMLElement, offset: number): number | undefined => {
@@ -71,7 +104,7 @@ export default function WitnessPanel({
   };
 
   return (
-    <section data-side={tag} className="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+    <section ref={sectionRef} data-side={tag} className="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       <header className="border-b border-gray-200 px-4 py-4 sm:px-5">
         <div className="flex items-start gap-3">
           <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-gray-100 text-sm font-semibold text-gray-600">
@@ -126,7 +159,7 @@ export default function WitnessPanel({
               }}
               className="max-h-[70vh] overflow-y-auto whitespace-pre-wrap break-words pr-2 font-monlam text-lg leading-loose sm:text-xl text-gray-900"
             >
-              <MarkedText text={displayText(full.data.text_bo)} marks={marks ?? { ranges: [], active: 0 }} />
+              <MarkedText text={shownFull} marks={shownMarks} soft={!selecting} />
             </div>
           )}
         </div>

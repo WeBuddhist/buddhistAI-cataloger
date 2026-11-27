@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Columns2, GitCompareArrows, Library } from 'lucide-react';
+import { Columns2, GitCompareArrows, Library, LocateFixed } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { PairEvidence as Evidence, WitnessCard } from '../api/review';
+import { containedPlace, type ContainedPlace } from '../containedPlace';
 import { ONE_SIDE_SELECTION, noteSelectingSide, useCrossSelection, type Picked, type Tag } from '../hooks/useCrossSelection';
 import { useFullText } from '../hooks/useReview';
 import type { NewNote } from '../notes';
@@ -10,7 +11,7 @@ import ScanPanel, { type ScanPoint, type ScanTag } from './ScanPanel';
 import AiAnalysis from './AiAnalysis';
 import { SelectionBar } from './TextSelection';
 import WitnessPanel from './WitnessPanel';
-import { displayText, issueLabel, overlapNote, pct } from '../utils';
+import { displayText, formatNumber, formatPercent, issueLabel, overlapNote, pct } from '../utils';
 
 // The shared Button has no pointer cursor; added here to leave other features untouched.
 const PTR = 'cursor-pointer';
@@ -69,6 +70,10 @@ export default function PairEvidence({
     if (picked) setSearching(true);
     select(side, picked);
   };
+  // A much shorter text: where it sits in the longer one, so nobody has to hunt for it.
+  const place = useMemo(() => containedPlace(ev.diff_indicators), [ev.diff_indicators]);
+  const [jump, setJump] = useState(0);
+  useEffect(() => setJump(0), [itemId]);
   const panel = (tag: Tag, card: typeof cardA) => (
     <WitnessPanel
       tag={tag}
@@ -77,6 +82,8 @@ export default function PairEvidence({
       onPointAt={scansFollow(tag)}
       marks={selection.marksFor(tag)}
       onSelect={onSelect}
+      located={place?.long === tag ? { start: place.start, end: place.end, total: place.longLength, jump } : undefined}
+      openWith={place?.short === tag ? jump : 0}
     />
   );
   const m = ev.metrics ?? {};
@@ -131,6 +138,8 @@ export default function PairEvidence({
             <AiAnalysis analysis={ev.llm_analysis} />
           </div>
         )}
+
+        {place && <PlaceNote place={place} onShow={() => setJump((n) => n + 1)} />}
 
         {children}
 
@@ -298,6 +307,54 @@ function useSplit() {
   };
 
   return { ref, pct, onPointerDown, reset };
+}
+
+/** "Text A is much shorter; its match is about 17% of the way into text B", with a bar
+ * showing that place and a button that opens text B there. */
+function PlaceNote({ place, onShow }: Readonly<{ place: ContainedPlace; onShow: () => void }>) {
+  const { t } = useTranslation();
+  const from = place.start / place.longLength;
+  const to = place.end / place.longLength;
+  const fromPct = formatPercent(from);
+  const toPct = formatPercent(to);
+  const names = { short: place.short, long: place.long };
+  return (
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <strong>{t('dedup.evidence.contained.title', names)}</strong>{' '}
+          {t('dedup.evidence.contained.body', { ...names, at: fromPct === toPct ? fromPct : `${fromPct}–${toPct}` })}
+        </div>
+        <button
+          type="button"
+          onClick={onShow}
+          className={`${PTR} inline-flex shrink-0 items-center gap-1.5 rounded-md border border-sky-300 bg-white px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm hover:bg-sky-100`}
+        >
+          <LocateFixed className="h-4 w-4" /> {t('dedup.evidence.contained.show', names)}
+        </button>
+      </div>
+      {/* The longer text as a strip, start to end, the matching part dark. Square ends and
+          labelled ends, so it reads as the text and not as a progress bar. */}
+      <div className="relative mt-2.5 h-3 overflow-hidden rounded-sm border border-sky-300 bg-white" aria-hidden>
+        <div
+          className="absolute inset-y-0 bg-sky-700"
+          style={{ left: `${from * 100}%`, width: `max(4px, ${(to - from) * 100}%)` }}
+        />
+      </div>
+      <div className="mt-0.5 flex justify-between text-[11px] text-sky-700" aria-hidden>
+        <span>{t('dedup.evidence.contained.barStart', names)}</span>
+        <span>{t('dedup.evidence.contained.barEnd', names)}</span>
+      </div>
+      <div className="mt-1.5 text-xs text-sky-800">
+        {t('dedup.evidence.contained.sizes', {
+          ...names,
+          shortN: formatNumber(place.shortLength),
+          longN: formatNumber(place.longLength),
+        })}{' '}
+        · {t('dedup.evidence.contained.approx')}
+      </div>
+    </div>
+  );
 }
 
 function Metric({ k, v, note }: { k: string; v: string; note?: string }) {

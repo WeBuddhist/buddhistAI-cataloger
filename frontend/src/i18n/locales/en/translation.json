@@ -954,6 +954,14 @@
       "showDifferences": "Show differences",
       "authorConflictTitle": "These two share a title but list different authors.",
       "authorConflictBody": "The author data cannot settle this: judge by the texts, then use “{{report}}” to report “{{issue}}”.",
+      "contained": {
+        "title": "Text {{short}} is much shorter than text {{long}}.",
+        "body": "Its match is about {{at}} of the way into text {{long}}.",
+        "show": "Show it in text {{long}}",
+        "barStart": "Start of text {{long}}",
+        "barEnd": "End of text {{long}}",        "sizes": "Text {{short}}: {{shortN}} syllables · Text {{long}}: {{longN}} syllables",
+        "approx": "An approximate place, from BDRC's alignment of the two texts."
+      },
       "showDetails": "Show similarity details",
       "textAId": "Text A id",
       "textBId": "Text B id",
