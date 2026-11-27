@@ -18,6 +18,7 @@ from author_identification.models import (
     AuthorActiveTime,
     AuthorAnswer,
     AuthorAssignment,
+    AuthorDuplicateReport,
 )
 
 _NEWEST_FIRST = (AuthorAnswer.decided_at.desc(), AuthorAnswer.created_at.desc())
@@ -200,3 +201,59 @@ def sync_health(db: Session, limit: int = 50) -> dict[str, Any]:
         .limit(limit)
     ).scalars().all()
     return {"counts": counts, "failed": failed}
+
+
+# --- Duplicate reports ---------------------------------------------------------------------
+
+
+def list_duplicates(db: Session) -> list[AuthorDuplicateReport]:
+    return list(db.scalars(select(AuthorDuplicateReport).order_by(AuthorDuplicateReport.created_at.desc())))
+
+
+def get_duplicate(db: Session, report_id: str) -> Optional[AuthorDuplicateReport]:
+    return db.get(AuthorDuplicateReport, report_id)
+
+
+def find_pair(db: Session, a: str, b: str) -> Optional[AuthorDuplicateReport]:
+    """A report of these two persons, in either order, unless found to be different."""
+    return db.scalars(
+        select(AuthorDuplicateReport).where(
+            ((AuthorDuplicateReport.person_id == a) & (AuthorDuplicateReport.other_id == b))
+            | ((AuthorDuplicateReport.person_id == b) & (AuthorDuplicateReport.other_id == a)),
+            (AuthorDuplicateReport.decision.is_(None)) | (AuthorDuplicateReport.decision != "different"),
+        )
+    ).first()
+
+
+def duplicate_ids(db: Session, answer: AuthorAnswer) -> list[str]:
+    """The other BDRC ids of the answer's persons, from the reports made on its text (those
+    found to be different left out): what BDRC takes as ``data.duplicate_p_ids``."""
+    mine = {p.get("p_id") for p in (answer.persons or []) if p.get("p_id")}
+    if not mine:
+        return []
+    reports = db.scalars(
+        select(AuthorDuplicateReport).where(
+            AuthorDuplicateReport.batch_id == answer.batch_id,
+            AuthorDuplicateReport.item_id == answer.item_id,
+            (AuthorDuplicateReport.decision.is_(None)) | (AuthorDuplicateReport.decision != "different"),
+        )
+    )
+    others: list[str] = []
+    for r in reports:
+        for this, other in ((r.person_id, r.other_id), (r.other_id, r.person_id)):
+            if this in mine and other not in mine and other not in others:
+                others.append(other)
+    return others
+
+
+def resend_current_answer(db: Session, batch_id: str, item_id: int) -> bool:
+    """Send the text's current answer again (e.g. with a duplicate reported since). Not when
+    it is still waiting or being sent: it will go with the change anyway."""
+    answer = latest_answer(db, batch_id, item_id)
+    if answer is None or answer.sync_state not in (SYNC_SUCCEEDED, SYNC_FAILED):
+        return False
+    answer.sync_state = SYNC_PENDING
+    answer.sync_attempts = 0
+    answer.next_attempt_at = None
+    answer.last_error = None
+    return True

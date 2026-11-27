@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Copy } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import RequireAccess from '../access/RequireAccess';
 import { CONFIDENCE, skipLabel, SKIP_REASONS } from '../guidelines';
 import { Trans } from 'react-i18next';
@@ -55,7 +55,6 @@ export default function Guidelines() {
           <Rule n={5}>{t('guide.r5')}</Rule>
           <Rule n={6}>
             <Trans t={t} i18nKey="guide.r6" components={{ b: <b /> }} />
-            <Phrase>Duplicate of this author: [person ID]</Phrase>
           </Rule>
           <Rule n={7}>
             <Trans t={t} i18nKey="guide.r7" components={{ b: <b /> }} />
@@ -122,32 +121,5 @@ function Rule({ n, children }: Readonly<{ n: number; children: ReactNode }>) {
       </span>
       <div className="min-w-0 flex-1">{children}</div>
     </li>
-  );
-}
-
-/** A note wording to use as is, with a button to copy it. */
-function Phrase({ children }: Readonly<{ children: string }>) {
-  const t = useT();
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(children);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* the text can still be selected by hand */
-    }
-  };
-  return (
-    <span className="mt-1.5 flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5">
-      <span className="min-w-0 flex-1 font-medium text-gray-900">{children}</span>
-      <button
-        type="button"
-        onClick={() => void copy()}
-        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
-      >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {t(copied ? 'common.copied' : 'common.copy')}
-      </button>
-    </span>
   );
 }

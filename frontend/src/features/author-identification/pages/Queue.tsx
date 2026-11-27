@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useAuthorIdMe } from '../access/hooks';
 import RequireAccess from '../access/RequireAccess';
 import { isAuthorIdAdmin } from '../access/utils';
-import { skipLabel } from '../guidelines';
+import { roleLabel, skipLabel } from '../guidelines';
 import { useClaimTexts, usePrefetchTasks, useTasks } from '../hooks';
 import type { ExtractedName, SavedAnswer, TaskSummary } from '../types';
 import { dateOf, FIELD, nameCandidates } from '../utils';
@@ -22,10 +22,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'done', label: 'queue.done' },
 ];
 
-const ANSWER: Record<SavedAnswer['kind'], { label: string; style: string }> = {
-  person: { label: 'answer.inBdrc', style: 'bg-green-50 text-green-700' },
-  not_in_bdrc: { label: 'answer.notInBdrc', style: 'bg-amber-50 text-amber-800' },
+const ANSWER = {
+  inBdrc: { label: 'answer.inBdrc', style: 'bg-green-50 text-green-700' },
+  notInBdrc: { label: 'answer.notInBdrc', style: 'bg-amber-50 text-amber-800' },
   skipped: { label: 'queue.skipped', style: 'bg-gray-100 text-gray-600' },
+};
+
+/** "In BDRC" when someone of the answer is; "not in BDRC" when only named. */
+const answerType = (answer: SavedAnswer) => {
+  if (answer.kind === 'skipped') return ANSWER.skipped;
+  return answer.persons.some((p) => p.inBdrc) ? ANSWER.inBdrc : ANSWER.notInBdrc;
 };
 
 const pathOf = (row: { id: string }) => `/author-identification/${row.id}`;
@@ -33,8 +39,7 @@ const pathOf = (row: { id: string }) => `/author-identification/${row.id}`;
 function matches(row: Row, needle: string): boolean {
   const { answer } = row;
   const words = [row.title, row.id, String(row.number), ...row.extractedNames.map((n) => n.name)];
-  if (answer && answer.kind !== 'skipped') words.push(answer.name);
-  if (answer?.kind === 'person') words.push(answer.personId);
+  if (answer?.kind === 'persons') for (const p of answer.persons) words.push(p.name, p.inBdrc ? p.personId : '');
   return words.some((w) => w?.toLowerCase().includes(needle));
 }
 
@@ -305,17 +310,19 @@ function RowStatus({ row }: Readonly<{ row: Row }>) {
 
 function Answer({ answer }: Readonly<{ answer: SavedAnswer }>) {
   const t = useT();
-  const { label, style } = ANSWER[answer.kind];
+  const { label, style } = answerType(answer);
   return (
     <span className="block min-w-0">
       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}>{t(label)}</span>
       {answer.kind === 'skipped' && <span className="mt-1 block text-sm text-gray-600">{skipLabel(answer.reason)}</span>}
-      {answer.kind !== 'skipped' && (
-        <span className="mt-1 block break-words font-monlam text-sm leading-relaxed text-gray-900">
-          {answer.name}
-          {answer.kind === 'person' && <span className="ml-2 font-sans text-xs text-gray-500">{answer.personId}</span>}
-        </span>
-      )}
+      {answer.kind === 'persons' &&
+        answer.persons.map((p, i) => (
+          <span key={`${p.name}-${i}`} className="mt-1 block break-words font-monlam text-sm leading-relaxed text-gray-900">
+            {p.name}
+            {p.inBdrc && <span className="ml-2 font-sans text-xs text-gray-500">{p.personId}</span>}
+            {p.role !== 'author' && <span className="ml-2 font-sans text-xs text-gray-500">· {roleLabel(p.role)}</span>}
+          </span>
+        ))}
       {answer.note && (
         <span className="mt-0.5 block truncate text-xs text-gray-500" title={answer.note}>
           {t('queue.note', { note: answer.note })}

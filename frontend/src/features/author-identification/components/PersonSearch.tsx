@@ -2,9 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useDuplicates, useNameSuggestions, usePersonSearch, usePrefetchPerson } from '../hooks';
-import type { BdrcPerson } from '../types';
-import { cleanName, FIELD, reportOf } from '../utils';
+import { toast } from 'sonner';
+import { useDuplicates, useNameSuggestions, usePersonSearch, usePrefetchPerson, useRemoveDuplicate } from '../hooks';
+import type { BdrcPerson, DuplicateReport } from '../types';
+import { cleanName, FIELD, reportsOf } from '../utils';
 import DuplicateDialog from './DuplicateDialog';
 import PersonCard from './PersonCard';
 import PersonDialog from './PersonDialog';
@@ -21,7 +22,7 @@ export default function PersonSearch({
   onQueryChange,
   onSearch,
   onShowVersions,
-  selected,
+  selectedIds,
   onSelect,
 }: Readonly<{
   /** The text the author is looked for. */
@@ -32,7 +33,8 @@ export default function PersonSearch({
   onQueryChange: (query: string) => void;
   onSearch: (name: string) => void;
   onShowVersions: () => void;
-  selected: BdrcPerson | null;
+  /** The persons picked for the text; picking one again takes them back. */
+  selectedIds: string[];
   onSelect: (person: BdrcPerson) => void;
 }>) {
   const t = useT();
@@ -45,6 +47,13 @@ export default function PersonSearch({
   const prefetch = usePrefetchPerson();
   const duplicates = useDuplicates();
   const [reporting, setReporting] = useState<BdrcPerson | null>(null);
+  const removeReport = useRemoveDuplicate();
+  // Taken back: the text's answer is sent again without the other id, if it went with it.
+  const takeBack = (r: DuplicateReport) =>
+    removeReport.mutate(r.id, {
+      onSuccess: () => toast.success(t('person.reportRemoved'), { position: 'top-center' }),
+      onError: (e) => toast.error(e instanceof Error && e.message ? e.message : t('person.removeFailed'), { position: 'top-center' }),
+    });
 
   /** The results come a page at a time; past the last one, the next page is loaded first. */
   const view = async (index: number) => {
@@ -137,12 +146,13 @@ export default function PersonSearch({
               <PersonCard
                 key={p.id}
                 person={p}
-                selected={selected?.id === p.id}
+                selected={selectedIds.includes(p.id)}
                 onSelect={() => onSelect(p)}
                 onView={() => setViewing(i)}
                 onIntent={() => prefetch(p.id)}
-                report={reportOf(p.id, duplicates.data)}
+                reports={reportsOf(p.id, duplicates.data)}
                 onReport={() => setReporting(p)}
+                onRemoveReport={takeBack}
               />
             ))}
           </ul>
@@ -164,13 +174,13 @@ export default function PersonSearch({
         persons={persons}
         index={viewing}
         total={total}
-        selectedId={selected?.id ?? null}
+        selectedIds={selectedIds}
         loadingMore={search.isFetchingNextPage}
         loadFailed={search.isFetchNextPageError}
         onIndexChange={(i) => void view(i)}
         onSelect={(p) => {
-          // "Selected" in the dialog stays selected; only the card's radio takes it back.
-          if (selected?.id !== p.id) onSelect(p);
+          // "Selected" in the dialog stays selected; only the card's box takes it back.
+          if (!selectedIds.includes(p.id)) onSelect(p);
           setViewing(null);
         }}
         onReport={(p) => {

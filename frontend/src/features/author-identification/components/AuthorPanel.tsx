@@ -4,20 +4,20 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CONFIDENCE, confidenceHint, PERSON_ROLES, roleLabel, skipLabel, SKIP_REASONS, type PersonRole, type SkipReason } from '../guidelines';
 import { usePersonSearch, useSaveAnswer } from '../hooks';
-import type { AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
-import { answerLabel, cleanName, FIELD, sameName } from '../utils';
+import type { AnswerPerson, AuthorAnswer, BdrcPerson, NameCandidate, SavedAnswer, TextVersion } from '../types';
+import { cleanName, FIELD, personLabel, sameName } from '../utils';
 import PersonSearch from './PersonSearch';
 import { useT } from '../i18n';
-
-export type AnswerKind = AuthorAnswer['kind'];
+import { useToolScope } from '../tibetan';
 
 /**
  * Where the annotator is. Step 1 is the search in BDRC ('person'). Only from there, once
- * they can't find the author, comes step 2: 'other' until "not in BDRC" or "skip" is chosen.
+ * they can't find someone, comes step 2: 'other' until "not in BDRC" or "skip" is chosen.
  */
-export type PanelStep = AnswerKind | 'other';
+export type PanelStep = 'person' | 'other' | 'not_in_bdrc' | 'skipped';
 
 const OTHER_KINDS = [
   { kind: 'not_in_bdrc', label: 'answer.notInBdrc', hint: 'panel.notInBdrcHint' },
@@ -26,13 +26,8 @@ const OTHER_KINDS = [
 
 const LINK = 'cursor-pointer font-medium text-blue-600 underline-offset-2 hover:text-blue-800 hover:underline';
 
-/** The picked person of a saved answer, so it can be changed without searching again. */
-const savedPerson = (saved: SavedAnswer | null): BdrcPerson | null =>
-  saved?.kind === 'person'
-    ? { id: saved.personId, nameBo: saved.name, matchedName: null, dates: null }
-    : null;
-
-const savedConfidence = (saved: SavedAnswer | null) => (saved && saved.kind !== 'skipped' && saved.confidence > 0 ? saved.confidence : null);
+/** Who, in which role: the same person may not be twice in one role. */
+const keyOf = (p: AnswerPerson) => `${p.inBdrc ? p.personId : p.name}|${p.role}`;
 
 export default function AuthorPanel({
   taskId,
@@ -82,53 +77,67 @@ export default function AuthorPanel({
 }>) {
   const t = useT();
   const save = useSaveAnswer();
-  const [person, setPerson] = useState<BdrcPerson | null>(savedPerson(saved));
-  const [name, setName] = useState(saved?.kind === 'not_in_bdrc' ? saved.name : '');
+  // The persons of the text, each in a role; picked in the search or named in step 2.
+  const [persons, setPersons] = useState<AnswerPerson[]>(saved?.kind === 'persons' ? saved.persons : []);
+  const [name, setName] = useState('');
   const [reason, setReason] = useState<SkipReason | null>(saved?.kind === 'skipped' ? saved.reason : null);
-  const [confidence, setConfidence] = useState<number | null>(savedConfidence(saved));
-  const [role, setRole] = useState<PersonRole>(saved && saved.kind !== 'skipped' ? saved.role : 'author');
-  // With "Other": which role, in the annotator's words.
-  const [roleOther, setRoleOther] = useState(saved && saved.kind !== 'skipped' ? (saved.roleOther ?? '') : '');
   const [note, setNote] = useState(saved?.note ?? '');
   const [noteOpen, setNoteOpen] = useState(Boolean(saved?.note));
 
   const chooseKind = (next: PanelStep) => {
     onKindChange(next);
-    // What was searched is most likely the author's name; it can still be changed.
+    // What was searched is most likely the name; it can still be changed.
     if (next === 'not_in_bdrc' && !name) setName(cleanName(query));
   };
-  // Picking the chosen person again takes them back.
-  const pick = (p: BdrcPerson) => setPerson((current) => (current?.id === p.id ? null : p));
+  const pickedIds = persons.flatMap((p) => (p.inBdrc ? [p.personId] : []));
+  // Picking a person adds them, as main author at first; picking them again takes them back.
+  const pick = (b: BdrcPerson) =>
+    setPersons((current) =>
+      current.some((p) => p.inBdrc && p.personId === b.id)
+        ? current.filter((p) => !(p.inBdrc && p.personId === b.id))
+        : [...current, { inBdrc: true, personId: b.id, name: b.nameBo, role: 'author', confidence: null }],
+    );
+  const addNamed = () => {
+    const clean = cleanName(name);
+    if (!clean) return;
+    setPersons((current) => [...current, { inBdrc: false, name: clean, role: 'author', confidence: null }]);
+    setName('');
+  };
+  const changePerson = (index: number, change: PersonChange) =>
+    setPersons((current) => current.map((p, i) => (i === index ? { ...p, ...change } : p)));
+  const removePerson = (index: number) => setPersons((current) => current.filter((_, i) => i !== index));
   const closeNote = () => {
     setNote('');
     setNoteOpen(false);
   };
 
+  const keys = persons.map(keyOf);
+  const twice = new Set(keys).size !== keys.length;
+  const roleMissing = persons.some((p) => p.role === 'other' && !p.roleOther?.trim());
+  const sureMissing = persons.some((p) => p.confidence == null);
   const draft = (): AuthorAnswer | null => {
     const noted = { note: note.trim() };
     if (kind === 'other') return null;
     if (kind === 'skipped') return reason ? { kind, reason, ...noted } : null;
-    const roled = role === 'other' ? { role, roleOther: roleOther.trim() } : { role };
-    if (confidence == null || (role === 'other' && !roled.roleOther)) return null;
-    if (kind === 'not_in_bdrc') return cleanName(name) ? { kind, name: cleanName(name), ...roled, confidence, ...noted } : null;
-    return person ? { kind, personId: person.id, name: person.nameBo, ...roled, confidence, ...noted } : null;
+    if (persons.length === 0 || sureMissing || roleMissing || twice) return null;
+    const cleaned = persons.map((p) => (p.role === 'other' ? { ...p, roleOther: p.roleOther?.trim() } : { ...p, roleOther: undefined }));
+    return { kind: 'persons', persons: cleaned, ...noted };
   };
   const answer = draft();
-  // How sure they are is asked once there is an author to be sure of.
-  const asksConfidence = kind === 'not_in_bdrc' || (kind === 'person' && person != null);
   // Step 2 only once they have looked: after a search, or when there is no name to search.
   const canLeaveSearch = searched !== '' || candidates.length === 0;
   // The same search as the results below (shared cache): nobody found, or how many.
   const results = usePersonSearch(searched);
   const total = results.data?.pages[0]?.total ?? 0;
   const nobody = results.isSuccess && total === 0;
+  const answering = kind === 'person' || kind === 'not_in_bdrc';
   // What is still missing, said on the button's hover.
   let missing = '';
   if (kind === 'skipped' && !reason) missing = t('panel.missingReason');
-  else if (kind === 'person' && !person) missing = t('panel.missingPerson');
-  else if (kind === 'not_in_bdrc' && !cleanName(name)) missing = t('panel.missingName');
-  else if (kind !== 'skipped' && confidence == null) missing = t('panel.missingConfidence');
-  else if (kind !== 'skipped' && role === 'other' && !roleOther.trim()) missing = t('panel.missingRoleOther');
+  else if (answering && persons.length === 0) missing = t(kind === 'not_in_bdrc' ? 'panel.missingAdd' : 'panel.missingPerson');
+  else if (answering && roleMissing) missing = t('panel.missingRoleOther');
+  else if (answering && twice) missing = t('panel.samePersonTwice');
+  else if (answering && sureMissing) missing = t(persons.length > 1 ? 'panel.missingConfidenceEach' : 'panel.missingConfidence');
 
   const submit = async () => {
     if (!answer) return;
@@ -147,7 +156,6 @@ export default function AuthorPanel({
   };
 
   if (saved && !editing) {
-    const sure = savedConfidence(saved);
     return (
       <section aria-label={t('panel.author')} className="flex h-full min-h-0 flex-col bg-white">
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -155,9 +163,21 @@ export default function AuthorPanel({
             <Check className="h-4 w-4" /> {t('panel.saved')}
           </div>
           <div>
-            <div className="break-words font-monlam text-lg leading-loose text-gray-900">{answerLabel(saved)}</div>
-            {saved.kind !== 'skipped' && <p className="mt-1 text-sm text-gray-600">{t('panel.roleOf', { role: saved.role === 'other' && saved.roleOther ? saved.roleOther : roleLabel(saved.role) })}</p>}
-            {sure && <p className="mt-1 text-sm text-gray-600">{t('panel.confidenceOf', { n: sure })}</p>}
+            {saved.kind === 'skipped' ? (
+              <div className="text-lg text-gray-900">{t('answer.skippedLabel', { reason: skipLabel(saved.reason) })}</div>
+            ) : (
+              <ul className="space-y-2">
+                {saved.persons.map((p) => (
+                  <li key={keyOf(p)}>
+                    <div className="break-words font-monlam text-lg leading-loose text-gray-900">{personLabel(p)}</div>
+                    <p className="text-sm text-gray-600">
+                      {t('panel.roleOf', { role: p.role === 'other' && p.roleOther ? p.roleOther : roleLabel(p.role) })}
+                      {p.confidence != null && <> · {t('panel.confidenceOf', { n: p.confidence })}</>}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
             {saved.note && (
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
                 <span className="font-medium text-gray-700">{t('panel.noteLabel')}</span> {saved.note}
@@ -202,7 +222,7 @@ export default function AuthorPanel({
               onQueryChange={onQueryChange}
               onSearch={onSearch}
               onShowVersions={onShowVersions}
-              selected={person}
+              selectedIds={pickedIds}
               onSelect={pick}
             />
             {/* Nobody found: step 2 is the next thing to do, right here. */}
@@ -219,6 +239,7 @@ export default function AuthorPanel({
             onKindChange={chooseKind}
             name={name}
             onNameChange={setName}
+            onAdd={addNamed}
             reason={reason}
             onReasonChange={setReason}
           />
@@ -226,8 +247,8 @@ export default function AuthorPanel({
       </div>
 
       {/* The way to step 2: kept in sight under the results, however many there are, and set
-          apart from them. Not once a person is picked. */}
-      {kind === 'person' && canLeaveSearch && !person && !nobody && (
+          apart from them. Not once someone is chosen: the list below has its own way. */}
+      {kind === 'person' && canLeaveSearch && persons.length === 0 && !nobody && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-gray-200 bg-gray-50 px-4 py-2.5">
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-800">{t(total > 0 ? 'panel.noneOfThese' : 'panel.cantFind')}</p>
@@ -241,12 +262,14 @@ export default function AuthorPanel({
 
       {kind !== 'other' && (
         <div className="space-y-2.5 border-t border-gray-200 px-4 py-2.5">
-          {/* Two rows of choices, their labels in one column so they read as one small form. */}
-          {asksConfidence && (
-            <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
-              <RolePicker value={role} onChange={setRole} other={roleOther} onOtherChange={setRoleOther} />
-              <ConfidencePicker value={confidence} onChange={setConfidence} />
-            </div>
+          {answering && persons.length > 0 && (
+            <ChosenPersons
+              persons={persons}
+              twice={twice}
+              onChange={changePerson}
+              onRemove={removePerson}
+              onAddNotInBdrc={kind === 'person' ? () => chooseKind('not_in_bdrc') : undefined}
+            />
           )}
           {noteOpen ? (
             <div className="text-sm">
@@ -299,12 +322,83 @@ export default function AuthorPanel({
   );
 }
 
+type PersonChange = Partial<Pick<AnswerPerson, 'role' | 'roleOther' | 'confidence'>>;
+
+/**
+ * The persons chosen for the text, each with their role and how sure the annotator is of them:
+ * the answer as it will be sent (one person or several, the same way).
+ * More are added from the search (or, not in BDRC, from step 2).
+ */
+function ChosenPersons({
+  persons,
+  twice,
+  onChange,
+  onRemove,
+  onAddNotInBdrc,
+}: Readonly<{
+  persons: AnswerPerson[];
+  /** The same person twice in one role. */
+  twice: boolean;
+  onChange: (index: number, change: PersonChange) => void;
+  onRemove: (index: number) => void;
+  /** Only in the search. */
+  onAddNotInBdrc?: () => void;
+}>) {
+  const t = useT();
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">{t('panel.personsTitle', { count: persons.length })}</h3>
+        {onAddNotInBdrc && (
+          <button type="button" onClick={onAddNotInBdrc} className={`inline-flex items-center gap-1 text-xs ${LINK}`}>
+            <Plus className="h-3 w-3" aria-hidden /> {t('panel.addNotInBdrc')}
+          </button>
+        )}
+      </div>
+      <ul className="max-h-72 space-y-2 overflow-y-auto">
+        {persons.map((p, i) => (
+          <li key={`${keyOf(p)}-${i}`} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
+            <div className="flex items-start gap-2">
+              <span className="min-w-0 flex-1 break-words font-monlam text-base leading-loose text-gray-900">{personLabel(p)}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label={t('panel.removePerson', { name: p.name })}
+                title={t('panel.removePerson', { name: p.name })}
+                className="mt-1 cursor-pointer rounded p-0.5 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-2">
+              <RolePicker
+                id={`role-${i}`}
+                value={p.role}
+                onChange={(role) => onChange(i, { role })}
+                other={p.roleOther ?? ''}
+                onOtherChange={(roleOther) => onChange(i, { roleOther })}
+              />
+              <ConfidencePicker id={`sure-${i}`} value={p.confidence} onChange={(confidence) => onChange(i, { confidence })} />
+            </div>
+          </li>
+        ))}
+      </ul>
+      {twice ? (
+        <p className="mt-1.5 text-xs text-red-700">{t('panel.samePersonTwice')}</p>
+      ) : (
+        onAddNotInBdrc && <p className="mt-1.5 text-xs text-gray-500">{t('panel.addAnotherHint')}</p>
+      )}
+    </div>
+  );
+}
+
 /** Step 2, when the author can't be found in BDRC: not in BDRC, or skip the text. */
 function OtherStep({
   kind,
   onKindChange,
   name,
   onNameChange,
+  onAdd,
   reason,
   onReasonChange,
 }: Readonly<{
@@ -312,6 +406,8 @@ function OtherStep({
   onKindChange: (kind: PanelStep) => void;
   name: string;
   onNameChange: (name: string) => void;
+  /** Add the name written to the persons of the text. */
+  onAdd: () => void;
   reason: SkipReason | null;
   onReasonChange: (reason: SkipReason) => void;
 }>) {
@@ -337,10 +433,29 @@ function OtherStep({
               {chosen.kind === 'not_in_bdrc' ? (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">{t('panel.notInBdrcHelp')}</p>
-                  <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-gray-700">{t('panel.nameInTibetan')}</span>
-                    <Input value={name} onChange={(e) => onNameChange(e.target.value)} lang="bo" className={`h-10 font-monlam text-base md:text-base ${FIELD}`} />
-                  </label>
+                  <form
+                    className="text-sm"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      onAdd();
+                    }}
+                  >
+                    <label htmlFor="not-in-bdrc-name" className="mb-1 block font-medium text-gray-700">
+                      {t('panel.nameInTibetan')}
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="not-in-bdrc-name"
+                        value={name}
+                        onChange={(e) => onNameChange(e.target.value)}
+                        lang="bo"
+                        className={`h-10 flex-1 font-monlam text-base md:text-base ${FIELD}`}
+                      />
+                      <Button type="submit" variant="outline" className="h-10 cursor-pointer bg-white" disabled={!cleanName(name)}>
+                        <Plus /> {t('panel.addPerson')}
+                      </Button>
+                    </div>
+                  </form>
                 </div>
               ) : (
                 <fieldset className="space-y-2">
@@ -408,45 +523,48 @@ const SEGMENT = 'cursor-pointer border-l border-gray-300 text-xs font-semibold t
 const segment = (on: boolean) => `${SEGMENT} ${on ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700'}`;
 
 /**
- * The role the person had in the text, all four always in sight; Author is chosen at first.
- * What a role means is on its button's hover, and said under the row once it isn't the
- * author's. "Other" asks which role, in a box of its own. Cells of the panel's two-column grid.
+ * The role the person had in the text, from a dropdown (main author at first), each role
+ * with what it means. "Other" asks which role, in a box of its own. Cells of the panel's
+ * two-column grid.
  */
 function RolePicker({
+  id,
   value,
   onChange,
   other,
   onOtherChange,
-}: Readonly<{ value: PersonRole; onChange: (role: PersonRole) => void; other: string; onOtherChange: (other: string) => void }>) {
+}: Readonly<{ id: string; value: PersonRole; onChange: (role: PersonRole) => void; other: string; onOtherChange: (other: string) => void }>) {
   const t = useT();
+  const scope = useToolScope();
   return (
     <>
-      <span id="role-label" className="text-sm font-medium text-gray-700">
+      <span id={`${id}-label`} className="text-sm font-medium text-gray-700">
         {t('panel.role')}
       </span>
-      <div role="radiogroup" aria-labelledby="role-label" className="inline-flex w-fit flex-wrap overflow-hidden rounded-md border border-gray-300">
-        {PERSON_ROLES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            role="radio"
-            aria-checked={value === r}
-            title={r === 'other' ? undefined : t(`roleHint.${r}`)}
-            onClick={() => onChange(r)}
-            className={`h-7 px-2.5 ${segment(value === r)}`}
-          >
-            {roleLabel(r)}
-          </button>
-        ))}
-      </div>
+      {/* A dropdown: six roles are too many to show at once. Each with what it means. */}
+      <Select value={value} onValueChange={(r) => onChange(r as PersonRole)}>
+        <SelectTrigger aria-labelledby={`${id}-label`} size="sm" className={`h-8 w-full bg-white text-sm ${FIELD}`}>
+          <SelectValue>{roleLabel(value)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent className={`${scope} bg-white`}>
+          {PERSON_ROLES.map((r) => (
+            <SelectItem key={r} value={r} className="cursor-pointer py-1.5">
+              <span className="flex flex-col items-start">
+                <span className="text-sm text-gray-900">{roleLabel(r)}</span>
+                <span className="text-xs text-gray-500">{t(`roleHint.${r}`)}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {/* A row of the form like the others: its label in the label column, the box full width. */}
       {value === 'other' && (
         <>
-          <label htmlFor="role-other" className="text-sm font-medium text-gray-700">
+          <label htmlFor={`${id}-other`} className="text-sm font-medium text-gray-700">
             {t('panel.whichRole')}
           </label>
           <Input
-            id="role-other"
+            id={`${id}-other`}
             value={other}
             onChange={(e) => onOtherChange(e.target.value)}
             placeholder={t('panel.whichRolePlaceholder')}
@@ -455,22 +573,21 @@ function RolePicker({
           />
         </>
       )}
-      {value !== 'other' && value !== 'author' && <p className="col-start-2 -mt-1 text-xs text-gray-500">{t(`roleHint.${value}`)}</p>}
     </>
   );
 }
 
 /** How sure the annotator is, 1 to 5 (BDRC's scale); required with an author. Cells of the panel's grid. */
-function ConfidencePicker({ value, onChange }: Readonly<{ value: number | null; onChange: (value: number) => void }>) {
+function ConfidencePicker({ id, value, onChange }: Readonly<{ id: string; value: number | null; onChange: (value: number) => void }>) {
   const t = useT();
   const hint = value == null ? '' : confidenceHint(value);
   return (
     <>
-      <span id="confidence-label" className="text-sm font-medium text-gray-700">
+      <span id={`${id}-label`} className="text-sm font-medium text-gray-700">
         {t('panel.howSure')}
       </span>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <div role="radiogroup" aria-labelledby="confidence-label" className="inline-flex overflow-hidden rounded-md border border-gray-300">
+        <div role="radiogroup" aria-labelledby={`${id}-label`} className="inline-flex overflow-hidden rounded-md border border-gray-300">
           {CONFIDENCE.map((level) => (
             <button
               key={level}

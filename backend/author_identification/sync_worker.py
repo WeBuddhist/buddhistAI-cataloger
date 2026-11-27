@@ -28,21 +28,35 @@ _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
 
 
-def bdrc_body(a: AuthorAnswer) -> dict[str, Any]:
-    """The answer as BDRC's PUT /editions/batches/{batch}/items/{item} takes it."""
-    return {
+# Kept in data before roles had their own field, and the person's name, which is only for
+# showing the answer here: neither goes to BDRC.
+_NOT_SENT_DATA = ("role", "role_other", "person_name")
+_NOT_SENT_PERSON = ("person_name",)
+
+
+def bdrc_body(a: AuthorAnswer, duplicate_p_ids: list[str] | None = None) -> dict[str, Any]:
+    """The answer as BDRC's PUT /editions/batches/{batch}/items/{item} takes it: the persons
+    of the text, each in a role, in ``persons``; "I don't know" as ``person_answer``; the
+    other BDRC ids of a person reported twice in ``data.duplicate_p_ids``."""
+    body: dict[str, Any] = {
         "annotator_id": a.user_id,
-        "person_answer": a.person_answer,
-        "p_id": a.p_id,
-        "name_bo": a.name_bo,
-        "confidence": a.confidence,
+        # Each person carries their own; the column keeps the first one's, to list answers here.
+        "confidence": None if a.persons else a.confidence,
         "note": a.note,
         "text_rejected": a.text_rejected,
         "reject_reason": a.reject_reason,
-        "data": a.data or {},
+        "data": {k: v for k, v in (a.data or {}).items() if k not in _NOT_SENT_DATA},
         # When the person answered, not when it reached BDRC.
         "decided_at": a.decided_at.isoformat() + "Z",
     }
+    # A person of the answer reported with a second BDRC id: the others, as BDRC asks.
+    if duplicate_p_ids:
+        body["data"]["duplicate_p_ids"] = duplicate_p_ids
+    if a.person_answer == "unknown":
+        body["person_answer"] = "unknown"
+    else:
+        body["persons"] = [{k: v for k, v in p.items() if k not in _NOT_SENT_PERSON} for p in (a.persons or [])]
+    return body
 
 
 def _retriable(exc: Exception) -> bool:
@@ -65,7 +79,7 @@ def _process_available() -> int:
                 return processed
             processed += 1
             try:
-                client.put_answer(answer.batch_id, answer.item_id, bdrc_body(answer))
+                client.put_answer(answer.batch_id, answer.item_id, bdrc_body(answer, repo.duplicate_ids(db, answer)))
                 repo.mark_synced(db, answer.id)
                 logger.info(
                     "author identification sync ok answer=%s batch=%s item=%s attempts=%s",

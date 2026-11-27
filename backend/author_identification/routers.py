@@ -8,6 +8,7 @@ are synchronous.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 from author_identification import client, service, work
 from author_identification import repository as repo
 from author_identification.client import EditionsApiError
-from author_identification.models import AuthorAnswer
+from author_identification.models import AuthorAnswer, AuthorDuplicateReport
 from author_identification.deps import (
     author_identification_role,
     has_author_identification_access,
@@ -30,6 +31,9 @@ from author_identification.schemas import (
     AnswerIn,
     AnswerOut,
     ClaimOut,
+    DecisionIn,
+    DuplicateIn,
+    DuplicateOut,
     MemberOut,
     MemberPageOut,
     MemberUpdateIn,
@@ -159,6 +163,22 @@ def get_edition(edition_id: str = Path(pattern=_ID)) -> Any:
         _bdrc_failed(exc)
 
 
+def _answer_columns(body: AnswerIn) -> dict:
+    """The answer as saved: its persons, with the first one repeated in the single-person
+    columns (as BDRC's item does), so lists and old readers still see who was answered."""
+    persons = [p.model_dump(exclude_none=True) for p in body.persons]
+    first = persons[0] if persons else {}
+    columns = body.model_dump(exclude={"persons"})
+    columns.update(
+        persons=persons,
+        person_answer=first.get("person_answer", body.person_answer),
+        p_id=first.get("p_id"),
+        name_bo=first.get("name_bo"),
+        confidence=body.confidence if body.confidence is not None else first.get("confidence"),
+    )
+    return columns
+
+
 @router.put("/batches/{batch_id}/items/{item_id}", response_model=AnswerOut)
 def answer_item(
     body: AnswerIn,
@@ -174,7 +194,7 @@ def answer_item(
     holder = assignment is not None and assignment.user_id == user.id
     if not holder and not is_author_identification_admin(user):
         raise HTTPException(status_code=403, detail="This text is not one of yours.")
-    answer = repo.add_answer(db, AuthorAnswer(batch_id=batch_id, item_id=item_id, user_id=user.id, **body.model_dump()))
+    answer = repo.add_answer(db, AuthorAnswer(batch_id=batch_id, item_id=item_id, user_id=user.id, **_answer_columns(body)))
     if holder:
         repo.complete_assignment(db, batch_id, item_id)
     db.commit()
@@ -207,3 +227,114 @@ def add_active_time(
 def sync_health(db: Session = Depends(get_db)):
     """Answers per sending state, and the latest ones BDRC refused."""
     return repo.sync_health(db)
+
+
+# --- Duplicate reports ---------------------------------------------------------------------
+
+
+def _names(db: Session, user_ids: set[str]) -> dict[str, str]:
+    if not user_ids:
+        return {}
+    rows = db.query(User.id, User.name, User.email).filter(User.id.in_(user_ids)).all()
+    return {uid: name or email for uid, name, email in rows}
+
+
+def _report_out(report: AuthorDuplicateReport, names: dict[str, str], me: str) -> DuplicateOut:
+    out = DuplicateOut.model_validate(report)
+    out.mine = report.user_id == me
+    out.reporter_name = names.get(report.user_id)
+    out.decided_by_name = names.get(report.decided_by) if report.decided_by else None
+    return out
+
+
+@router.get("/duplicates", response_model=list[DuplicateOut])
+def list_duplicates(db: Session = Depends(get_db), user: User = Depends(require_author_identification_access)):
+    """Every duplicate report, newest first: the cards show who was reported with whom."""
+    reports = repo.list_duplicates(db)
+    names = _names(db, {r.user_id for r in reports} | {r.decided_by for r in reports if r.decided_by})
+    return [_report_out(r, names, user.id) for r in reports]
+
+
+@router.post("/duplicates", response_model=DuplicateOut, status_code=201)
+def report_duplicate(
+    body: DuplicateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_author_identification_access),
+):
+    """Report two BDRC persons as one. When one of them is in the text's answer already sent,
+    the answer is sent again, with the other id in ``data.duplicate_p_ids``."""
+    if repo.find_pair(db, body.person.id, body.other.id):
+        raise HTTPException(status_code=409, detail="These two persons are already reported.")
+    current = repo.latest_answer(db, body.batch_id, body.item_id)
+    before = repo.duplicate_ids(db, current) if current is not None else []
+    report = AuthorDuplicateReport(
+        batch_id=body.batch_id,
+        item_id=body.item_id,
+        text_title=body.text_title,
+        user_id=user.id,
+        person_id=body.person.id,
+        person_name=body.person.name,
+        person_dates=body.person.dates,
+        other_id=body.other.id,
+        other_name=body.other.name,
+        other_dates=body.other.dates,
+        reason=body.reason.strip(),
+    )
+    db.add(report)
+    db.flush()
+    # Sent again only when the report changes what goes with the answer.
+    if current is not None and repo.duplicate_ids(db, current) != before:
+        repo.resend_current_answer(db, body.batch_id, body.item_id)
+    db.commit()
+    db.refresh(report)
+    return _report_out(report, _names(db, {user.id}), user.id)
+
+
+@router.delete("/duplicates/{report_id}", status_code=204)
+def remove_duplicate(
+    report_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_author_identification_access),
+):
+    """Take back a report (its reporter, or an admin), while it is not decided. The text's
+    answer is sent again without it if it went with it."""
+    report = repo.get_duplicate(db, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No such report.")
+    if report.user_id != user.id and not is_author_identification_admin(user):
+        raise HTTPException(status_code=403, detail="Only who reported it can take it back.")
+    if report.decision is not None:
+        raise HTTPException(status_code=409, detail="This report was already decided.")
+    current = repo.latest_answer(db, report.batch_id, report.item_id)
+    before = repo.duplicate_ids(db, current) if current is not None else []
+    db.delete(report)
+    db.flush()
+    if current is not None and repo.duplicate_ids(db, current) != before:
+        repo.resend_current_answer(db, report.batch_id, report.item_id)
+    db.commit()
+
+
+@router.put("/duplicates/{report_id}/decision", response_model=DuplicateOut)
+def decide_duplicate(
+    report_id: str,
+    body: DecisionIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_author_identification_admin),
+):
+    """An admin's decision: the same person, or two different ones (then the other id no
+    longer goes to BDRC with the answer: it is sent again without it). Null opens it again."""
+    report = repo.get_duplicate(db, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No such report.")
+    current = repo.latest_answer(db, report.batch_id, report.item_id)
+    before = repo.duplicate_ids(db, current) if current is not None else []
+    report.decision = body.decision
+    report.decision_note = body.note.strip() or None if body.decision else None
+    report.decided_by = admin.id if body.decision else None
+    report.decided_at = datetime.utcnow() if body.decision else None
+    db.flush()
+    if current is not None and repo.duplicate_ids(db, current) != before:
+        repo.resend_current_answer(db, report.batch_id, report.item_id)
+    db.commit()
+    db.refresh(report)
+    return _report_out(report, _names(db, {report.user_id} | ({admin.id} if report.decided_by else set())), admin.id)

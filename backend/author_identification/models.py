@@ -63,6 +63,10 @@ class AuthorAnswer(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     text_rejected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The persons of the text, each in a role, as BDRC's editions API takes them
+    # ({person_answer, p_id | name_bo, role, role_other?}, plus person_name to show here).
+    # person_answer, p_id and name_bo above repeat the first one.
+    persons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     decided_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -105,3 +109,36 @@ class AuthorActiveTime(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class AuthorDuplicateReport(Base):
+    """Two BDRC persons reported as one and the same, noticed on a text. When one of them is
+    a person of that text's answer, the other goes to BDRC with it (``data.duplicate_p_ids``).
+    An admin decides later whether they are the same; nothing changes in BDRC by the report."""
+
+    __tablename__ = "author_identification_duplicate_reports"
+    __table_args__ = (Index("ix_author_identification_duplicates_item", "batch_id", "item_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    # The text it was noticed on.
+    batch_id: Mapped[str] = mapped_column(String, nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    text_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
+
+    # The two persons, with their names and dates as seen, to list the report without BDRC.
+    person_id: Mapped[str] = mapped_column(String, nullable=False)
+    person_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    person_dates: Mapped[str | None] = mapped_column(Text, nullable=True)
+    other_id: Mapped[str] = mapped_column(String, nullable=False)
+    other_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    other_dates: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # An admin's decision: "same" or "different"; null while open.
+    decision: Mapped[str | None] = mapped_column(String, nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
