@@ -181,7 +181,9 @@ export function useScrollToMark(key: unknown, enabled = true) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const box = ref.current;
-    const mark = box?.querySelector('mark[data-active],[data-active-row]');
+    // The marked words themselves first: a differences row can be screens long, and its
+    // top may be far above them. The row is the fallback, for a match it cannot mark.
+    const mark = box?.querySelector('mark[data-active]') ?? box?.querySelector('[data-active-row]');
     if (!enabled || !box || !mark) return;
     const offset = mark.getBoundingClientRect().top - box.getBoundingClientRect().top;
     box.scrollTop += offset - box.clientHeight / 2;

@@ -6,6 +6,7 @@ import i18n from '@/i18n/config';
 import type { DiffGranularity, WitnessCard } from '../api/review';
 import { scanGroupOf } from '../api/scans';
 import { volumeOfText, volumesInOrder } from '../api/volumes';
+import { syllableChars, type ContainedPlace } from '../containedPlace';
 import { buildDiffRows, dtypeOf, foldRows, typeCode, withoutNewlines, type DiffRow, type Piece } from '../diffRows';
 import { useFullText, useScanList, useTextDiff } from '../hooks/useReview';
 import {
@@ -45,6 +46,8 @@ type Props = {
   onClose: () => void;
   /** Lets a selected passage get a note. Left out where notes cannot be written. */
   onAddNote?: (note: NewNote) => Promise<void> | void;
+  /** Where a much shorter text sits in the longer one: "Compare full texts" opens there. */
+  located?: ContainedPlace | null;
 };
 
 const SCANS_KEY = 'dedup.fullText.scans';
@@ -131,7 +134,7 @@ function charAtTop(box: HTMLElement, el: HTMLElement): number | null {
 
 type OnPlace = (place: Partial<ReadingPlace>) => void;
 
-export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClose, onAddNote }: Readonly<Props>) {
+export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClose, onAddNote, located }: Readonly<Props>) {
   const { t } = useTranslation();
   const [scans, setScans] = useState(() => stored(SCANS_KEY) === '1');
   // Pecha pages (wide and short) fit the strip under the texts. Book pages (tall) would
@@ -253,7 +256,7 @@ export default function FullTextDialog({ a, b, itemId, view, onViewChange, onClo
           }
         >
           <WithScans show={scansBelow} itemId={itemId} cards={{ A: a, B: b }} place={place} onPointerDown={followClick}>
-            {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} />}
+            {view === 'side' && <SideBySide a={a} b={b} onAddNote={onAddNote} onPlace={scans ? onPlace : undefined} located={located} />}
             {view === 'diff' && (
               <DiffView
                 a={a}
@@ -549,13 +552,42 @@ function SideBySide({
   b,
   onAddNote,
   onPlace,
-}: Readonly<{ a: WitnessCard; b: WitnessCard; onAddNote?: (note: NewNote) => Promise<void> | void; onPlace?: OnPlace }>) {
-  const [pane, setPane] = useState<Tag>('A');
+  located,
+}: Readonly<{
+  a: WitnessCard;
+  b: WitnessCard;
+  onAddNote?: (note: NewNote) => Promise<void> | void;
+  onPlace?: OnPlace;
+  located?: ContainedPlace | null;
+}>) {
+  // On a phone, one text at a time: the longer one first when the shorter sits inside it.
+  const [pane, setPane] = useState<Tag>(located?.long ?? 'A');
   const textA = useFullText(a.mw_id);
   const textB = useFullText(b.mw_id);
   const shownA = useMemo(() => displayText(textA.data?.text_bo ?? ''), [textA.data]);
   const shownB = useMemo(() => displayText(textB.data?.text_bo ?? ''), [textB.data]);
   const selection = useCrossSelection({ A: shownA, B: shownB }, 'window');
+  // The shorter text's place in the longer one, marked lightly. The pane opens there once;
+  // after the reader selects something it no longer pulls them back.
+  const longShown = located?.long === 'B' ? shownB : shownA;
+  // Keyed on the numbers: the pages build `located` afresh on every render.
+  const { start = 0, end = 0, longLength = 0 } = located ?? {};
+  const placeRange = useMemo(
+    () => (longLength && longShown ? syllableChars(longShown, start, end, longLength) : null),
+    [start, end, longLength, longShown],
+  );
+  const [followPlace, setFollowPlace] = useState(true);
+  const select = (side: Tag, picked: Picked | null) => {
+    if (picked) setFollowPlace(false);
+    selection.select(side, picked);
+  };
+  const marksOf = (tag: Tag): { marks: Marks; soft: boolean } => {
+    const own = selection.marksFor(tag);
+    if (own.ranges.length > 0 || tag !== located?.long || !placeRange) return { marks: own, soft: false };
+    return { marks: { ranges: [placeRange], active: 0, follow: followPlace }, soft: true };
+  };
+  const pa = marksOf('A');
+  const pb = marksOf('B');
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneTabs pane={pane} onPane={setPane} />
@@ -563,8 +595,8 @@ function SideBySide({
         onPointerDownCapture={noteSelectingSide}
         className={`grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:divide-x lg:divide-gray-200 ${ONE_SIDE_SELECTION}`}
       >
-        <TextPane tag="A" card={a} query={textA} shown={shownA} marks={selection.marksFor('A')} onSelect={selection.select} onPlace={onPlace} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
-        <TextPane tag="B" card={b} query={textB} shown={shownB} marks={selection.marksFor('B')} onSelect={selection.select} onPlace={onPlace} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
+        <TextPane tag="A" card={a} query={textA} shown={shownA} marks={pa.marks} soft={pa.soft} onSelect={select} onPlace={onPlace} className={pane === 'A' ? 'flex' : 'hidden lg:flex'} />
+        <TextPane tag="B" card={b} query={textB} shown={shownB} marks={pb.marks} soft={pb.soft} onSelect={select} onPlace={onPlace} className={pane === 'B' ? 'flex' : 'hidden lg:flex'} />
       </div>
       <SelectionBar selection={selection} onAddNote={onAddNote} className="border-t border-gray-200" />
     </div>
@@ -577,6 +609,7 @@ function TextPane({
   query,
   shown,
   marks,
+  soft = false,
   onSelect,
   onPlace,
   className = 'flex',
@@ -586,6 +619,8 @@ function TextPane({
   query: { isLoading: boolean; error: Error | null; data?: unknown };
   shown: string;
   marks: Marks;
+  /** Marked lightly: a place to look, not a selection. */
+  soft?: boolean;
   onSelect: (side: Tag, picked: Picked | null) => void;
   onPlace?: OnPlace;
   className?: string;
@@ -624,7 +659,7 @@ function TextPane({
             onPointerUp={(e) => onSelect(tag, selectionIn(e.currentTarget))}
             className="whitespace-pre-wrap break-words font-monlam text-lg leading-loose text-gray-900 sm:text-xl"
           >
-            <MarkedText text={shown} marks={marks} />
+            <MarkedText text={shown} marks={marks} soft={soft} />
           </div>
         )}
       </div>
@@ -909,7 +944,11 @@ function DiffView({
   const noted = selection.jumped ? selection.selected?.range : undefined;
   let activeRow = match ? rowAt(matchSide, match.start) : -1;
   if (noted && selection.selected) activeRow = rowAt(selection.selected.side, noted.start);
-  const rowsRef = useScrollToMark(activeRow);
+  // Scroll again on every new match, not only on a new row: one row can hold several
+  // matches (a row can be screens long), and stepping between them must move the view.
+  let scrollKey: string | number = activeRow;
+  if (match && !noted) scrollKey = `match-${match.start}`;
+  const rowsRef = useScrollToMark(scrollKey);
   // A row is the same place in both copies, so one row gives where the reader is in each.
   const report = useSettled(() => {
     const box = rowsRef.current;
@@ -926,10 +965,17 @@ function DiffView({
   }, [onPlace, rows, layout, report]);
   const marksA = selection.marksFor('A');
   const marksB = selection.marksFor('B');
-  const hitsOf = (index: number, row: DiffRow): RowHits => ({
-    a: hitsInRow(marksA, sideA.starts[index], sideA.starts[index] + piecesLength(row.a)),
-    b: hitsInRow(marksB, sideB.starts[index], sideB.starts[index] + piecesLength(row.b)),
-  });
+  // The view scrolls to the current match in the other text, never to the reader's own
+  // selection; for a note opened from the list, to the note's own row (`activeRow`).
+  const targeted = (hits: RowHit[]) => hits.map((h) => ({ ...h, target: h.active && !h.own && !noted }));
+  const hitsOf = (index: number, row: DiffRow): RowHits => {
+    const endA = sideA.starts[index] + piecesLength(row.a);
+    const endB = sideB.starts[index] + piecesLength(row.b);
+    return {
+      a: targeted(hitsInRow(marksA, sideA.starts[index], endA)),
+      b: targeted(hitsInRow(marksB, sideB.starts[index], endB)),
+    };
+  };
   const pickRows = () => {
     const picked = window.getSelection();
     const text = picked?.toString() ?? '';
@@ -1085,7 +1131,8 @@ function ColumnHead({
 const TEXT = 'whitespace-pre-wrap break-words font-monlam text-base leading-loose sm:text-lg';
 const LINE_NO = 'w-8 shrink-0 select-none px-1 pt-1.5 text-right font-sans text-xs tabular-nums text-gray-400 sm:w-12 sm:px-2';
 
-type RowHit = TextRange & { active: boolean; own?: string };
+/** `target`: the mark the view scrolls to: the current match in the other text. */
+type RowHit = TextRange & { active: boolean; own?: string; target?: boolean };
 type RowHits = { a: RowHit[]; b: RowHit[] };
 
 const piecesLength = (pieces: Piece[]) => pieces.reduce((sum, p) => sum + p.text.length, 0);
@@ -1099,6 +1146,12 @@ function hitsInRow(marks: Marks, from: number, to: number): RowHit[] {
   );
 }
 
+/** Of a selection's matches, the current one is solid amber; the others are outlined, since
+ * a pale tint vanishes on the red and green of the differences. */
+function hitClass(hit: RowHit): string {
+  return hit.active ? 'rounded-sm bg-amber-300' : 'rounded-sm bg-amber-50 ring-2 ring-inset ring-amber-400';
+}
+
 /** `text`, which starts at `at` in its row, with the marks that fall inside it. */
 function withHits(text: string, at: number, hits: RowHit[]) {
   const parts: React.ReactNode[] = [];
@@ -1109,7 +1162,7 @@ function withHits(text: string, at: number, hits: RowHit[]) {
     if (end <= start) continue;
     parts.push(text.slice(done, start));
     parts.push(
-      <mark key={start} data-own={hit.own} className={`rounded-sm ${hit.active ? 'bg-amber-300' : 'bg-amber-100'}`}>
+      <mark key={start} data-active={hit.target ? '' : undefined} data-own={hit.own} className={hitClass(hit)}>
         {text.slice(start, end)}
       </mark>,
     );

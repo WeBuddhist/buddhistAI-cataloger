@@ -70,10 +70,24 @@ export interface LlmAnalysis {
   models?: LlmModelAnalysis[] | null;
 }
 
+/** BDRC's syllable alignment of the two texts (only the fields used here). Lengths are in
+ * syllables, punctuation left out. `head_extra` / `tail_extra`: how many more syllables
+ * B has than A before the first / after the last run of 8+ matching syllables
+ * (negative: A has more). */
+export interface DiffIndicators {
+  n_a?: number | null;
+  n_b?: number | null;
+  head_extra?: number | null;
+  tail_extra?: number | null;
+  core_match_coverage?: number | null;
+  anchored?: boolean | null;
+}
+
 export interface PairEvidence {
   schema_version?: string;
   why?: string;
   metrics?: PairMetrics;
+  diff_indicators?: DiffIndicators | null;
   llm_analysis?: LlmAnalysis | null;
   a?: WitnessCard;
   b?: WitnessCard;
