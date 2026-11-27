@@ -8,8 +8,8 @@ are synchronous.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any, Literal, NoReturn
+from datetime import datetime, timezone
+from typing import Any, Literal, NoReturn, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
@@ -40,9 +40,9 @@ from author_identification.schemas import (
     MeOut,
     MyTextOut,
     OverviewOut,
+    PersonProgressOut,
     SyncHealthOut,
 )
-from core.config import AUTHOR_IDENTIFICATION_BATCH_ID
 from core.database import get_db
 from user.models.user import User
 
@@ -229,7 +229,25 @@ def add_active_time(
 def admin_overview(db: Session = Depends(get_db)):
     """How far the batch being handed out is (BDRC's counts and ours), and each person's
     work: texts given, answered, skipped, still open, time spent, last activity."""
-    return overview.overview(db, AUTHOR_IDENTIFICATION_BATCH_ID)
+    return overview.overview(db)
+
+
+def _utc(value: Optional[datetime]) -> Optional[datetime]:
+    """An instant from the browser as naive UTC, as times are stored."""
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+@router.get("/admin/annotators", response_model=list[PersonProgressOut],
+            dependencies=[Depends(require_author_identification_admin)])
+def admin_annotators(
+    since: Optional[datetime] = Query(None, description="From this instant (ISO 8601)"),
+    until: Optional[datetime] = Query(None, description="Up to this instant, excluded"),
+    db: Session = Depends(get_db),
+):
+    """Each person's work, the busiest first; with a period, only the work done in it."""
+    return overview.people(db, _utc(since), _utc(until))
 
 
 @router.get("/admin/sync", response_model=SyncHealthOut,

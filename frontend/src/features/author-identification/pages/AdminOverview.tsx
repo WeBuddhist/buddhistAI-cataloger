@@ -1,28 +1,18 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, Clock, Hourglass, Inbox, Loader2, SkipForward } from 'lucide-react';
-import AvatarWrapper from '@/components/AvatarWrapper';
 import InfoTip from '@/features/dedup/admin/InfoTip';
-import type { BatchProgress, PersonProgress } from '../api/admin';
+import type { BatchProgress } from '../api/admin';
 import { useOverview } from '../hooks';
-import { tr, useT } from '../i18n';
+import { useT } from '../i18n';
+import { spent, tone, utc } from './adminFormat';
 
 const TH = 'px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500';
 const NUM = `${TH} text-right`;
 const TD = 'px-4 py-3 align-middle';
 const TD_NUM = `${TD} text-right tabular-nums`;
 
-const utc = (iso: string) => new Date(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`);
 const day = (iso: string) => utc(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-
-/** Hours and minutes, in the language chosen: "2 h 05 min", "45 min". */
-function spent(minutes: number): string {
-  if (minutes < 60) return tr('overview.minutes', { m: minutes });
-  return tr('overview.hours', { h: Math.floor(minutes / 60), m: String(minutes % 60).padStart(2, '0') });
-}
-
-/** Grey for 0, so a table of zeros still reads as a table. */
-const tone = (n: number, color = 'text-gray-900') => (n ? color : 'text-gray-400');
 
 /** How far each batch is, at BDRC and in this tool, and each person's work. Read-only. */
 export default function AdminOverview() {
@@ -40,7 +30,7 @@ export default function AdminOverview() {
     return <p className="py-8 text-sm text-red-700">{t('overview.loadFailed', { error: (overview.error as Error)?.message ?? '' })}</p>;
   }
 
-  const { batches, batch_error, skipped_by_reason, duplicates, totals, people } = overview.data;
+  const { batches, batch_error, skipped_by_reason, duplicates, totals, people, working } = overview.data;
 
   return (
     <div className="space-y-6 py-6">
@@ -80,32 +70,12 @@ export default function AdminOverview() {
       </div>
 
       <Section title={t('overview.people')} tip={t('overview.peopleTip')}>
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className={TH}>{t('overview.person')}</th>
-                <th className={NUM}>{t('overview.given')}</th>
-                <th className={NUM}>{t('overview.inProgress')}</th>
-                <th className={NUM}>{t('overview.answered')}</th>
-                <th className={NUM}>{t('overview.skipped')}</th>
-                <th className={NUM}>{t('overview.time')}</th>
-                <th className={TH}>{t('overview.lastActivity')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {people.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className={`${TD} py-8 text-center text-gray-500`}>
-                    {t('overview.nobody')}
-                  </td>
-                </tr>
-              ) : (
-                people.map((p) => <PersonRow key={p.user_id} person={p} />)
-              )}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-gray-700">
+          {people === 0 ? t('overview.nobody') : t('overview.working', { working, people })}
+        </p>
+        <Link to="/author-identification-admin/annotators" className="mt-2 inline-block text-sm font-medium text-blue-700 hover:text-blue-800">
+          {t('overview.seeAnnotators')} →
+        </Link>
       </Section>
     </div>
   );
@@ -177,12 +147,7 @@ function BatchTable({ batches }: Readonly<{ batches: BatchProgress[] }>) {
           {rows.map((r) => (
             <tr key={r.b.batch_id}>
               <td className={TD}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium tabular-nums text-gray-900">{r.b.batch_id}</span>
-                  {r.b.current && (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{t('overview.handingOut')}</span>
-                  )}
-                </div>
+                <div className="font-medium tabular-nums text-gray-900">{r.b.batch_id}</div>
                 {(r.b.note || r.b.created_at) && (
                   <div className="mt-0.5 text-xs text-gray-500">
                     {[r.b.note, r.b.created_at && t('overview.created', { date: day(r.b.created_at) })].filter(Boolean).join(' · ')}
@@ -214,34 +179,6 @@ function BatchTable({ batches }: Readonly<{ batches: BatchProgress[] }>) {
         <p className="border-t border-gray-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">{t('overview.noneLeft')}</p>
       )}
     </div>
-  );
-}
-
-function PersonRow({ person: p }: Readonly<{ person: PersonProgress }>) {
-  const t = useT();
-  const started = p.given + p.answered + p.skipped > 0;
-  return (
-    <tr>
-      <td className={TD}>
-        <div className="flex items-center gap-3">
-          <div className="shrink-0">{p.picture && <AvatarWrapper src={p.picture} alt={p.name || p.email} />}</div>
-          <div className="min-w-0">
-            <div className={`truncate font-medium ${started ? 'text-gray-900' : 'text-gray-500'}`}>{p.name || p.email}</div>
-            <div className="truncate text-xs text-gray-500">{t(`roles.${p.role}`)}</div>
-          </div>
-        </div>
-      </td>
-      <td className={`${TD_NUM} ${tone(p.given)}`}>{p.given}</td>
-      <td className={`${TD_NUM} ${tone(p.in_progress, 'text-amber-700')}`}>{p.in_progress}</td>
-      <td className={`${TD_NUM} ${tone(p.answered, 'text-green-700')}`}>{p.answered}</td>
-      <td className={`${TD_NUM} ${tone(p.skipped)}`}>{p.skipped}</td>
-      <td className={`${TD_NUM} ${tone(p.minutes)}`}>{started ? spent(p.minutes) : '–'}</td>
-      <td className={`${TD} whitespace-nowrap text-gray-600`}>
-        {p.last_activity
-          ? utc(p.last_activity).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-          : <span className="text-gray-400">{t('overview.notStarted')}</span>}
-      </td>
-    </tr>
   );
 }
 

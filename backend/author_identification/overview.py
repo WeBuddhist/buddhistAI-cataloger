@@ -22,7 +22,9 @@ _DONE_AT_BDRC = ("annotated", "reviewed")
 
 # Per person, over all batches: texts handed out (finished or not), their current answers
 # (persons given, or skipped), time on texts, and when they last did anything. A text's
-# current answer is its newest one, whoever gave it.
+# current answer is its newest one, whoever gave it. In a period: texts handed out in it,
+# answers given in it, and time on texts worked on in it; in_progress is always what they
+# hold now, and last_activity is over all time.
 _PEOPLE = text(
     """
     WITH current AS (
@@ -31,19 +33,23 @@ _PEOPLE = text(
         ORDER BY batch_id, item_id, created_at DESC
     ),
     given AS (
-        SELECT user_id, count(*) AS given, count(*) FILTER (WHERE completed_at IS NULL) AS in_progress,
+        SELECT user_id,
+               count(*) FILTER (WHERE assigned_at >= :since AND assigned_at < :until) AS given,
+               count(*) FILTER (WHERE completed_at IS NULL) AS in_progress,
                max(assigned_at) AS last_given
         FROM author_identification_assignments GROUP BY user_id
     ),
     answered AS (
         SELECT user_id,
-               count(*) FILTER (WHERE NOT text_rejected AND person_answer IS DISTINCT FROM 'unknown') AS answered,
-               count(*) FILTER (WHERE text_rejected OR person_answer = 'unknown') AS skipped,
+               count(*) FILTER (WHERE in_period AND NOT text_rejected AND person_answer IS DISTINCT FROM 'unknown') AS answered,
+               count(*) FILTER (WHERE in_period AND (text_rejected OR person_answer = 'unknown')) AS skipped,
                max(decided_at) AS last_answer
-        FROM current GROUP BY user_id
+        FROM (SELECT *, decided_at >= :since AND decided_at < :until AS in_period FROM current) c
+        GROUP BY user_id
     ),
     spent AS (
-        SELECT user_id, sum(seconds) AS seconds, max(updated_at) AS last_seen
+        SELECT user_id, sum(seconds) FILTER (WHERE updated_at >= :since AND updated_at < :until) AS seconds,
+               max(updated_at) AS last_seen
         FROM author_identification_active_time GROUP BY user_id
     )
     SELECT u.id AS user_id,
@@ -91,7 +97,7 @@ def _duplicates(db: Session) -> dict[str, int]:
     return {"to_check": rows.get(None, 0), "same": rows.get("same", 0), "different": rows.get("different", 0)}
 
 
-def _batches(db: Session, current_batch: str) -> tuple[list[BatchProgressOut], str | None]:
+def _batches(db: Session) -> tuple[list[BatchProgressOut], str | None]:
     """Every batch at BDRC, oldest first, with the texts handed out of each here; when BDRC
     can't be reached, why."""
     try:
@@ -113,45 +119,59 @@ def _batches(db: Session, current_batch: str) -> tuple[list[BatchProgressOut], s
             total=int(b.get("n_items") or sum(counts.values())),
             done=sum(int(counts.get(s) or 0) for s in _DONE_AT_BDRC),
             handed_out=handed_out.get(batch_id, 0),
-            current=batch_id == current_batch,
         ))
     rows.sort(key=lambda r: ((r.created_at or datetime.max).isoformat(), r.batch_id))
     return rows, None
 
 
-def overview(db: Session, current_batch: str) -> OverviewOut:
-    rows = db.execute(_PEOPLE, {"permission": f"%{AUTHOR_IDENTIFICATION_PERMISSION}%"}).mappings().all()
+# No period: from the start of time to the end of it.
+_ALL_TIME = (datetime(1970, 1, 1), datetime(9999, 1, 1))
+
+
+def people(db: Session, since: datetime | None = None, until: datetime | None = None) -> list[PersonProgressOut]:
+    """Everyone with access or work, the busiest first; counts within [since, until)."""
+    rows = db.execute(_PEOPLE, {
+        "permission": f"%{AUTHOR_IDENTIFICATION_PERMISSION}%",
+        "since": since or _ALL_TIME[0],
+        "until": until or _ALL_TIME[1],
+    }).mappings().all()
     users = {u.id: u for u in db.query(User).filter(User.id.in_([r["user_id"] for r in rows])).all()} if rows else {}
-    people = [
+    result = [
         PersonProgressOut(
             user_id=r["user_id"],
             name=users[r["user_id"]].name if r["user_id"] in users else None,
             email=users[r["user_id"]].email if r["user_id"] in users else "",
             picture=users[r["user_id"]].picture if r["user_id"] in users else None,
             role=author_identification_role(users[r["user_id"]]) if r["user_id"] in users else "annotator",
-            given=r["given"],
+            given=r["given"] or 0,
             in_progress=r["in_progress"],
             answered=r["answered"],
             skipped=r["skipped"],
-            minutes=round(r["seconds"] / 60),
+            minutes=round((r["seconds"] or 0) / 60),
             last_activity=r["last_activity"],
         )
         for r in rows
     ]
     # Busiest first; those who haven't started yet at the end, by name.
-    people.sort(key=lambda p: (-(p.answered + p.skipped + p.in_progress), -(p.last_activity or datetime.min).timestamp(), (p.name or p.email).lower()))
-    batches, batch_error = _batches(db, current_batch)
+    result.sort(key=lambda p: (-(p.answered + p.skipped + p.in_progress), -(p.last_activity or datetime.min).timestamp(), (p.name or p.email).lower()))
+    return result
+
+
+def overview(db: Session) -> OverviewOut:
+    everyone = people(db)
+    batches, batch_error = _batches(db)
     return OverviewOut(
         batches=batches,
         batch_error=batch_error,
         skipped_by_reason=_skipped(db),
         duplicates=_duplicates(db),
         totals=WorkTotalsOut(
-            handed_out=sum(p.given for p in people),
-            in_progress=sum(p.in_progress for p in people),
-            answered=sum(p.answered for p in people),
-            skipped=sum(p.skipped for p in people),
-            minutes=sum(p.minutes for p in people),
+            handed_out=sum(p.given for p in everyone),
+            in_progress=sum(p.in_progress for p in everyone),
+            answered=sum(p.answered for p in everyone),
+            skipped=sum(p.skipped for p in everyone),
+            minutes=sum(p.minutes for p in everyone),
         ),
-        people=people,
+        working=sum(1 for p in everyone if p.given + p.answered + p.skipped > 0),
+        people=len(everyone),
     )

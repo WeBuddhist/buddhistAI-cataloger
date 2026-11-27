@@ -99,7 +99,8 @@ function MyTexts() {
         </div>
       </div>
 
-      {all.length > 0 && <Progress done={done} total={all.length} />}
+      {/* Only once something is done: "0 of 5 done" says nothing. */}
+      {done > 0 && <Progress done={done} total={all.length} />}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-md bg-gray-100 p-1" role="tablist" aria-label={t('queue.title')}>

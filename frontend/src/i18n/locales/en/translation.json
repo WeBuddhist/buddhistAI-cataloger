@@ -1849,7 +1849,8 @@
       "nav": {
         "duplicates": "Duplicates",
         "users": "Users",
-        "overview": "Overview"
+        "overview": "Overview",
+        "annotators": "Annotators"
       },
       "title": "Author Identification admin"
     },
@@ -2017,7 +2018,6 @@
       "given": "Given",
       "handedOut": "Handed out",
       "handedOutTip": "Texts given to annotators with “Assign work”, in all batches.",
-      "handingOut": "Handing out",
       "hours": "{{h}} h {{m}} min",
       "inProgress": "In progress",
       "inProgressTip": "Texts given out and not answered yet.",
@@ -2031,7 +2031,7 @@
       "noneSoFar": "None so far.",
       "notStarted": "Not started",
       "people": "People",
-      "peopleTip": "Everyone with access, the busiest first. Counts are over all batches.",
+      "peopleTip": "Everyone with access. The Annotators tab has each person’s numbers, with filters.",
       "person": "Person",
       "seeDuplicates": "See the reports",
       "skipped": "Skipped",
@@ -2040,7 +2040,9 @@
       "skippedWhyTip": "Why texts were skipped. Skipped texts are sent to BDRC too, so they count as Done there.",
       "time": "Time",
       "timeSpent": "Time on texts",
-      "timeSpentTip": "Time spent with a text open, all annotators together."
+      "timeSpentTip": "Time spent with a text open, all annotators together.",
+      "working": "{{working}} of {{people}} people with access have started.",
+      "seeAnnotators": "See each person’s work"
     },
     "panel": {
       "addAnotherHint": "To add another person, tick them in the search results.",
@@ -2262,6 +2264,38 @@
       "previous": "Previous text",
       "saved": "Answer saved",
       "savedLast": "Answer saved. That was your last text."
+    },
+    "annotators": {
+      "intro": "Each person’s work. Filter by role, status or period; click a column to sort. Updated every minute.",
+      "role": "Role",
+      "status": "Status",
+      "search": "Search by name or email",
+      "roles": {
+        "all": "Everyone",
+        "annotator": "Annotators",
+        "admin": "Admins"
+      },
+      "statuses": {
+        "all": "All",
+        "working": "Started",
+        "notStarted": "Not started"
+      },
+      "periodHint": "In a period: texts handed out in it, answers given in it, and time on texts worked on in it. In progress is always what they hold now.",
+      "noMatch": "Nobody matches these filters.",
+      "col": {
+        "name": "Person",
+        "given": "Given",
+        "givenTip": "Texts handed out with “Assign work”.",
+        "in_progress": "In progress",
+        "in_progressTip": "Texts they hold now without an answer.",
+        "answered": "Answered",
+        "skipped": "Skipped",
+        "minutes": "Total time",
+        "minutesTip": "Time spent with a text open.",
+        "perText": "Average per text",
+        "perTextTip": "Time divided by texts answered or skipped.",
+        "last_activity": "Last activity"
+      }
     }
   }
 }

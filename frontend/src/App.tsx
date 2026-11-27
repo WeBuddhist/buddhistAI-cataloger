@@ -52,6 +52,7 @@ const AuthorIdentificationWorkspaceLazy = lazy(() => import('@/features/author-i
 const AuthorIdentificationGuidelinesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.Guidelines })));
 const AuthorIdentificationAdminLayoutLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminLayout })));
 const AuthorIdentificationAdminOverviewLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminOverview })));
+const AuthorIdentificationAdminAnnotatorsLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminAnnotators })));
 const AuthorIdentificationAdminUsersLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminUsers })));
 const AuthorIdentificationAdminDuplicatesLazy = lazy(() => import('@/features/author-identification').then((m) => ({ default: m.AdminDuplicates })));
 const OutlinerWorkspaceLazy = lazy(() => import('@/features/outliner').then((m) => ({ default: m.Workspace })));
@@ -241,6 +242,13 @@ function App() {
             <ProtectedRoute>
               <AuthorIdentificationAdminLayoutLazy>
                 <AuthorIdentificationAdminOverviewLazy />
+              </AuthorIdentificationAdminLayoutLazy>
+            </ProtectedRoute>
+          } />
+          <Route path="/author-identification-admin/annotators" element={
+            <ProtectedRoute>
+              <AuthorIdentificationAdminLayoutLazy>
+                <AuthorIdentificationAdminAnnotatorsLazy />
               </AuthorIdentificationAdminLayoutLazy>
             </ProtectedRoute>
           } />

@@ -10,8 +10,6 @@ export interface BatchProgress {
   done: number;
   /** Texts this tool has handed out of it. */
   handed_out: number;
-  /** The batch "Assign work" hands texts out from. */
-  current: boolean;
 }
 
 export interface PersonProgress {
@@ -37,7 +35,24 @@ export interface Overview {
   duplicates: { to_check: number; same: number; different: number };
   batch_error: string | null;
   totals: { handed_out: number; in_progress: number; answered: number; skipped: number; minutes: number };
-  people: PersonProgress[];
+  /** People with access or work, and those of them who have started. */
+  people: number;
+  working: number;
 }
 
 export const fetchOverview = () => request<Overview>('/admin/overview');
+
+/** A period as ISO instants, `until` excluded; both unset = all time. */
+export interface Period {
+  since?: string;
+  until?: string;
+}
+
+/** Each person's work, the busiest first; with a period, only the work done in it. */
+export function fetchAnnotators(period: Period) {
+  const q = new URLSearchParams();
+  if (period.since) q.set('since', period.since);
+  if (period.until) q.set('until', period.until);
+  const query = q.toString();
+  return request<PersonProgress[]>(`/admin/annotators${query ? `?${query}` : ''}`);
+}

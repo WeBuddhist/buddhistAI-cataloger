@@ -251,8 +251,6 @@ class BatchProgressOut(BaseModel):
     total: int
     done: int
     handed_out: int
-    # The batch "Assign work" hands texts out from.
-    current: bool
 
 
 class WorkTotalsOut(BaseModel):
@@ -292,4 +290,6 @@ class OverviewOut(BaseModel):
     # Duplicate reports: to_check (no decision yet), same, different.
     duplicates: dict[str, int]
     totals: WorkTotalsOut
-    people: list[PersonProgressOut]
+    # People with access or work, and those of them who have started.
+    people: int
+    working: int

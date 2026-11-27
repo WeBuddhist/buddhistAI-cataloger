@@ -6,8 +6,9 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  keepPreviousData,
 } from '@tanstack/react-query';
-import { fetchOverview } from './api/admin';
+import { fetchAnnotators, fetchOverview, type Period } from './api/admin';
 import { decideDuplicate, fetchDuplicates, removeDuplicate, reportDuplicate } from './api/duplicates';
 import { fetchNames, fetchPersonImage, fetchPersonRecord, fetchTerms, isTerm, termFallback } from './api/personRecord';
 import { fetchPersonWorks } from './api/personWorks';
@@ -22,6 +23,7 @@ const keys = {
   tasks: [...root, 'tasks'] as const,
   duplicates: [...root, 'duplicates'] as const,
   overview: [...root, 'admin', 'overview'] as const,
+  annotators: (period: Period) => [...root, 'admin', 'annotators', period] as const,
   task: (id: string) => [...root, 'task', id] as const,
   versionDetails: (id: string) => [...root, 'version-details', id] as const,
   person: (id: string) => [...root, 'person', id] as const,
@@ -113,6 +115,10 @@ export const useNameSuggestions = (name: string, enabled: boolean) =>
 /** Every report of a person who has two BDRC ids. */
 /** The admins' overview; refreshed every minute while open. */
 export const useOverview = () => useQuery({ queryKey: keys.overview, queryFn: fetchOverview, refetchInterval: 60_000 });
+
+/** Each person's work in the period; refreshed every minute while open. */
+export const useAnnotators = (period: Period) =>
+  useQuery({ queryKey: keys.annotators(period), queryFn: () => fetchAnnotators(period), refetchInterval: 60_000, placeholderData: keepPreviousData });
 
 export const useDuplicates = () => useQuery({ queryKey: keys.duplicates, queryFn: fetchDuplicates });
 
