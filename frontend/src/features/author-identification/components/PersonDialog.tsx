@@ -14,7 +14,7 @@ export default function PersonDialog({
   persons,
   index,
   total,
-  selectedId,
+  selectedIds,
   loadingMore,
   loadFailed,
   onIndexChange,
@@ -26,7 +26,7 @@ export default function PersonDialog({
   /** Which result is open; null when closed. */
   index: number | null;
   total: number;
-  selectedId: string | null;
+  selectedIds: string[];
   /** More results are on their way. */
   loadingMore: boolean;
   loadFailed: boolean;
@@ -39,7 +39,7 @@ export default function PersonDialog({
   const t = useT();
   const scope = useToolScope();
   const person = index == null ? undefined : persons[index];
-  const selected = person != null && person.id === selectedId;
+  const selected = person != null && selectedIds.includes(person.id);
 
   const prefetch = usePrefetchPerson();
   const beforeId = index == null ? undefined : persons[index - 1]?.id;

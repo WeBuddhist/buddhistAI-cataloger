@@ -3,8 +3,8 @@
 // backend, which sends them on to BDRC.
 import { API_URL } from '@/config/api';
 import { fetchWithAccessToken } from '@/lib/fetchWithAccessToken';
-import type { AuthorAnswer, AuthorTask, ExtractedName, SavedAnswer, TaskSummary, TextVersion } from '../types';
-import { isPersonRole, isSkipReason, type PersonRole } from '../guidelines';
+import type { AnswerPerson, AuthorAnswer, AuthorTask, ExtractedName, SavedAnswer, TaskSummary, TextVersion } from '../types';
+import { isSkipReason, ROLE_CODE, roleOfCode } from '../guidelines';
 import { cleanName, findName, hasTibetan, wylieToTibetan } from '../utils';
 import { tr } from '../i18n';
 
@@ -162,18 +162,34 @@ export async function fetchTask(id: string, known?: Pick<TaskSummary, 'editionId
 
 // --- answers: saved in our backend, which sends them on to BDRC ----------------------
 
+/** A person of an answer, as our backend keeps it (BDRC's form, plus the name to show). */
+interface ApiAnswerPerson {
+  person_answer: 'bdrc' | 'not_in_bdrc';
+  p_id?: string;
+  name_bo?: string;
+  role: string;
+  role_other?: string;
+  confidence?: number;
+  person_name?: string;
+}
+
 /** An answer as our backend saved it. */
 interface ApiAnswer {
   person_answer: 'bdrc' | 'not_in_bdrc' | 'unknown' | null;
-  p_id: string | null;
-  name_bo: string | null;
+  persons: ApiAnswerPerson[];
   confidence: number | null;
   note: string | null;
   text_rejected: boolean;
   reject_reason: string | null;
-  data: { person_name?: string; role?: string; role_other?: string } | null;
   decided_at: string;
 }
+
+const personOf = (p: ApiAnswerPerson, fallback: number | null): AnswerPerson => {
+  const roled = { role: roleOfCode(p.role), roleOther: p.role_other, confidence: p.confidence ?? fallback };
+  return p.person_answer === 'bdrc' && p.p_id
+    ? { ...roled, inBdrc: true, personId: p.p_id, name: p.person_name ?? p.p_id }
+    : { ...roled, inBdrc: false, name: p.name_bo ?? '' };
+};
 
 /** Back to the form's shape; null for an answer this tool does not know how to show. */
 function savedOf(a: ApiAnswer | null | undefined): SavedAnswer | null {
@@ -181,21 +197,19 @@ function savedOf(a: ApiAnswer | null | undefined): SavedAnswer | null {
   const base = { note: a.note ?? '', savedAt: a.decided_at.endsWith('Z') ? a.decided_at : `${a.decided_at}Z` };
   if (a.text_rejected) return isSkipReason(a.reject_reason) ? { ...base, kind: 'skipped', reason: a.reject_reason } : null;
   if (a.person_answer === 'unknown') return { ...base, kind: 'skipped', reason: 'author_unknown' };
-  // Answers from before roles were asked are the author's.
-  const role = isPersonRole(a.data?.role) ? a.data.role : 'author';
-  const roleOther = a.data?.role_other;
-  if (a.person_answer === 'bdrc' && a.p_id) {
-    return { ...base, kind: 'person', personId: a.p_id, name: a.data?.person_name ?? a.p_id, role, roleOther, confidence: a.confidence ?? 0 };
-  }
-  if (a.person_answer === 'not_in_bdrc') return { ...base, kind: 'not_in_bdrc', name: a.name_bo ?? '', role, roleOther, confidence: a.confidence ?? 0 };
+  if (a.persons?.length) return { ...base, kind: 'persons', persons: a.persons.map((p) => personOf(p, a.confidence)) };
   return null;
 }
 
-/** The answer as BDRC's editions API takes it (our backend adds who answered). */
-/** The role as BDRC gets it, in the answer's data; with "other", which one. */
-const roleData = (answer: { role: PersonRole; roleOther?: string }) =>
-  answer.role === 'other' ? { role: answer.role, role_other: answer.roleOther ?? '' } : { role: answer.role };
+/** A person as our backend takes it: BDRC's form, with the name kept to show here. */
+const apiPerson = (p: AnswerPerson): ApiAnswerPerson => ({
+  ...(p.inBdrc ? { person_answer: 'bdrc', p_id: p.personId, person_name: p.name } : { person_answer: 'not_in_bdrc', name_bo: p.name }),
+  role: ROLE_CODE[p.role],
+  ...(p.role === 'other' ? { role_other: p.roleOther ?? '' } : {}),
+  ...(p.confidence == null ? {} : { confidence: p.confidence }),
+});
 
+/** The answer as our backend takes it (it adds who answered and sends it to BDRC). */
 function bodyOf(answer: AuthorAnswer, editionId: string) {
   const note = answer.note.trim() || null;
   if (answer.kind === 'skipped') {
@@ -203,19 +217,7 @@ function bodyOf(answer: AuthorAnswer, editionId: string) {
       ? { edition_id: editionId, person_answer: 'unknown', note }
       : { edition_id: editionId, text_rejected: true, reject_reason: answer.reason, note };
   }
-  if (answer.kind === 'person') {
-    // The person's name is kept with the answer so it shows without asking BDRC again.
-    // The role the person had (author, tertön, scribe, other) goes with it too.
-    return {
-      edition_id: editionId,
-      person_answer: 'bdrc',
-      p_id: answer.personId,
-      confidence: answer.confidence,
-      note,
-      data: { person_name: answer.name, ...roleData(answer) },
-    };
-  }
-  return { edition_id: editionId, person_answer: 'not_in_bdrc', name_bo: answer.name, confidence: answer.confidence, note, data: roleData(answer) };
+  return { edition_id: editionId, persons: answer.persons.map(apiPerson), note };
 }
 
 /** Save my answer on a text ("1/5"). Our backend keeps it and sends it to BDRC. */

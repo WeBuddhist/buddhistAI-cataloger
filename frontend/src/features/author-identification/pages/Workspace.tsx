@@ -88,8 +88,8 @@ function WorkspaceView({ task, tasks }: Readonly<{ task: AuthorTask; tasks: Task
   const [query, setQuery] = useState(predicted);
   // The first name is searched straight away; nobody is picked for the annotator.
   const [searched, setSearched] = useState(predicted);
-  // A saved "not in BDRC" or skip opens on step 2, where it was given.
-  const [kind, setKind] = useState<PanelStep>(saved?.kind ?? 'person');
+  // A saved skip opens on step 2, where it was given; persons on the search, with their list.
+  const [kind, setKind] = useState<PanelStep>(saved?.kind === 'skipped' ? 'skipped' : 'person');
   const [editing, setEditing] = useState(saved == null);
 
   const prevId = tasks[index - 1]?.id;

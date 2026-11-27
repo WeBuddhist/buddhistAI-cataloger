@@ -16,15 +16,26 @@ export const isSkipReason = (value: string | null | undefined): value is SkipRea
 export const skipLabel = (reason: SkipReason) => tr(`skip.${reason}`);
 
 /**
- * The role the chosen person had in the text, as the annotators asked (Emma; agreed by
- * Elie): the author, or the tertön of a terma, or only its scribe. "Other" is explained in
- * the note. Sent to BDRC in the answer's data, as `role`.
+ * The role the chosen person had in the text, as the annotators asked (Emma) and as BDRC's
+ * editions API lists them; "other" with the role in the annotator's words.
  */
-export const PERSON_ROLES = ['author', 'terton', 'scribe', 'other'] as const;
+export const PERSON_ROLES = ['author', 'commentator', 'terton', 'transcriber', 'oral_teacher', 'other'] as const;
 
 export type PersonRole = (typeof PERSON_ROLES)[number];
 
-export const isPersonRole = (value: unknown): value is PersonRole => PERSON_ROLES.includes(value as PersonRole);
+/** BDRC's role codes (GET /editions/roles). */
+export const ROLE_CODE: Record<PersonRole, string> = {
+  author: 'R0ER0019',
+  commentator: 'R0ER0014',
+  terton: 'R0ER0025',
+  transcriber: 'R0ER0024',
+  oral_teacher: 'R0ER0032',
+  other: 'other',
+};
+
+/** The role of a code; the main author's for none or one this tool doesn't know. */
+export const roleOfCode = (code: string | null | undefined): PersonRole =>
+  PERSON_ROLES.find((r) => ROLE_CODE[r] === code) ?? 'author';
 
 /** In the language chosen (translations: authorIdentification.personRole.*). */
 export const roleLabel = (role: PersonRole) => tr(`personRole.${role}`);

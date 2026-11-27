@@ -1954,7 +1954,7 @@
       "r11": "Press <b>Skip</b> and choose a reason:",
       "r2": "<b>Commentary:</b> the author is the person who wrote the commentary, not the author of the original text.",
       "r3": "<b>Terma:</b> choose the tertön, with the role <b>Tertön</b>.",
-      "r4": "<b>No author, only a scribe (transcriber) named:</b> choose the scribe, with the role <b>Scribe</b>.",
+      "r4": "<b>No author, only the one who wrote it down (transcriber) named:</b> choose them, with the role <b>Transcriber</b>.",
       "r5": "Choose the author from the BDRC list.",
       "r6": "<b>Same person listed twice:</b> choose one. Open the other one’s page, copy its person ID, and in the note write:",
       "r7": "<b>Author not in the list:</b> type the name yourself. In the note, add anything that could help, such as dates, teacher, monastery, or other names.",
@@ -1990,7 +1990,10 @@
       "writtenIn": "Written in"
     },
     "panel": {
+      "addAnotherHint": "To add another person, tick them in the search results.",
+      "addNotInBdrc": "Someone not in BDRC",
       "addNote": "Add a note",
+      "addPerson": "Add",
       "author": "Author",
       "backToSearch": "Back to the search",
       "cancel": "Cancel",
@@ -2002,7 +2005,9 @@
       "findInBdrc": "Find the author in BDRC",
       "howSure": "How sure are you?",
       "levelOf": "{{n}} of 5",
+      "missingAdd": "Write the name and press Add",
       "missingConfidence": "Choose how sure you are",
+      "missingConfidenceEach": "Choose how sure you are for each person",
       "missingName": "Write the name",
       "missingPerson": "Choose a person",
       "missingReason": "Choose a reason",
@@ -2018,9 +2023,13 @@
       "optional": "(optional)",
       "otherAnswers": "Not in BDRC, or skip",
       "otherTitle": "The author is not found in BDRC",
+      "personsTitle_one": "Person of this text",
+      "personsTitle_other": "Persons of this text ({{count}})",
       "removeNote": "Remove the note",
+      "removePerson": "Remove {{name}}",
       "role": "Role",
       "roleOf": "Role: {{role}}",
+      "samePersonTwice": "The same person is in the list twice with the same role.",
       "saveFailed": "Could not save the answer: {{error}}",
       "saved": "Answer saved",
       "saving": "Saving…",
@@ -2049,10 +2058,12 @@
       "viewDetailsOf": "View details of {{name}}"
     },
     "personRole": {
-      "author": "Author",
+      "author": "Main author",
+      "commentator": "Commentator",
+      "oral_teacher": "Teacher (gave the teaching)",
       "other": "Other",
-      "scribe": "Scribe",
-      "terton": "Tertön"
+      "terton": "Tertön",
+      "transcriber": "Transcriber (wrote it down)"
     },
     "queue": {
       "added_one": "{{count}} text added to your list",
@@ -2099,8 +2110,11 @@
     },
     "roleHint": {
       "author": "Wrote or composed the text.",
-      "scribe": "Only wrote it down (scribe or transcriber).",
-      "terton": "Revealed this terma."
+      "commentator": "Wrote this commentary on another text.",
+      "oral_teacher": "Gave the teaching that someone else wrote down.",
+      "other": "Another role: write it in the box.",
+      "terton": "Revealed this terma.",
+      "transcriber": "Wrote the text down, e.g. as it was taught."
     },
     "roles": {
       "admin": "Admin",

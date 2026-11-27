@@ -1,8 +1,7 @@
 import { fromWylie } from 'jsewts';
 import { getBdrclink } from '@/lib/bdrclink';
-import { skipLabel } from './guidelines';
 import { tr } from './i18n';
-import type { AuthorAnswer, DuplicateReport, ExtractedName, NameCandidate, TextVersion } from './types';
+import type { AnswerPerson, DuplicateReport, ExtractedName, NameCandidate, TextVersion } from './types';
 
 const TIBETAN = /[ༀ-࿿]/;
 
@@ -65,12 +64,9 @@ export function nameParts(name: string): string[] {
   return [...parts].slice(0, MAX_PARTS);
 }
 
-/** Who was answered; the role is shown on a line of its own. */
-export function answerLabel(answer: AuthorAnswer): string {
-  if (answer.kind === 'person') return tr('answer.personLabel', { name: answer.name, id: answer.personId });
-  if (answer.kind === 'not_in_bdrc') return tr('answer.notInBdrcLabel', { name: answer.name });
-  return tr('answer.skippedLabel', { reason: skipLabel(answer.reason) });
-}
+/** A person of an answer: name and BDRC id, or the name and "not in BDRC". */
+export const personLabel = (p: AnswerPerson): string =>
+  p.inBdrc ? tr('answer.personLabel', { name: p.name, id: p.personId }) : tr('answer.notInBdrcLabel', { name: p.name });
 
 export const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 

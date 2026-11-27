@@ -76,11 +76,16 @@ export interface NameSuggestion {
   total: number;
 }
 
-/** One author per text; the note holds anything else about the author. Confidence is 1 to
- * 5, given with an author (not when skipping). */
+/** A person of the text, in a role: in BDRC, or named but not in BDRC. */
+export type AnswerPerson = { role: PersonRole; roleOther?: string; confidence: number | null } & (
+  | { inBdrc: true; personId: string; name: string }
+  | { inBdrc: false; name: string }
+);
+
+/** The persons of the text, each in a role and with how sure the annotator is of them (1 to 5),
+ * at least one; or the text skipped. The note holds anything else about the authors. */
 export type AuthorAnswer = { note: string } & (
-  | { kind: 'person'; personId: string; name: string; role: PersonRole; roleOther?: string; confidence: number }
-  | { kind: 'not_in_bdrc'; name: string; role: PersonRole; roleOther?: string; confidence: number }
+  | { kind: 'persons'; persons: AnswerPerson[] }
   | { kind: 'skipped'; reason: SkipReason }
 );
 

@@ -63,6 +63,10 @@ class AuthorAnswer(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     text_rejected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The persons of the text, each in a role, as BDRC's editions API takes them
+    # ({person_answer, p_id | name_bo, role, role_other?}, plus person_name to show here).
+    # person_answer, p_id and name_bo above repeat the first one.
+    persons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     decided_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

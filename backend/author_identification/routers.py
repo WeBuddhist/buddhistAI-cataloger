@@ -159,6 +159,22 @@ def get_edition(edition_id: str = Path(pattern=_ID)) -> Any:
         _bdrc_failed(exc)
 
 
+def _answer_columns(body: AnswerIn) -> dict:
+    """The answer as saved: its persons, with the first one repeated in the single-person
+    columns (as BDRC's item does), so lists and old readers still see who was answered."""
+    persons = [p.model_dump(exclude_none=True) for p in body.persons]
+    first = persons[0] if persons else {}
+    columns = body.model_dump(exclude={"persons"})
+    columns.update(
+        persons=persons,
+        person_answer=first.get("person_answer", body.person_answer),
+        p_id=first.get("p_id"),
+        name_bo=first.get("name_bo"),
+        confidence=body.confidence if body.confidence is not None else first.get("confidence"),
+    )
+    return columns
+
+
 @router.put("/batches/{batch_id}/items/{item_id}", response_model=AnswerOut)
 def answer_item(
     body: AnswerIn,
@@ -174,7 +190,7 @@ def answer_item(
     holder = assignment is not None and assignment.user_id == user.id
     if not holder and not is_author_identification_admin(user):
         raise HTTPException(status_code=403, detail="This text is not one of yours.")
-    answer = repo.add_answer(db, AuthorAnswer(batch_id=batch_id, item_id=item_id, user_id=user.id, **body.model_dump()))
+    answer = repo.add_answer(db, AuthorAnswer(batch_id=batch_id, item_id=item_id, user_id=user.id, **_answer_columns(body)))
     if holder:
         repo.complete_assignment(db, batch_id, item_id)
     db.commit()
